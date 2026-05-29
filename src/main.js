@@ -86,6 +86,10 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.shadowMap.needsUpdate = true;
 const maxShadowedSpotLights = 3;
+const ceilingLightFadeInBase = 0.018;
+const ceilingLightFadeOutBase = 0.004;
+const ceilingLightVisibleThreshold = 0.03;
+const ceilingLightShadowThreshold = 12;
 
 const roomWidth = 9;
 const roomDepth = 12;
@@ -1256,7 +1260,9 @@ function updateCeilingLight(lightData) {
   lightData.target.position.copy(lightData.position).add(direction.multiplyScalar(4.2));
   lightData.spot.position.copy(lightData.position);
   lightData.spot.target = lightData.target;
-  lightData.spot.intensity = lightData.power;
+  lightData.spot.intensity = Number.isFinite(lightData.currentIntensity)
+    ? lightData.currentIntensity
+    : 0;
   lightData.spot.color.set(lightData.color ?? '#fff4e8');
   lightData.spot.angle = THREE.MathUtils.degToRad(lightData.angle ?? 30);
   lightData.fixture.position.copy(lightData.position);
@@ -1322,7 +1328,8 @@ function addCeilingLight({ position, targetPoint, trackId = 'back', trackPositio
   const resolvedPosition = getTrackPosition(trackId, resolvedTrackPosition, resolvedRoomIndex);
   const direction = targetPoint ? targetPoint.clone().sub(resolvedPosition) : directionFromAngles(yaw, pitch);
   const angles = targetPoint ? anglesFromDirection(direction) : { yaw, pitch };
-  const spot = new THREE.SpotLight(color, power, 8.5, THREE.MathUtils.degToRad(angle), 0.68, 1.45);
+  const spot = new THREE.SpotLight(color, 0, 8.5, THREE.MathUtils.degToRad(angle), 0.68, 1.45);
+  spot.visible = false;
   spot.castShadow = false;
   spot.shadow.mapSize.set(384, 384);
   spot.shadow.camera.near = 0.15;
@@ -1340,6 +1347,8 @@ function addCeilingLight({ position, targetPoint, trackId = 'back', trackPositio
     color,
     angle,
     roomIndex: resolvedRoomIndex,
+    currentIntensity: 0,
+    shadowEligible: false,
     spot,
     target,
     fixture,
@@ -1369,11 +1378,11 @@ function updateActiveSpotShadows(currentRoomIndex) {
   );
   const shadowedLights = new Set(
     ceilingLights
-      .filter((lightData) => lightData.spot.visible && (lightData.roomIndex ?? currentRoomIndex) === currentRoomIndex && (lightData.power ?? 0) > 0.5)
+      .filter((lightData) => lightData.spot.visible && (lightData.roomIndex ?? currentRoomIndex) === currentRoomIndex && (lightData.currentIntensity ?? 0) > ceilingLightShadowThreshold)
       .map((lightData, index) => ({
         lightData,
         index,
-        score: lightData.position.distanceToSquared(roomCenter) - (lightData.power ?? 0) * 0.015,
+        score: lightData.position.distanceToSquared(roomCenter) - (lightData.currentIntensity ?? 0) * 0.015,
       }))
       .sort((a, b) => a.score - b.score || a.index - b.index)
       .slice(0, maxShadowedSpotLights)
@@ -3710,9 +3719,28 @@ function updateMovement(delta) {
 function updateAutoRoomLights(delta) {
   const currentRoomIndex = getRoomIndexForZ(body.position.z);
   ceilingLights.forEach((lightData) => {
-    const active = Math.abs((lightData.roomIndex ?? currentRoomIndex) - currentRoomIndex) <= 0;
-    if (lightData.spot.visible !== active) {
-      lightData.spot.visible = active;
+    const active = (lightData.roomIndex ?? currentRoomIndex) === currentRoomIndex;
+    const targetIntensity = active ? (lightData.power ?? 0) : 0;
+    const fadeBase = targetIntensity > (lightData.currentIntensity ?? 0)
+      ? ceilingLightFadeInBase
+      : ceilingLightFadeOutBase;
+    const nextIntensity = THREE.MathUtils.lerp(
+      lightData.currentIntensity ?? lightData.spot.intensity ?? 0,
+      targetIntensity,
+      1 - Math.pow(fadeBase, delta),
+    );
+    lightData.currentIntensity = nextIntensity;
+    lightData.spot.intensity = nextIntensity;
+
+    const shouldBeVisible = targetIntensity > ceilingLightVisibleThreshold || nextIntensity > ceilingLightVisibleThreshold;
+    if (lightData.spot.visible !== shouldBeVisible) {
+      lightData.spot.visible = shouldBeVisible;
+      spotShadowSetupDirty = true;
+    }
+
+    const shadowEligible = active && nextIntensity > ceilingLightShadowThreshold;
+    if (lightData.shadowEligible !== shadowEligible) {
+      lightData.shadowEligible = shadowEligible;
       spotShadowSetupDirty = true;
     }
   });
@@ -3741,7 +3769,7 @@ function updateArtworkBrightness(delta) {
     const lightRoomIndex = lightData?.roomIndex ?? getRoomIndexForZ(paintingData.group.position.z);
     const paintingRoomIndex = getRoomIndexForZ(paintingData.group.position.z);
     const lightIsInCurrentRoom = lightRoomIndex === currentRoomIndex && paintingRoomIndex === currentRoomIndex;
-    const lightIsOn = Boolean(lightData && lightIsInCurrentRoom && (lightData.power ?? 0) > 0.5);
+    const lightIsOn = Boolean(lightData && lightIsInCurrentRoom && (lightData.currentIntensity ?? lightData.spot?.intensity ?? 0) > 0.5);
     const targetBrightness = lightIsOn
       ? 1
       : 0.018;
