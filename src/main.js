@@ -114,7 +114,6 @@ function publicAssetPath(path) {
 }
 
 const jazzPlaylist = [
-  'audio/jazz/the_mountain-jazz-cafe-496552.mp3',
   'audio/jazz/waveloom-jazz-bar-516749.mp3',
   'audio/jazz/waveloom-jazz-cafe-516774.mp3',
   'audio/jazz/waveloom-jazz-restaurant-516751.mp3',
