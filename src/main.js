@@ -922,6 +922,77 @@ function addEntrancePedestal() {
   return pedestal;
 }
 
+function createTipHatContent(pedestalWidth, pedestalDepth, pedestalHeight, content = {}) {
+  const hat = new THREE.Group();
+  const scale = THREE.MathUtils.clamp(Number(content.scale) || 1, 0.55, 1.4);
+  const hatRadius = Math.min(pedestalWidth, pedestalDepth) * 0.3 * scale;
+  const topY = pedestalHeight + 0.026;
+  hat.position.set(
+    Number.isFinite(content.offsetX) ? content.offsetX : 0,
+    topY,
+    Number.isFinite(content.offsetZ) ? content.offsetZ : 0,
+  );
+  hat.rotation.y = Number.isFinite(content.rotationY) ? content.rotationY : 0;
+
+  const brim = new THREE.Mesh(new THREE.TorusGeometry(hatRadius * 1.2, hatRadius * 0.065, 12, 56), flatCapMaterial);
+  brim.position.y = hatRadius * 0.08;
+  brim.rotation.x = Math.PI / 2;
+  brim.scale.z = 0.82;
+
+  const bowlWall = new THREE.Mesh(
+    new THREE.CylinderGeometry(hatRadius * 0.82, hatRadius * 1.04, hatRadius * 0.42, 48, 1, true),
+    flatCapMaterial,
+  );
+  bowlWall.position.y = hatRadius * 0.25;
+  bowlWall.scale.z = 0.86;
+
+  const rolledLip = new THREE.Mesh(new THREE.TorusGeometry(hatRadius * 0.95, hatRadius * 0.055, 12, 48), flatCapMaterial);
+  rolledLip.position.y = hatRadius * 0.46;
+  rolledLip.rotation.x = Math.PI / 2;
+  rolledLip.scale.z = 0.84;
+
+  const inside = new THREE.Mesh(new THREE.CircleGeometry(hatRadius * 0.86, 48), flatCapInsideMaterial);
+  inside.position.y = hatRadius * 0.445;
+  inside.rotation.x = -Math.PI / 2;
+  inside.scale.z = 0.8;
+
+  const outerBowl = new THREE.Mesh(
+    new THREE.SphereGeometry(hatRadius * 0.88, 40, 12, 0, Math.PI * 2, Math.PI * 0.52, Math.PI * 0.48),
+    flatCapMaterial,
+  );
+  outerBowl.position.y = hatRadius * 0.22;
+  outerBowl.scale.set(1.04, 0.58, 0.82);
+
+  const band = new THREE.Mesh(new THREE.TorusGeometry(hatRadius * 0.98, hatRadius * 0.025, 8, 48), flatCapInsideMaterial);
+  band.position.y = hatRadius * 0.15;
+  band.rotation.x = Math.PI / 2;
+  band.scale.z = 0.84;
+
+  hat.add(brim, bowlWall, rolledLip, inside, outerBowl, band);
+
+  [
+    [-0.19, 0.05, 0.12],
+    [0.04, -0.08, -0.18],
+    [0.2, 0.03, 0.22],
+    [-0.02, 0.16, -0.08],
+  ].forEach(([coinX, coinZ, rotation], index) => {
+    const coin = new THREE.Mesh(new THREE.CylinderGeometry(hatRadius * 0.09, hatRadius * 0.09, hatRadius * 0.016, 24), capCoinMaterial);
+    coin.position.set(hatRadius * coinX, hatRadius * 0.49 + index * hatRadius * 0.01, hatRadius * coinZ);
+    coin.rotation.set(Math.PI / 2 + 0.06 * index, rotation, 0.18 * index);
+    coin.castShadow = true;
+    coin.receiveShadow = true;
+    hat.add(coin);
+  });
+
+  hat.children.forEach((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+  });
+
+  return hat;
+}
+
 function createFlatCapContent(pedestalWidth, pedestalDepth, pedestalHeight, content = {}) {
   const cap = new THREE.Group();
   const scale = THREE.MathUtils.clamp(Number(content.scale) || 1, 0.55, 1.4);
@@ -1044,7 +1115,9 @@ function createDisplayPedestal({
     part.receiveShadow = true;
   });
 
-  if (content?.type === 'flat-cap') {
+  if (content?.type === 'bowler-hat') {
+    group.add(createTipHatContent(width, depth, height, content));
+  } else if (content?.type === 'flat-cap') {
     group.add(createFlatCapContent(width, depth, height, content));
   }
 
@@ -4268,7 +4341,8 @@ let fallbackOriginX = 0;
 let fallbackOriginY = 0;
 let fallbackTurnVelocity = 0;
 let fallbackPitchVelocity = 0;
-let bodyYaw = 0;
+const initialBodyYaw = Math.PI;
+let bodyYaw = initialBodyYaw;
 let headYaw = 0;
 let pitch = 0;
 let velocityBob = 0;
@@ -4311,7 +4385,7 @@ function syncCameraRotation() {
 
 function resetView() {
   body.position.set(0, eyeHeight, 4.6);
-  bodyYaw = 0;
+  bodyYaw = initialBodyYaw;
   headYaw = 0;
   pitch = 0;
   fallbackTurning = false;

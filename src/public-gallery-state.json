@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-05-29T22:01:39.992Z",
+  "exportedAt": "2026-05-29T22:13:14.657Z",
   "gallery": {
     "version": 1,
     "audio": {
@@ -491,29 +491,6 @@
         "actionUrl": ""
       },
       {
-        "imageSrc": "art/olej-web/24-ethernal-rammus.jpg",
-        "x": 2.5643,
-        "y": 1.45,
-        "z": 19.085,
-        "ry": 3.141593,
-        "w": 2,
-        "h": 1.125,
-        "aspect": 1.777778,
-        "wallNormal": [
-          0,
-          0,
-          -1
-        ],
-        "frameSize": "medium",
-        "frameColor": "#000000",
-        "labelTitle": "Ethernal Rammus",
-        "labelMedium": "Digitální tvorba",
-        "labelSize": "170 x 82.5 cm",
-        "labelDate": "",
-        "labelPrice": "",
-        "actionUrl": ""
-      },
-      {
         "imageSrc": "art/olej-web/23-pyramid-head.jpg",
         "x": -2.4468,
         "y": 1.9427,
@@ -538,7 +515,7 @@
       },
       {
         "imageSrc": "art/olej-web/15-hell.jpg",
-        "x": 4.435,
+        "x": 4.42,
         "y": 1.73,
         "z": 13.8935,
         "ry": -1.570796,
@@ -557,6 +534,29 @@
         "labelSize": "50 x 50 cm",
         "labelDate": "2024",
         "labelPrice": "cena dohodou",
+        "actionUrl": ""
+      },
+      {
+        "imageSrc": "art/olej-web/24-ethernal-rammus.jpg",
+        "x": 2.5643,
+        "y": 1.45,
+        "z": 19.085,
+        "ry": 3.141593,
+        "w": 2,
+        "h": 1.125,
+        "aspect": 1.777778,
+        "wallNormal": [
+          0,
+          0,
+          -1
+        ],
+        "frameSize": "medium",
+        "frameColor": "#000000",
+        "labelTitle": "Ethernal Rammus",
+        "labelMedium": "Digitální tvorba",
+        "labelSize": "170 x 82.5 cm",
+        "labelDate": "",
+        "labelPrice": "",
         "actionUrl": ""
       }
     ],
@@ -580,11 +580,11 @@
         "depth": 0.7,
         "height": 1.1,
         "content": {
-          "type": "flat-cap",
-          "scale": 1.05,
+          "type": "bowler-hat",
+          "scale": 1.04,
           "offsetX": 0,
           "offsetZ": 0,
-          "rotationY": 0.12
+          "rotationY": 0.1
         }
       }
     ],
@@ -653,7 +653,7 @@
       "enabled": true,
       "power": 8
     },
-    "selectedLightIndex": 10,
+    "selectedLightIndex": 23,
     "ceilingLights": [
       {
         "trackId": "back",
@@ -759,7 +759,7 @@
         "trackId": "right",
         "trackPosition": 0.5715,
         "yaw": 90,
-        "pitch": -62.84,
+        "pitch": -63.29,
         "power": 105,
         "color": "#fff4e8",
         "angle": 30,
@@ -881,7 +881,7 @@
         "yaw": 0,
         "pitch": -53.21,
         "power": 105,
-        "color": "#ff0000",
+        "color": "#87647f",
         "angle": 32,
         "roomIndex": 1
       },
@@ -890,8 +890,8 @@
         "trackPosition": 0.833,
         "yaw": 0,
         "pitch": -61.45,
-        "power": 105,
-        "color": "#692fee",
+        "power": 16,
+        "color": "#b6a1e8",
         "angle": 30,
         "roomIndex": 1
       }
