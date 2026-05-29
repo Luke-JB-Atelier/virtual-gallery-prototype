@@ -1711,8 +1711,14 @@ function getCurrentArtworkAspect() {
   return defaultArtworkAspect;
 }
 
+function getLabelSizeCm(sceneSizeCm) {
+  return Math.max(1, sceneSizeCm - 30);
+}
+
 function updateArtworkSizeLabel(widthCm, heightCm) {
-  artLabelSizeInput.value = `${formatCm(widthCm)} x ${formatCm(heightCm)} cm`;
+  const labelWidthCm = getLabelSizeCm(widthCm);
+  const labelHeightCm = getLabelSizeCm(heightCm);
+  artLabelSizeInput.value = `${formatCm(labelWidthCm)} x ${formatCm(labelHeightCm)} cm`;
   updateSelectedPaintingLabel();
 }
 
