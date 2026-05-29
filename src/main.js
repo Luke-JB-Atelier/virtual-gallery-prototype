@@ -2240,6 +2240,36 @@ function getCenterRaycaster() {
   return raycaster;
 }
 
+function rememberCanvasPointer(event) {
+  const rect = canvas.getBoundingClientRect();
+  const inside = event.clientX >= rect.left
+    && event.clientX <= rect.right
+    && event.clientY >= rect.top
+    && event.clientY <= rect.bottom;
+  if (inside) {
+    lastMouseX = event.clientX;
+    lastMouseY = event.clientY;
+    hasCanvasPointer = true;
+  }
+  return inside;
+}
+
+function getPointerRaycaster() {
+  if (!hasCanvasPointer) return null;
+  const rect = canvas.getBoundingClientRect();
+  if (lastMouseX < rect.left || lastMouseX > rect.right || lastMouseY < rect.top || lastMouseY > rect.bottom) {
+    return null;
+  }
+  pointer.x = ((lastMouseX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((lastMouseY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  return raycaster;
+}
+
+function getPlacementRaycaster(usePointer = false) {
+  return (usePointer && getPointerRaycaster()) || getCenterRaycaster();
+}
+
 const galleryFloorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const floorHitPoint = new THREE.Vector3();
 
@@ -2253,8 +2283,8 @@ function getFloorPlacement() {
   return position;
 }
 
-function getWallPlacement() {
-  getCenterRaycaster();
+function getWallPlacement({ usePointer = false } = {}) {
+  getPlacementRaycaster(usePointer);
   const hit = raycaster.intersectObjects(wallMeshes, false)[0];
   if (!hit) return null;
 
@@ -2305,8 +2335,8 @@ function getWallPlacement() {
   return { point, normal, ry, width, height, axis, aspect };
 }
 
-function getTextPanelPlacement() {
-  getCenterRaycaster();
+function getTextPanelPlacement({ usePointer = false } = {}) {
+  getPlacementRaycaster(usePointer);
   const hit = raycaster.intersectObjects(wallMeshes, false)[0];
   if (!hit) return null;
 
@@ -2338,7 +2368,7 @@ function syncArtPreview() {
     return;
   }
 
-  const placement = getWallPlacement();
+  const placement = getWallPlacement({ usePointer: movingSelectedPainting });
   if (!placement) {
     artPreview.visible = false;
     return;
@@ -2364,7 +2394,7 @@ function syncArtPanel() {
       ? 'Obrázek je načtený. Namiř tečku na stěnu a klikni Přidat.'
       : selectedPainting
         ? movingSelectedPainting
-        ? 'Teď přesouváš přímo vybraný obraz. Levým klikem do stěny ho uchytíš.'
+        ? 'Teď přesouváš vybraný obraz kurzorem myši po stěně. Levým klikem ho uchytíš.'
         : 'Obraz je vybraný. Můžeš ho smazat, změnit velikost, nebo zapnout přesun.'
       : 'Namiř tečku na stěnu a vlož nový obraz.';
   addArtButton.textContent = movingSelectedPainting ? 'Uchytit sem' : pendingArtMaterial ? 'Vložit načtený' : 'Přidat na náhled';
@@ -2699,10 +2729,10 @@ function addArtworkFromPreview() {
 
 function moveSelectedPaintingToPreview() {
   if (!selectedPainting) return false;
-  const placement = getWallPlacement();
+  const placement = getWallPlacement({ usePointer: true });
   if (!placement) {
     artTitle.textContent = 'Není vybraná stěna';
-    artStatus.textContent = 'Pro přesun namiř zelený náhled na vnitřní stěnu mimo průchod.';
+    artStatus.textContent = 'Pro přesun dej kurzor myši na vnitřní stěnu mimo průchod.';
     return false;
   }
 
@@ -2721,6 +2751,7 @@ function moveSelectedPaintingToPreview() {
 
 function beginMoveSelectedPainting() {
   if (!selectedPainting) return;
+  releaseLook();
   moveOriginalTransform = {
     position: selectedPainting.group.position.clone(),
     rotationY: selectedPainting.group.rotation.y,
@@ -2957,7 +2988,7 @@ function getTextPanelSizeFromInputs() {
 function syncTextPanelPanel() {
   textPanelTitle.textContent = selectedTextPanel ? 'Vybraná tabulka' : 'Nová tabulka';
   textPanelStatus.textContent = movingSelectedTextPanel
-    ? 'Namiř tečku na stěnu a klikni Přidat na stěnu.'
+    ? 'Pohybuj tabulkou kurzorem myši po stěně a klikni pro uchycení.'
       : selectedTextPanel
         ? 'Tabulka je vybraná. Můžeš změnit text, barvy, velikost, přesunout ji, kolečkem otočit, nebo smazat.'
         : 'Namiř tečku na stěnu a přidej textovou tabulku.';
@@ -3013,10 +3044,10 @@ function addTextPanelFromWall() {
 
 function moveSelectedTextPanelToWall() {
   if (!selectedTextPanel) return false;
-  const placement = getTextPanelPlacement();
+  const placement = getTextPanelPlacement({ usePointer: true });
   if (!placement) {
     textPanelTitle.textContent = 'Není vybraná stěna';
-    textPanelStatus.textContent = 'Pro přesun namiř tečku na stěnu nebo nad dveře.';
+    textPanelStatus.textContent = 'Pro přesun dej kurzor myši na stěnu nebo nad dveře.';
     return false;
   }
   selectedTextPanel.group.position.copy(placement.point);
@@ -3609,6 +3640,9 @@ addTextPanelButton.addEventListener('click', () => {
 moveTextPanelButton.addEventListener('click', () => {
   if (!selectedTextPanel) return;
   movingSelectedTextPanel = !movingSelectedTextPanel;
+  if (movingSelectedTextPanel) {
+    releaseLook();
+  }
   syncTextPanelPanel();
 });
 removeTextPanelButton.addEventListener('click', removeSelectedTextPanel);
@@ -3765,6 +3799,7 @@ let pointerLocked = false;
 let lookEnabled = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
+let hasCanvasPointer = false;
 let fallbackTurning = false;
 let fallbackOriginX = 0;
 let fallbackOriginY = 0;
@@ -3918,6 +3953,7 @@ canvas.addEventListener('mousedown', (event) => {
   }
 
   if (event.button !== 0 || isTouchDevice) return;
+  rememberCanvasPointer(event);
   if (movingSelectedPainting) {
     event.preventDefault();
     moveSelectedPaintingToPreview();
@@ -4019,6 +4055,7 @@ window.addEventListener('mouseup', () => {
 });
 
 canvas.addEventListener('mouseleave', () => {
+  hasCanvasPointer = false;
   if (!pointerLocked) disableLook();
 });
 
@@ -4030,6 +4067,9 @@ document.addEventListener('visibilitychange', () => {
 
 window.addEventListener('mousemove', (event) => {
   if (isTouchDevice) return;
+  if (!pointerLocked) {
+    rememberCanvasPointer(event);
+  }
 
   if (pointerLocked) {
     applyLookDelta(event.movementX, event.movementY);
@@ -4229,7 +4269,7 @@ function updateCrosshairAndEditors() {
     }
   }
   if (movingSelectedTextPanel && selectedTextPanel) {
-    const placement = getTextPanelPlacement();
+    const placement = getTextPanelPlacement({ usePointer: true });
     if (placement) {
       selectedTextPanel.group.position.copy(placement.point);
       selectedTextPanel.group.rotation.y = placement.ry;
