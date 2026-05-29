@@ -431,6 +431,48 @@ function addBarrelVault(centerZ) {
   room.add(vault);
 }
 
+function addSideBarrelVault(centerX, centerZ) {
+  const halfWidth = doorway.width / 2;
+  const length = corridorLength;
+  const springY = doorway.height;
+  const arcSegments = 18;
+  const lengthSegments = 8;
+  const vertices = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let xIndex = 0; xIndex <= lengthSegments; xIndex += 1) {
+    const x = centerX - length / 2 + (xIndex / lengthSegments) * length;
+    for (let zIndex = 0; zIndex <= arcSegments; zIndex += 1) {
+      const theta = Math.PI - (zIndex / arcSegments) * Math.PI;
+      const z = centerZ + Math.cos(theta) * halfWidth;
+      const y = springY + Math.sin(theta) * halfWidth;
+      vertices.push(x, y, z);
+      uvs.push(zIndex / arcSegments, xIndex / lengthSegments);
+    }
+  }
+
+  for (let xIndex = 0; xIndex < lengthSegments; xIndex += 1) {
+    for (let zIndex = 0; zIndex < arcSegments; zIndex += 1) {
+      const a = xIndex * (arcSegments + 1) + zIndex;
+      const b = a + 1;
+      const c = a + arcSegments + 1;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  setGeometryColor(geometry);
+  geometry.computeVertexNormals();
+
+  const vault = new THREE.Mesh(geometry, archWallMaterial);
+  room.add(vault);
+}
+
 function addCorridorFloorAndCeiling(centerX, centerZ) {
   const floorMesh = plane(doorway.width, corridorLength, floorMaterial, [centerX, 0, centerZ], [-Math.PI / 2, 0, 0], 8);
   addFloorEdgeDarkening(floorMesh);
@@ -440,7 +482,7 @@ function addCorridorFloorAndCeiling(centerX, centerZ) {
 function addSideCorridorFloorAndCeiling(centerX, centerZ) {
   const floorMesh = plane(corridorLength, doorway.width, floorMaterial, [centerX, 0, centerZ], [-Math.PI / 2, 0, Math.PI / 2], 8);
   addFloorEdgeDarkening(floorMesh);
-  plane(corridorLength, doorway.width, ceilingMaterial, [centerX, roomHeight, centerZ], [Math.PI / 2, 0, Math.PI / 2]);
+  addSideBarrelVault(centerX, centerZ);
 }
 
 function addWall(width, height, position, rotation, segments = 18) {
@@ -515,6 +557,41 @@ function addArchedDoorHeader(z, centerX = 0) {
   wallMeshes.push(mesh);
 }
 
+function addSideArchedDoorHeader(x, centerZ) {
+  const halfWidth = doorway.width / 2;
+  const springY = doorway.height;
+  const archSegments = 36;
+  const vertices = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let i = 0; i <= archSegments; i += 1) {
+    const theta = Math.PI - (i / archSegments) * Math.PI;
+    const z = centerZ + Math.cos(theta) * halfWidth;
+    const archY = springY + Math.sin(theta) * halfWidth;
+    vertices.push(x, archY, z, x, roomHeight, z);
+    uvs.push((z - centerZ + halfWidth) / doorway.width, archY / roomHeight, (z - centerZ + halfWidth) / doorway.width, 1);
+  }
+
+  for (let i = 0; i < archSegments; i += 1) {
+    const a = i * 2;
+    const b = a + 1;
+    const c = a + 2;
+    const d = a + 3;
+    indices.push(a, c, b, b, c, d);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  setGeometryColor(geometry);
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, archWallMaterial);
+  room.add(mesh);
+  wallMeshes.push(mesh);
+}
+
 galleryRooms.forEach(({ centerX, centerZ }) => addRoomFloorAndCeiling(centerX, centerZ));
 
 const x0 = -roomWidth / 2;
@@ -539,7 +616,7 @@ function addDoorWallX(x, centerZ) {
   const frontZ = centerZ + roomDepth / 2;
   addWallSegment(x, backZ, x, centerZ - doorway.width / 2);
   addWallSegment(x, centerZ + doorway.width / 2, x, frontZ);
-  addWallSegment(x, centerZ - doorway.width / 2, x, centerZ + doorway.width / 2, doorTopHeight, doorTopCenterY);
+  addSideArchedDoorHeader(x, centerZ);
 }
 
 function addSolidRoomWallZ(centerX, z, rotationY) {
@@ -857,35 +934,51 @@ function createDisplayPedestal({
 }
 
 const barrierPostMaterial = new THREE.MeshStandardMaterial({
-  color: 0x151515,
-  roughness: 0.72,
-  metalness: 0.12,
+  color: 0xd6b15a,
+  roughness: 0.22,
+  metalness: 0.78,
 });
-const barrierTapeMaterial = new THREE.MeshBasicMaterial({ color: 0xded7c8 });
-const barrierStripeMaterial = new THREE.MeshBasicMaterial({ color: 0xb72622 });
+const barrierRopeMaterial = new THREE.MeshStandardMaterial({
+  color: 0x980814,
+  roughness: 0.58,
+  metalness: 0.02,
+});
 
 function addFutureWingBarrier() {
   const group = new THREE.Group();
   group.position.set(x0 - 0.16, 0, roomStep);
 
-  [-0.56, 0.56].forEach((z) => {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.12, 18), barrierPostMaterial);
+  const postPositions = [-0.58, 0, 0.58];
+  postPositions.forEach((z) => {
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.05, 32), barrierPostMaterial);
+    base.position.set(0, 0.025, z);
+    base.castShadow = true;
+    base.receiveShadow = true;
+
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.032, 1.05, 24), barrierPostMaterial);
     post.position.set(0, 0.56, z);
     post.castShadow = true;
     post.receiveShadow = true;
-    group.add(post);
+
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.07, 24, 16), barrierPostMaterial);
+    cap.position.set(0, 1.12, z);
+    cap.castShadow = true;
+    cap.receiveShadow = true;
+
+    group.add(base, post, cap);
   });
 
-  [0.92, 1.16].forEach((y, rowIndex) => {
-    const tape = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.07, doorway.width * 0.9), barrierTapeMaterial);
-    tape.position.set(0, y, 0);
-    group.add(tape);
-    for (let i = -4; i <= 4; i += 1) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.076, 0.095), barrierStripeMaterial);
-      stripe.position.set(0.002, y, i * 0.16 + (rowIndex ? 0.06 : 0));
-      stripe.rotation.x = THREE.MathUtils.degToRad(24);
-      group.add(stripe);
-    }
+  [[-0.58, 0], [0, 0.58]].forEach(([startZ, endZ]) => {
+    const midZ = (startZ + endZ) / 2;
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0.035, 0.95, startZ),
+      new THREE.Vector3(0.045, 0.72, midZ),
+      new THREE.Vector3(0.035, 0.95, endZ),
+    ]);
+    const rope = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.022, 10, false), barrierRopeMaterial);
+    rope.castShadow = true;
+    rope.receiveShadow = true;
+    group.add(rope);
   });
 
   const signCanvas = document.createElement('canvas');
@@ -905,10 +998,10 @@ function addFutureWingBarrier() {
   const signTexture = new THREE.CanvasTexture(signCanvas);
   signTexture.colorSpace = THREE.SRGBColorSpace;
   const sign = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.98, 0.35),
+    new THREE.PlaneGeometry(0.9, 0.32),
     new THREE.MeshBasicMaterial({ map: signTexture, side: THREE.DoubleSide, toneMapped: false }),
   );
-  sign.position.set(-0.02, 1.48, 0);
+  sign.position.set(-0.025, 1.48, 0);
   sign.rotation.y = Math.PI / 2;
   group.add(sign);
 
@@ -935,9 +1028,9 @@ const navigationSpaces = [
   { minX: doorLeftX, maxX: doorRightX, minZ: roomStep + roomDepth / 2, maxZ: roomStep * 2 - roomDepth / 2, isConnector: true },
   { minX: x0, maxX: x1, minZ: roomStep * 2 - roomDepth / 2, maxZ: galleryMaxZ, padZMin: 0, padZMax: 1 },
   ...(editorMode ? [
-    { minX: -sideRoomStep + roomWidth / 2, maxX: x0, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
+    { minX: -sideRoomStep + roomWidth / 2 - 1, maxX: x0 + 1, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
     { minX: -sideRoomStep - roomWidth / 2, maxX: -sideRoomStep + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
-    { minX: -sideRoomStep * 2 + roomWidth / 2, maxX: -sideRoomStep - roomWidth / 2, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
+    { minX: -sideRoomStep * 2 + roomWidth / 2 - 1, maxX: -sideRoomStep - roomWidth / 2 + 1, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
     { minX: -sideRoomStep * 2 - roomWidth / 2, maxX: -sideRoomStep * 2 + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
   ] : []),
 ];
