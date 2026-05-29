@@ -993,6 +993,37 @@ function createTipHatContent(pedestalWidth, pedestalDepth, pedestalHeight, conte
   return hat;
 }
 
+function createPedestalCoinsContent(pedestalWidth, pedestalDepth, pedestalHeight, content = {}) {
+  const coins = new THREE.Group();
+  const scale = THREE.MathUtils.clamp(Number(content.scale) || 1, 0.55, 1.6);
+  const coinRadius = Math.min(pedestalWidth, pedestalDepth) * 0.075 * scale;
+  const topY = pedestalHeight + coinRadius * 0.12;
+  coins.position.set(
+    Number.isFinite(content.offsetX) ? content.offsetX : 0,
+    topY,
+    Number.isFinite(content.offsetZ) ? content.offsetZ : 0,
+  );
+  coins.rotation.y = Number.isFinite(content.rotationY) ? content.rotationY : 0;
+
+  [
+    [-1.35, -0.22, 0.08],
+    [-0.62, 0.38, -0.2],
+    [0.02, -0.08, 0.18],
+    [0.7, 0.24, -0.12],
+    [1.25, -0.3, 0.26],
+    [0.28, 0.82, 0.05],
+  ].forEach(([coinX, coinZ, rotation], index) => {
+    const coin = new THREE.Mesh(new THREE.CylinderGeometry(coinRadius, coinRadius, coinRadius * 0.16, 28), capCoinMaterial);
+    coin.position.set(coinRadius * coinX, index * coinRadius * 0.06, coinRadius * coinZ);
+    coin.rotation.set(Math.PI / 2 + 0.04 * index, rotation, 0.17 * index);
+    coin.castShadow = true;
+    coin.receiveShadow = true;
+    coins.add(coin);
+  });
+
+  return coins;
+}
+
 function createFlatCapContent(pedestalWidth, pedestalDepth, pedestalHeight, content = {}) {
   const cap = new THREE.Group();
   const scale = THREE.MathUtils.clamp(Number(content.scale) || 1, 0.55, 1.4);
@@ -1115,7 +1146,9 @@ function createDisplayPedestal({
     part.receiveShadow = true;
   });
 
-  if (content?.type === 'bowler-hat') {
+  if (content?.type === 'coins') {
+    group.add(createPedestalCoinsContent(width, depth, height, content));
+  } else if (content?.type === 'bowler-hat') {
     group.add(createTipHatContent(width, depth, height, content));
   } else if (content?.type === 'flat-cap') {
     group.add(createFlatCapContent(width, depth, height, content));
@@ -3790,7 +3823,7 @@ function openPaintingActionFromCrosshair() {
 }
 
 const body = new THREE.Object3D();
-body.position.set(0, 1.68, 4.6);
+body.position.set(0, 1.68, 2.4);
 scene.add(body);
 body.add(camera);
 
@@ -4341,7 +4374,7 @@ let fallbackOriginX = 0;
 let fallbackOriginY = 0;
 let fallbackTurnVelocity = 0;
 let fallbackPitchVelocity = 0;
-const initialBodyYaw = Math.PI;
+const initialBodyYaw = 0;
 let bodyYaw = initialBodyYaw;
 let headYaw = 0;
 let pitch = 0;
@@ -4384,7 +4417,7 @@ function syncCameraRotation() {
 }
 
 function resetView() {
-  body.position.set(0, eyeHeight, 4.6);
+  body.position.set(0, eyeHeight, 2.4);
   bodyYaw = initialBodyYaw;
   headYaw = 0;
   pitch = 0;

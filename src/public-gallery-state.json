@@ -580,11 +580,11 @@
         "depth": 0.7,
         "height": 1.1,
         "content": {
-          "type": "bowler-hat",
-          "scale": 1.04,
+          "type": "coins",
+          "scale": 1.18,
           "offsetX": 0,
           "offsetZ": 0,
-          "rotationY": 0.1
+          "rotationY": 0.08
         }
       }
     ],
