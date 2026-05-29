@@ -299,7 +299,7 @@ function plane(width, height, material, position, rotation, segments = 1) {
 }
 
 
-function addFloorEdgeDarkening(mesh) {
+function addFloorEdgeDarkening(mesh, width = roomWidth, depth = roomDepth) {
   const geometry = mesh.geometry;
   const position = geometry.attributes.position;
   const colors = [];
@@ -309,7 +309,7 @@ function addFloorEdgeDarkening(mesh) {
   for (let i = 0; i < position.count; i += 1) {
     const x = position.getX(i);
     const y = position.getY(i);
-    const edgeDistance = Math.max(Math.abs(x) / (roomWidth / 2), Math.abs(y) / (roomDepth / 2));
+    const edgeDistance = Math.max(Math.abs(x) / (width / 2), Math.abs(y) / (depth / 2));
     const t = THREE.MathUtils.smoothstep(edgeDistance, 0.42, 1.0);
     const color = centerColor.clone().lerp(edgeColor, t * 0.82);
     colors.push(color.r, color.g, color.b);
@@ -385,7 +385,7 @@ const galleryRooms = [
 
 function addRoomFloorAndCeiling(centerX, centerZ) {
   const floorMesh = plane(roomWidth, roomDepth, floorMaterial, [centerX, 0, centerZ], [-Math.PI / 2, 0, 0], 24);
-  addFloorEdgeDarkening(floorMesh);
+  addFloorEdgeDarkening(floorMesh, roomWidth, roomDepth);
   plane(roomWidth, roomDepth, ceilingMaterial, [centerX, roomHeight, centerZ], [Math.PI / 2, 0, 0]);
 }
 
@@ -475,13 +475,15 @@ function addSideBarrelVault(centerX, centerZ) {
 
 function addCorridorFloorAndCeiling(centerX, centerZ) {
   const floorMesh = plane(doorway.width, corridorLength, floorMaterial, [centerX, 0, centerZ], [-Math.PI / 2, 0, 0], 8);
-  addFloorEdgeDarkening(floorMesh);
+  addFloorEdgeDarkening(floorMesh, doorway.width, corridorLength);
   addBarrelVault(centerZ);
 }
 
 function addSideCorridorFloorAndCeiling(centerX, centerZ) {
-  const floorMesh = plane(corridorLength, doorway.width, floorMaterial, [centerX, 0, centerZ], [-Math.PI / 2, 0, Math.PI / 2], 8);
-  addFloorEdgeDarkening(floorMesh);
+  const carpetLength = corridorLength + 0.22;
+  const carpetWidth = doorway.width * 1.02;
+  const floorMesh = plane(carpetLength, carpetWidth, floorMaterial, [centerX, 0.006, centerZ], [-Math.PI / 2, 0, 0], 8);
+  addFloorEdgeDarkening(floorMesh, carpetLength, carpetWidth);
   addSideBarrelVault(centerX, centerZ);
 }
 
@@ -938,8 +940,45 @@ const barrierPostMaterial = new THREE.MeshStandardMaterial({
   roughness: 0.22,
   metalness: 0.78,
 });
+
+function createBarrierRopeTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#960715';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.lineWidth = 5;
+  for (let x = -32; x < canvas.width + 32; x += 16) {
+    ctx.strokeStyle = 'rgba(80, 0, 8, 0.55)';
+    ctx.beginPath();
+    ctx.moveTo(x, canvas.height + 4);
+    ctx.lineTo(x + 34, -4);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255, 95, 95, 0.16)';
+    ctx.beginPath();
+    ctx.moveTo(x + 6, canvas.height + 4);
+    ctx.lineTo(x + 40, -4);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(7, 1);
+  texture.anisotropy = 4;
+  return texture;
+}
+
+const barrierRopeTexture = createBarrierRopeTexture();
 const barrierRopeMaterial = new THREE.MeshStandardMaterial({
   color: 0x980814,
+  map: barrierRopeTexture,
+  bumpMap: barrierRopeTexture,
+  bumpScale: 0.012,
   roughness: 0.58,
   metalness: 0.02,
 });
@@ -968,14 +1007,36 @@ function addFutureWingBarrier() {
     group.add(base, post, cap);
   });
 
+  const attachmentPoints = [-0.58, 0, 0.58];
+  attachmentPoints.forEach((z) => {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.044, 0.007, 8, 28), barrierPostMaterial);
+    ring.position.set(0.024, 0.95, z);
+    ring.rotation.y = Math.PI / 2;
+    ring.castShadow = true;
+    ring.receiveShadow = true;
+
+    const peg = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.09, 16), barrierPostMaterial);
+    peg.position.set(0.055, 0.95, z);
+    peg.rotation.z = Math.PI / 2;
+    peg.castShadow = true;
+    peg.receiveShadow = true;
+
+    const clasp = new THREE.Mesh(new THREE.SphereGeometry(0.027, 16, 12), barrierPostMaterial);
+    clasp.position.set(0.098, 0.95, z);
+    clasp.castShadow = true;
+    clasp.receiveShadow = true;
+
+    group.add(ring, peg, clasp);
+  });
+
   [[-0.58, 0], [0, 0.58]].forEach(([startZ, endZ]) => {
     const midZ = (startZ + endZ) / 2;
     const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0.035, 0.95, startZ),
-      new THREE.Vector3(0.045, 0.72, midZ),
-      new THREE.Vector3(0.035, 0.95, endZ),
+      new THREE.Vector3(0.1, 0.95, startZ),
+      new THREE.Vector3(0.118, 0.72, midZ),
+      new THREE.Vector3(0.1, 0.95, endZ),
     ]);
-    const rope = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.022, 10, false), barrierRopeMaterial);
+    const rope = new THREE.Mesh(new THREE.TubeGeometry(curve, 32, 0.024, 12, false), barrierRopeMaterial);
     rope.castShadow = true;
     rope.receiveShadow = true;
     group.add(rope);
