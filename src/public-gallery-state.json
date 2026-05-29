@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-05-29T21:29:18.625Z",
+  "exportedAt": "2026-05-29T22:01:39.992Z",
   "gallery": {
     "version": 1,
     "audio": {
@@ -143,29 +143,6 @@
         "labelSize": "50 x 50cm",
         "labelDate": "2024",
         "labelPrice": "nedostupné",
-        "actionUrl": ""
-      },
-      {
-        "imageSrc": "art/olej-web/15-hell.jpg",
-        "x": -2.7365,
-        "y": 1.73,
-        "z": 19.085,
-        "ry": 3.141593,
-        "w": 0.8,
-        "h": 0.8,
-        "aspect": 1,
-        "wallNormal": [
-          0,
-          0,
-          -1
-        ],
-        "frameSize": "light",
-        "frameColor": "#000000",
-        "labelTitle": "Call",
-        "labelMedium": "olej na plátně",
-        "labelSize": "50 x 50 cm",
-        "labelDate": "2024",
-        "labelPrice": "cena dohodou",
         "actionUrl": ""
       },
       {
@@ -514,26 +491,72 @@
         "actionUrl": ""
       },
       {
+        "imageSrc": "art/olej-web/24-ethernal-rammus.jpg",
+        "x": 2.5643,
+        "y": 1.45,
+        "z": 19.085,
+        "ry": 3.141593,
+        "w": 2,
+        "h": 1.125,
+        "aspect": 1.777778,
+        "wallNormal": [
+          0,
+          0,
+          -1
+        ],
+        "frameSize": "medium",
+        "frameColor": "#000000",
+        "labelTitle": "Ethernal Rammus",
+        "labelMedium": "Digitální tvorba",
+        "labelSize": "170 x 82.5 cm",
+        "labelDate": "",
+        "labelPrice": "",
+        "actionUrl": ""
+      },
+      {
         "imageSrc": "art/olej-web/23-pyramid-head.jpg",
-        "x": 4.435,
-        "y": 1.83,
-        "z": 14.3054,
-        "ry": -1.570796,
+        "x": -2.4468,
+        "y": 1.9427,
+        "z": 19.085,
+        "ry": 3.141593,
         "w": 1.431,
         "h": 2.3854,
         "aspect": 0.599898,
+        "wallNormal": [
+          0,
+          0,
+          -1
+        ],
+        "frameSize": "medium",
+        "frameColor": "#000000",
+        "labelTitle": "Pyramid Head",
+        "labelMedium": "Digitální tvorba",
+        "labelSize": "113.1 x 208.5 cm",
+        "labelDate": "2025",
+        "labelPrice": "",
+        "actionUrl": ""
+      },
+      {
+        "imageSrc": "art/olej-web/15-hell.jpg",
+        "x": 4.435,
+        "y": 1.73,
+        "z": 13.8935,
+        "ry": -1.570796,
+        "w": 0.8,
+        "h": 0.8,
+        "aspect": 1,
         "wallNormal": [
           -1,
           0,
           0
         ],
-        "frameSize": "medium",
+        "frameSize": "light",
         "frameColor": "#000000",
-        "labelTitle": "Pyramid Head",
-        "labelMedium": "jediná Digitální tvorba zde",
-        "labelSize": "113.1 x 208.5 cm",
-        "labelDate": "2025",
-        "labelPrice": "",
+        "labelTitle": "Call",
+        "labelMedium": "olej na plátně",
+        "labelSize": "50 x 50 cm",
+        "labelDate": "2024",
+        "labelPrice": "cena dohodou",
         "actionUrl": ""
       }
     ],
@@ -630,7 +653,7 @@
       "enabled": true,
       "power": 8
     },
-    "selectedLightIndex": 22,
+    "selectedLightIndex": 10,
     "ceilingLights": [
       {
         "trackId": "back",
@@ -733,10 +756,10 @@
         "roomIndex": 1
       },
       {
-        "trackId": "front",
-        "trackPosition": 0.1446,
-        "yaw": 0,
-        "pitch": -57.23,
+        "trackId": "right",
+        "trackPosition": 0.5715,
+        "yaw": 90,
+        "pitch": -62.84,
         "power": 105,
         "color": "#fff4e8",
         "angle": 30,
@@ -853,12 +876,22 @@
         "roomIndex": 1
       },
       {
-        "trackId": "right",
-        "trackPosition": 0.6111,
-        "yaw": 90,
-        "pitch": -61.24,
+        "trackId": "front",
+        "trackPosition": 0.1822,
+        "yaw": 0,
+        "pitch": -53.21,
         "power": 105,
-        "color": "#fff4e8",
+        "color": "#ff0000",
+        "angle": 32,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "front",
+        "trackPosition": 0.833,
+        "yaw": 0,
+        "pitch": -61.45,
+        "power": 105,
+        "color": "#692fee",
         "angle": 30,
         "roomIndex": 1
       }
