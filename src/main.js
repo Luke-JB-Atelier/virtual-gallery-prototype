@@ -1471,6 +1471,7 @@ function serializeGalleryState() {
       labelSize: paintingData.labelSize ?? '',
       labelDate: paintingData.labelDate ?? '',
       labelPrice: paintingData.labelPrice ?? '',
+      actionUrl: paintingData.actionUrl ?? '',
     })),
     pedestals: displayPedestals.map((pedestalData) => ({
       type: pedestalData.type ?? 'pillar',
@@ -1714,6 +1715,7 @@ function createPaintingFromConfig(config, fallbackArtwork = {}, index = 0) {
     labelSize: config.labelSize ?? '',
     labelDate: config.labelDate ?? '',
     labelPrice: config.labelPrice ?? '',
+    actionUrl: config.actionUrl ?? '',
     imageSrc,
   });
   paintingData.title = paintingData.labelTitle;
@@ -1787,6 +1789,7 @@ function addPainting({
   labelSize = '',
   labelDate = '',
   labelPrice = '',
+  actionUrl = '',
   imageSrc = '',
 }) {
   const group = new THREE.Group();
@@ -1854,6 +1857,7 @@ function addPainting({
     labelSize,
     labelDate,
     labelPrice,
+    actionUrl,
     imageSrc,
   };
   updateArtworkLabel(paintingData);
@@ -2754,6 +2758,7 @@ function getEditableTargetFromCrosshair() {
 }
 
 function selectEditableFromCrosshair() {
+  if (!editorMode) return false;
   const target = getEditableTargetFromCrosshair();
   if (!target) return false;
   if (target.lightData) {
@@ -2806,6 +2811,14 @@ function selectEditableFromCrosshair() {
     return true;
   }
   return false;
+}
+
+function openPaintingActionFromCrosshair() {
+  const target = getEditableTargetFromCrosshair();
+  const actionUrl = target?.paintingData?.actionUrl?.trim();
+  if (!actionUrl) return false;
+  window.open(actionUrl, '_blank', 'noopener,noreferrer');
+  return true;
 }
 
 const body = new THREE.Object3D();
@@ -3469,6 +3482,10 @@ canvas.addEventListener('mousedown', (event) => {
     return;
   }
   if (tryOpenRoomLightSwitch()) {
+    event.preventDefault();
+    return;
+  }
+  if (openPaintingActionFromCrosshair()) {
     event.preventDefault();
     return;
   }
