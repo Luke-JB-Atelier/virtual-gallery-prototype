@@ -996,8 +996,9 @@ function createTipHatContent(pedestalWidth, pedestalDepth, pedestalHeight, conte
 function createPedestalCoinsContent(pedestalWidth, pedestalDepth, pedestalHeight, content = {}) {
   const coins = new THREE.Group();
   const scale = THREE.MathUtils.clamp(Number(content.scale) || 1, 0.55, 1.6);
-  const coinRadius = Math.min(pedestalWidth, pedestalDepth) * 0.075 * scale;
-  const topY = pedestalHeight + coinRadius * 0.12;
+  const coinRadius = Math.min(pedestalWidth, pedestalDepth) * 0.061 * scale;
+  const coinThickness = coinRadius * 0.14;
+  const topY = pedestalHeight + coinThickness / 2 + 0.006;
   coins.position.set(
     Number.isFinite(content.offsetX) ? content.offsetX : 0,
     topY,
@@ -1005,17 +1006,20 @@ function createPedestalCoinsContent(pedestalWidth, pedestalDepth, pedestalHeight
   );
   coins.rotation.y = Number.isFinite(content.rotationY) ? content.rotationY : 0;
 
+  const spreadX = Math.max(0.12, pedestalWidth * 0.26);
+  const spreadZ = Math.max(0.12, pedestalDepth * 0.26);
   [
-    [-1.35, -0.22, 0.08],
-    [-0.62, 0.38, -0.2],
-    [0.02, -0.08, 0.18],
-    [0.7, 0.24, -0.12],
-    [1.25, -0.3, 0.26],
-    [0.28, 0.82, 0.05],
+    [-0.7, -0.28, 0.18],
+    [-0.28, 0.44, -0.42],
+    [0.18, -0.08, 0.72],
+    [0.66, 0.28, -0.18],
+    [0.42, -0.58, 0.36],
+    [-0.58, 0.02, -0.82],
+    [0.02, 0.72, 0.08],
   ].forEach(([coinX, coinZ, rotation], index) => {
-    const coin = new THREE.Mesh(new THREE.CylinderGeometry(coinRadius, coinRadius, coinRadius * 0.16, 28), capCoinMaterial);
-    coin.position.set(coinRadius * coinX, index * coinRadius * 0.06, coinRadius * coinZ);
-    coin.rotation.set(Math.PI / 2 + 0.04 * index, rotation, 0.17 * index);
+    const coin = new THREE.Mesh(new THREE.CylinderGeometry(coinRadius, coinRadius, coinThickness, 32), capCoinMaterial);
+    coin.position.set(spreadX * coinX, index * coinThickness * 0.08, spreadZ * coinZ);
+    coin.rotation.set(Math.PI / 2, 0, rotation);
     coin.castShadow = true;
     coin.receiveShadow = true;
     coins.add(coin);
