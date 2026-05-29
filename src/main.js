@@ -65,7 +65,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.shadowMap.needsUpdate = true;
-const maxShadowedSpotLights = renderer.capabilities.maxTextures <= 16 ? 2 : 3;
+const maxShadowedSpotLights = 3;
 
 const roomWidth = 9;
 const roomDepth = 12;
