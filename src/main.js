@@ -1057,10 +1057,18 @@ function setRoomLightPower(power, { persist = true } = {}) {
 
 function showRoomLightControl() {
   roomLightControl.classList.add('visible');
+  roomLightPublicPowerInput.focus({ preventScroll: true });
   window.clearTimeout(showRoomLightControl.hideTimer);
   showRoomLightControl.hideTimer = window.setTimeout(() => {
     roomLightControl.classList.remove('visible');
   }, 6000);
+}
+
+function adjustRoomLightPowerFromWheel(event) {
+  const direction = event.deltaY > 0 ? -1 : 1;
+  const step = event.shiftKey ? 1 : 4;
+  setRoomLightPower(roomLightState.power + direction * step);
+  showRoomLightControl();
 }
 
 function tryOpenRoomLightSwitch() {
@@ -1906,7 +1914,7 @@ function ensurePaintingLights() {
 
 function addCuratedOilGallery() {
   const savedPaintings = Array.isArray(savedGallery?.paintings) ? savedGallery.paintings : [];
-  const totalPaintings = Math.max(oilArtworks.length, savedPaintings.length);
+  const totalPaintings = savedPaintings.length ? savedPaintings.length : oilArtworks.length;
 
   for (let index = 0; index < totalPaintings; index += 1) {
     const artwork = oilArtworks[index];
@@ -3491,6 +3499,11 @@ canvas.addEventListener('mousedown', (event) => {
 });
 
 canvas.addEventListener('wheel', (event) => {
+  if (roomLightControl.classList.contains('visible')) {
+    event.preventDefault();
+    adjustRoomLightPowerFromWheel(event);
+    return;
+  }
   if (!editorMode || !selectedPedestal || !pedestalPanel.classList.contains('visible')) return;
   event.preventDefault();
   rotateSelectedPedestal(event.deltaY > 0 ? -1 : 1);

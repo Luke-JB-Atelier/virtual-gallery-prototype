@@ -357,50 +357,6 @@
         "labelPrice": ""
       },
       {
-        "imageSrc": "art/olej-web/21-kocka.jpg",
-        "x": -4.42,
-        "y": 1.72,
-        "z": 26.3,
-        "ry": 1.570796,
-        "w": 1.136,
-        "h": 1.42,
-        "aspect": 0.8,
-        "wallNormal": [
-          1,
-          0,
-          0
-        ],
-        "frameSize": "medium",
-        "frameColor": "#000000",
-        "labelTitle": "Kočka",
-        "labelMedium": "",
-        "labelSize": "",
-        "labelDate": "",
-        "labelPrice": ""
-      },
-      {
-        "imageSrc": "art/olej-web/22-nemesis.jpg",
-        "x": 4.42,
-        "y": 1.72,
-        "z": 26.3,
-        "ry": -1.570796,
-        "w": 1.065,
-        "h": 1.42,
-        "aspect": 0.75,
-        "wallNormal": [
-          -1,
-          0,
-          0
-        ],
-        "frameSize": "medium",
-        "frameColor": "#000000",
-        "labelTitle": "Nemesis",
-        "labelMedium": "",
-        "labelSize": "",
-        "labelDate": "",
-        "labelPrice": ""
-      },
-      {
         "imageSrc": "art/olej-web/15-hell.jpg",
         "x": -2.7365,
         "y": 1.73,
@@ -699,26 +655,6 @@
         "color": "#fff4e8",
         "angle": 30,
         "roomIndex": 1
-      },
-      {
-        "trackId": "left",
-        "trackPosition": 0.5,
-        "yaw": -90,
-        "pitch": -63.43,
-        "power": 105,
-        "color": "#fff4e8",
-        "angle": 30,
-        "roomIndex": 2
-      },
-      {
-        "trackId": "right",
-        "trackPosition": 0.5,
-        "yaw": 90,
-        "pitch": -63.43,
-        "power": 105,
-        "color": "#fff4e8",
-        "angle": 30,
-        "roomIndex": 2
       }
     ]
   }
