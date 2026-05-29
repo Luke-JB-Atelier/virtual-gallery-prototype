@@ -996,7 +996,7 @@ function createTipHatContent(pedestalWidth, pedestalDepth, pedestalHeight, conte
 function createPedestalCoinsContent(pedestalWidth, pedestalDepth, pedestalHeight, content = {}) {
   const coins = new THREE.Group();
   const scale = THREE.MathUtils.clamp(Number(content.scale) || 1, 0.55, 1.6);
-  const coinRadius = Math.min(pedestalWidth, pedestalDepth) * 0.061 * scale;
+  const coinRadius = Math.min(pedestalWidth, pedestalDepth) * 0.043 * scale;
   const coinThickness = coinRadius * 0.14;
   const topY = pedestalHeight + coinThickness / 2 + 0.006;
   coins.position.set(
@@ -1019,7 +1019,7 @@ function createPedestalCoinsContent(pedestalWidth, pedestalDepth, pedestalHeight
   ].forEach(([coinX, coinZ, rotation], index) => {
     const coin = new THREE.Mesh(new THREE.CylinderGeometry(coinRadius, coinRadius, coinThickness, 32), capCoinMaterial);
     coin.position.set(spreadX * coinX, index * coinThickness * 0.08, spreadZ * coinZ);
-    coin.rotation.set(Math.PI / 2, 0, rotation);
+    coin.rotation.set(0, rotation, 0);
     coin.castShadow = true;
     coin.receiveShadow = true;
     coins.add(coin);
