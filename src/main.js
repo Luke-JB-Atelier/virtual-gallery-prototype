@@ -389,15 +389,23 @@ function addWall(width, height, position, rotation, segments = 18) {
   return mesh;
 }
 
-function addWallSegment(startX, startZ, endX, endZ, height = roomHeight, centerY = height / 2) {
+function addWallSegment(startX, startZ, endX, endZ, height = roomHeight, centerY = height / 2, trims = {}) {
+  const {
+    floorTrim = true,
+    ceilingTrim = true,
+  } = trims;
   const dx = endX - startX;
   const dz = endZ - startZ;
   const length = Math.hypot(dx, dz);
   if (length <= 0.05) return null;
   const rotationY = Math.atan2(-dz, dx);
   const wall = addWall(length, height, [(startX + endX) / 2, centerY, (startZ + endZ) / 2], [0, rotationY, 0], 10);
-  addWallTrim(length, [(startX + endX) / 2, 0.035, (startZ + endZ) / 2], rotationY);
-  addWallTrim(length, [(startX + endX) / 2, centerY + height / 2 - 0.035, (startZ + endZ) / 2], rotationY);
+  if (floorTrim) {
+    addWallTrim(length, [(startX + endX) / 2, 0.035, (startZ + endZ) / 2], rotationY);
+  }
+  if (ceilingTrim) {
+    addWallTrim(length, [(startX + endX) / 2, centerY + height / 2 - 0.035, (startZ + endZ) / 2], rotationY);
+  }
   return wall;
 }
 
@@ -461,18 +469,24 @@ function addDoorWall(z) {
   addArchedDoorHeader(z);
 }
 
+function addSolidRoomWall(z, rotationY) {
+  addWall(roomWidth, roomHeight, [0, roomHeight / 2, z], [0, rotationY, 0], 18);
+  addWallTrim(roomWidth, [0, 0.035, z], rotationY);
+  addWallTrim(roomWidth, [0, roomHeight - 0.035, z], rotationY);
+}
+
 function addRectangularRoomWalls(centerZ, hasBackDoor, hasFrontDoor) {
   const backZ = centerZ - roomDepth / 2;
   const frontZ = centerZ + roomDepth / 2;
   if (hasBackDoor) {
     addDoorWall(backZ);
   } else {
-    addWall(roomWidth, roomHeight, [0, roomHeight / 2, backZ], [0, 0, 0], 18);
+    addSolidRoomWall(backZ, 0);
   }
   if (hasFrontDoor) {
     addDoorWall(frontZ);
   } else {
-    addWall(roomWidth, roomHeight, [0, roomHeight / 2, frontZ], [0, Math.PI, 0], 18);
+    addSolidRoomWall(frontZ, Math.PI);
   }
   addWallSegment(x0, backZ, x0, frontZ);
   addWallSegment(x1, backZ, x1, frontZ);
@@ -480,8 +494,8 @@ function addRectangularRoomWalls(centerZ, hasBackDoor, hasFrontDoor) {
 
 function addCorridorWalls(startZ, endZ) {
   addCorridorFloorAndCeiling((startZ + endZ) / 2);
-  addWallSegment(doorLeftX, startZ, doorLeftX, endZ, doorway.height);
-  addWallSegment(doorRightX, startZ, doorRightX, endZ, doorway.height);
+  addWallSegment(doorLeftX, startZ, doorLeftX, endZ, doorway.height, doorway.height / 2, { floorTrim: false, ceilingTrim: false });
+  addWallSegment(doorRightX, startZ, doorRightX, endZ, doorway.height, doorway.height / 2, { floorTrim: false, ceilingTrim: false });
 }
 
 // Three rectangular rooms connected by short centered passages behind the start.
