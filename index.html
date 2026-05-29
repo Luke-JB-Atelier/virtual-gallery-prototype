@@ -12,13 +12,16 @@
       <div id="hint">Klikni do scény: myš otáčí tělo · W/S chůze · Shift rychleji · A/D otočení · Esc vypnout pohled</div>
       <div id="status">pohled vypnutý</div>
       <button id="audio-toggle" type="button">Zapnout jazz</button>
+      <div id="room-light-control">
+        <label>Světlo místnosti <input id="room-light-public-power" type="range" min="0" max="100" step="1" value="12" /></label>
+      </div>
       <div id="crosshair"></div>
       <section id="light-editor">
         <button id="toggle-light-editor" type="button">Světla</button>
         <div id="light-panel">
           <div id="light-title">Stropní světlo 1</div>
           <label class="toggle-row"><input id="room-light-enabled" type="checkbox" /> Hlavní stropní světlo</label>
-          <label>Intenzita místnosti <input id="room-light-power" type="range" min="0" max="80" step="0.5" value="28" /></label>
+          <label>Intenzita místnosti <input id="room-light-power" type="range" min="0" max="100" step="0.5" value="28" /></label>
           <button id="add-light" type="button">Přidat před sebe</button>
           <button id="next-light" type="button">Další</button>
           <button id="remove-light" type="button">Smazat</button>

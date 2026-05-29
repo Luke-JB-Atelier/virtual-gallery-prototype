@@ -7,6 +7,8 @@ const hint = document.querySelector('#hint');
 const status = document.querySelector('#status');
 const crosshair = document.querySelector('#crosshair');
 const audioToggle = document.querySelector('#audio-toggle');
+const roomLightControl = document.querySelector('#room-light-control');
+const roomLightPublicPowerInput = document.querySelector('#room-light-public-power');
 const mobileControls = document.querySelector('#mobile-controls');
 const moveStick = document.querySelector('#move-stick');
 const moveStickKnob = document.querySelector('#move-stick-knob');
@@ -880,7 +882,10 @@ function addRoomNavigationLight(centerZ) {
   return fill;
 }
 
-galleryRooms.forEach(({ centerZ }) => addRoomNavigationLight(centerZ));
+const navigationFillLights = galleryRooms.map(({ centerZ }) => ({
+  centerZ,
+  light: addRoomNavigationLight(centerZ),
+}));
 
 const roomLightState = {
   enabled: true,
@@ -891,12 +896,14 @@ const savedLighting = useLocalSavedState
   : exportedGalleryState?.lighting ?? null;
 roomLightEnabledInput.checked = roomLightState.enabled;
 roomLightPowerInput.value = String(roomLightState.power);
+roomLightPublicPowerInput.value = String(roomLightState.power);
 
 if (savedLighting?.roomLight) {
   roomLightState.enabled = Boolean(savedLighting.roomLight.enabled);
   roomLightState.power = Number(savedLighting.roomLight.power ?? roomLightState.power);
   roomLightEnabledInput.checked = roomLightState.enabled;
   roomLightPowerInput.value = String(roomLightState.power);
+  roomLightPublicPowerInput.value = String(roomLightState.power);
 }
 
 const roomLightPanelMaterial = new THREE.MeshBasicMaterial({
@@ -976,6 +983,44 @@ const autoRoomLights = [
   addRoomLightPanel(roomStep),
   addRoomLightPanel(roomStep * 2),
 ];
+const roomLightSwitches = [];
+const roomLightSwitchMaterial = new THREE.MeshStandardMaterial({
+  color: 0xd8d0bf,
+  roughness: 0.5,
+  metalness: 0.02,
+});
+const roomLightSwitchToggleMaterial = new THREE.MeshStandardMaterial({
+  color: 0x242628,
+  roughness: 0.58,
+  metalness: 0.08,
+});
+
+function addRoomLightSwitch(position, rotationY = 0) {
+  const group = new THREE.Group();
+  group.position.copy(position);
+  group.rotation.y = rotationY;
+
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.22, 0.018), roomLightSwitchMaterial);
+  plate.castShadow = true;
+  plate.receiveShadow = true;
+  const toggle = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.09, 0.022), roomLightSwitchToggleMaterial);
+  toggle.position.z = 0.02;
+  toggle.castShadow = true;
+  group.add(plate, toggle);
+  group.traverse((child) => {
+    child.userData.roomLightSwitch = true;
+  });
+
+  room.add(group);
+  roomLightSwitches.push(group);
+}
+
+const switchY = 1.24;
+const switchX = doorRightX + 0.42;
+addRoomLightSwitch(new THREE.Vector3(switchX, switchY, roomDepth / 2 - 0.035), Math.PI);
+addRoomLightSwitch(new THREE.Vector3(switchX, switchY, roomStep - roomDepth / 2 + 0.035), 0);
+addRoomLightSwitch(new THREE.Vector3(switchX, switchY, roomStep + roomDepth / 2 - 0.035), Math.PI);
+addRoomLightSwitch(new THREE.Vector3(switchX, switchY, roomStep * 2 - roomDepth / 2 + 0.035), 0);
 
 function setRoomLightPanelColor(material, activePower) {
   const glow = THREE.MathUtils.clamp(activePower / 80, 0, 1);
@@ -995,6 +1040,42 @@ function updateRoomLight() {
 }
 
 updateRoomLight();
+
+function syncRoomLightControls({ persist = false } = {}) {
+  roomLightEnabledInput.checked = roomLightState.enabled;
+  roomLightPowerInput.value = String(roomLightState.power);
+  roomLightPublicPowerInput.value = String(roomLightState.power);
+  updateRoomLight();
+  if (persist) saveLightingState();
+}
+
+function setRoomLightPower(power, { persist = true } = {}) {
+  roomLightState.power = THREE.MathUtils.clamp(Number(power), 0, 100);
+  roomLightState.enabled = roomLightState.power > 0;
+  syncRoomLightControls({ persist });
+}
+
+function showRoomLightControl() {
+  roomLightControl.classList.add('visible');
+  window.clearTimeout(showRoomLightControl.hideTimer);
+  showRoomLightControl.hideTimer = window.setTimeout(() => {
+    roomLightControl.classList.remove('visible');
+  }, 6000);
+}
+
+function tryOpenRoomLightSwitch() {
+  getCenterRaycaster();
+  const switchMeshes = [];
+  roomLightSwitches.forEach((switchGroup) => {
+    switchGroup.traverse((child) => {
+      if (child.isMesh) switchMeshes.push(child);
+    });
+  });
+  const hit = raycaster.intersectObjects(switchMeshes, false)[0];
+  if (!hit?.object?.userData?.roomLightSwitch) return false;
+  showRoomLightControl();
+  return true;
+}
 
 const lightRig = new THREE.Group();
 scene.add(lightRig);
@@ -2927,18 +3008,20 @@ function addLightFromView() {
 
 roomLightEnabledInput.addEventListener('change', () => {
   roomLightState.enabled = roomLightEnabledInput.checked;
+  if (roomLightState.enabled && roomLightState.power <= 0) {
+    roomLightState.power = 12;
+  }
   updateRoomLight();
-  saveLightingState();
+  syncRoomLightControls({ persist: true });
 });
 
 roomLightPowerInput.addEventListener('input', () => {
-  roomLightState.power = Number(roomLightPowerInput.value);
-  if (roomLightState.power > 0 && !roomLightState.enabled) {
-    roomLightState.enabled = true;
-    roomLightEnabledInput.checked = true;
-  }
-  updateRoomLight();
-  saveLightingState();
+  setRoomLightPower(roomLightPowerInput.value);
+});
+
+roomLightPublicPowerInput.addEventListener('input', () => {
+  setRoomLightPower(roomLightPublicPowerInput.value);
+  showRoomLightControl();
 });
 
 toggleLightEditor.addEventListener('click', () => {
@@ -3377,6 +3460,10 @@ canvas.addEventListener('mousedown', (event) => {
     moveSelectedPedestalToFloor();
     return;
   }
+  if (tryOpenRoomLightSwitch()) {
+    event.preventDefault();
+    return;
+  }
   if (selectEditableFromCrosshair()) {
     event.preventDefault();
     return;
@@ -3601,10 +3688,16 @@ function updateAutoRoomLights(delta) {
   });
   updateActiveSpotShadows(currentRoomIndex);
 
+  navigationFillLights.forEach((fixture, index) => {
+    const requestedPower = roomLightState.enabled ? roomLightState.power : 0;
+    const targetPower = index === currentRoomIndex ? Math.min(requestedPower * 0.035, 2.8) : 0;
+    fixture.light.intensity = THREE.MathUtils.lerp(fixture.light.intensity, targetPower, 1 - Math.pow(0.0004, delta));
+  });
+
   autoRoomLights.forEach((fixture) => {
     const playerIsNearRoom = body.position.z >= fixture.minZ && body.position.z <= fixture.maxZ;
     const requestedPower = roomLightState.enabled ? roomLightState.power : 0;
-    const targetPower = playerIsNearRoom ? Math.max(requestedPower, 7.5) : 0;
+    const targetPower = playerIsNearRoom ? requestedPower : 0;
     fixture.currentPower = THREE.MathUtils.lerp(fixture.currentPower, targetPower, 1 - Math.pow(0.0004, delta));
     fixture.light.intensity = fixture.currentPower;
     setRoomLightPanelColor(fixture.panelMaterial, fixture.currentPower);

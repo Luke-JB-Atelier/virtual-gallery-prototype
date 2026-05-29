@@ -75,6 +75,35 @@ body,
   background: rgba(28, 30, 32, 0.82);
 }
 
+#room-light-control {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  width: min(300px, calc(100vw - 28px));
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+  background: rgba(10, 11, 12, 0.76);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  transform: translateX(-50%);
+  backdrop-filter: blur(8px);
+  display: none;
+}
+
+#room-light-control.visible {
+  display: block;
+}
+
+#room-light-control label {
+  display: grid;
+  gap: 6px;
+}
+
+#room-light-control input {
+  width: 100%;
+}
+
 #crosshair {
   position: fixed;
   left: 50%;
