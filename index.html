@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Virtual Gallery Prototype</title>
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="gallery"></canvas>
+      <div id="hint">Klikni do scény: myš otáčí tělo · W/S chůze · Shift rychleji · A/D otočení · Esc vypnout pohled</div>
+      <div id="status">pohled vypnutý</div>
+      <div id="crosshair"></div>
+      <section id="light-editor">
+        <button id="toggle-light-editor" type="button">Světla</button>
+        <div id="light-panel">
+          <div id="light-title">Stropní světlo 1</div>
+          <label class="toggle-row"><input id="room-light-enabled" type="checkbox" /> Hlavní stropní světlo</label>
+          <label>Intenzita místnosti <input id="room-light-power" type="range" min="0" max="80" step="0.5" value="28" /></label>
+          <button id="add-light" type="button">Přidat před sebe</button>
+          <button id="next-light" type="button">Další</button>
+          <button id="remove-light" type="button">Smazat</button>
+          <label>Pozice na liště <input id="light-track-position" type="range" min="0" max="1" step="0.005" value="0.5" /></label>
+          <label>Vodorovně <input id="light-yaw" type="range" min="-180" max="180" value="180" /></label>
+          <label>Svisle <input id="light-pitch" type="range" min="-86" max="-18" value="-38" /></label>
+          <label>Síla <input id="light-power" type="range" min="0" max="180" value="95" /></label>
+          <label>Barva světla <input id="light-color" type="color" value="#fff4e8" /></label>
+          <label>Rozptyl <input id="light-angle" type="range" min="14" max="58" step="1" value="30" /></label>
+        </div>
+      </section>
+      <section id="art-editor">
+        <button id="toggle-art-editor" type="button">Obrazy</button>
+        <div id="art-panel">
+          <div id="art-title">Obrazový editor</div>
+          <div id="art-status">Namiř tečku na stěnu.</div>
+          <label class="toggle-row"><input id="art-free-mode" type="checkbox" /> Volné umístění</label>
+          <input id="art-file" type="file" accept="image/*" hidden />
+          <div class="editor-buttons">
+            <button id="add-art" type="button">Přidat na náhled</button>
+            <button id="load-art" type="button">Načíst obrázek</button>
+            <button id="move-art" type="button">Přesunout vybraný</button>
+            <button id="remove-art" type="button">Smazat vybraný</button>
+            <button id="swap-art" type="button">Prohodit vybraný</button>
+            <button id="save-art" type="button">Uložit galerii</button>
+            <button id="export-art" type="button">Exportovat galerii</button>
+          </div>
+          <label>Vodorovně <input id="art-offset-x" type="range" min="-3.8" max="3.8" step="0.02" value="0" /></label>
+          <label>Výška zavěšení <input id="art-height" type="range" min="0.75" max="2.1" step="0.02" value="1.45" /></label>
+          <label>Šířka obrazu (cm) <input id="art-width-cm" type="number" min="10" max="300" step="0.1" value="120" /></label>
+          <label>Výška obrazu (cm) <input id="art-height-cm" type="number" min="10" max="300" step="0.1" value="120" /></label>
+          <label>Název <input id="art-label-title" type="text" placeholder="Název obrazu" /></label>
+          <label>Materiál <input id="art-label-medium" type="text" placeholder="např. olej na plátně" /></label>
+          <label>Rozměr na štítku <input id="art-label-size" type="text" placeholder="např. 60 x 80 cm" /></label>
+          <label>Datum <input id="art-label-date" type="text" placeholder="např. 2026" /></label>
+          <label>Cena <input id="art-label-price" type="text" placeholder="např. Na dotaz" /></label>
+          <label>Tloušťka rámu <select id="art-frame-size">
+            <option value="hairline">velmi slabý</option>
+            <option value="thin">slabý</option>
+            <option value="light">menší</option>
+            <option value="medium" selected>střední</option>
+            <option value="heavy">silný</option>
+            <option value="bold">masivní</option>
+          </select></label>
+          <label>Barva rámu <input id="art-frame-color" type="color" value="#010101" /></label>
+        </div>
+      </section>
+      <div id="mobile-controls" aria-hidden="true">
+        <div id="stick"><div id="stick-knob"></div></div>
+      </div>
+    </main>
+  </body>
+</html>
