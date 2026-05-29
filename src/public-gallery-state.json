@@ -1,0 +1,725 @@
+{
+  "version": 1,
+  "exportedAt": "2026-05-29T13:42:42.960Z",
+  "gallery": {
+    "version": 1,
+    "paintings": [
+      {
+        "imageSrc": "art/olej-web/06-peepoalien.jpg",
+        "x": 4.42,
+        "y": 1.72,
+        "z": -2.85,
+        "ry": -1.570796,
+        "w": 1.1317,
+        "h": 1.42,
+        "aspect": 0.797,
+        "wallNormal": [
+          -1,
+          0,
+          0
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "Peepoalien",
+        "labelMedium": "",
+        "labelSize": "",
+        "labelDate": "",
+        "labelPrice": ""
+      },
+      {
+        "imageSrc": "art/olej-web/08-redpandadragon.jpg",
+        "x": 4.42,
+        "y": 1.72,
+        "z": 2.45,
+        "ry": -1.570796,
+        "w": 1.6263,
+        "h": 1.22,
+        "aspect": 1.333,
+        "wallNormal": [
+          -1,
+          0,
+          0
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "Redpandadragon",
+        "labelMedium": "",
+        "labelSize": "",
+        "labelDate": "",
+        "labelPrice": ""
+      },
+      {
+        "imageSrc": "art/olej-web/09-cora-dtiys.jpg",
+        "x": -4.42,
+        "y": 1.72,
+        "z": 9.55,
+        "ry": 1.570796,
+        "w": 1.2505,
+        "h": 1.22,
+        "aspect": 1.025,
+        "wallNormal": [
+          1,
+          0,
+          0
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "Cora DTIYS",
+        "labelMedium": "",
+        "labelSize": "",
+        "labelDate": "",
+        "labelPrice": ""
+      },
+      {
+        "imageSrc": "art/olej-web/20-portrait-20260130.jpg",
+        "x": -2.5465,
+        "y": 1.73,
+        "z": 5.935,
+        "ry": 3.141593,
+        "w": 1.091,
+        "h": 1.4206,
+        "aspect": 0.768,
+        "wallNormal": [
+          0,
+          0,
+          -1
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "Studie",
+        "labelMedium": "Akryl",
+        "labelSize": "74cmx54cm",
+        "labelDate": "2026",
+        "labelPrice": "cena dohodou"
+      },
+      {
+        "imageSrc": "art/olej-web/22-nemesis.jpg",
+        "x": 4.42,
+        "y": 1.93,
+        "z": 13.9358,
+        "ry": -1.570796,
+        "w": 1.065,
+        "h": 1.42,
+        "aspect": 0.75,
+        "wallNormal": [
+          -1,
+          0,
+          0
+        ],
+        "frameSize": "light",
+        "frameColor": "#010101",
+        "labelTitle": "Nemesis",
+        "labelMedium": "Akryl",
+        "labelSize": "74cmx54cm",
+        "labelDate": "2026",
+        "labelPrice": "scena Dohodou"
+      },
+      {
+        "imageSrc": "art/olej-web/21-kocka.jpg",
+        "x": -4.42,
+        "y": 2.09,
+        "z": 2.5498,
+        "ry": 1.570796,
+        "w": 0.809,
+        "h": 1.0112,
+        "aspect": 0.8,
+        "wallNormal": [
+          1,
+          0,
+          0
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "Kočka",
+        "labelMedium": "",
+        "labelSize": "80.9 x 101.1 cm",
+        "labelDate": "2024",
+        "labelPrice": "nedostupné"
+      },
+      {
+        "imageSrc": "art/olej-web/04-temny-les.jpg",
+        "x": -4.42,
+        "y": 1.73,
+        "z": 16.0422,
+        "ry": 1.570796,
+        "w": 1.862,
+        "h": 0.9052,
+        "aspect": 2.057,
+        "wallNormal": [
+          1,
+          0,
+          0
+        ],
+        "frameSize": "light",
+        "frameColor": "#010101",
+        "labelTitle": "Temný les",
+        "labelMedium": "olej (zalakováno)",
+        "labelSize": "80cm x 40cm",
+        "labelDate": "2026",
+        "labelPrice": "cena dohodou"
+      },
+      {
+        "imageSrc": "art/olej-web/18-portrait-20251130.jpg",
+        "x": 4.42,
+        "y": 1.73,
+        "z": -0.3408,
+        "ry": -1.570796,
+        "w": 1.074,
+        "h": 1.4206,
+        "aspect": 0.756,
+        "wallNormal": [
+          -1,
+          0,
+          0
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "Scuffed",
+        "labelMedium": "",
+        "labelSize": "75cm x 55cm",
+        "labelDate": "2025",
+        "labelPrice": "cena dohodou"
+      },
+      {
+        "imageSrc": "art/olej-web/10-aliens.jpg",
+        "x": 2.7575,
+        "y": 1.73,
+        "z": 5.935,
+        "ry": 3.141593,
+        "w": 0.8,
+        "h": 0.7897,
+        "aspect": 1.013,
+        "wallNormal": [
+          0,
+          0,
+          -1
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "Aliens",
+        "labelMedium": "",
+        "labelSize": "50 x 50 cm",
+        "labelDate": "",
+        "labelPrice": ""
+      },
+      {
+        "imageSrc": "art/olej-web/14-zrozeni-pumika.jpg",
+        "x": 4.42,
+        "y": 1.63,
+        "z": 16.75,
+        "ry": -1.570796,
+        "w": 0.629,
+        "h": 0.8454,
+        "aspect": 0.744,
+        "wallNormal": [
+          -1,
+          0,
+          0
+        ],
+        "frameSize": "light",
+        "frameColor": "#010101",
+        "labelTitle": "Zrození Pumíka",
+        "labelMedium": "",
+        "labelSize": "39 x 30cm",
+        "labelDate": "2023",
+        "labelPrice": "cena dohodou"
+      },
+      {
+        "imageSrc": "art/olej-web/11-catool.jpg",
+        "x": -4.42,
+        "y": 1.73,
+        "z": 12.7394,
+        "ry": 1.570796,
+        "w": 0.977,
+        "h": 1.2398,
+        "aspect": 0.788,
+        "wallNormal": [
+          1,
+          0,
+          0
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "CaTool",
+        "labelMedium": "",
+        "labelSize": "50 x 39 cm",
+        "labelDate": "",
+        "labelPrice": ""
+      },
+      {
+        "imageSrc": "art/olej-web/03-vietnam.jpg",
+        "x": 3.25,
+        "y": 1.73,
+        "z": -5.93,
+        "ry": 0,
+        "w": 1.233,
+        "h": 1.2196,
+        "aspect": 1.011,
+        "wallNormal": [
+          0,
+          0,
+          1
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "Vietnam",
+        "labelMedium": "",
+        "labelSize": "",
+        "labelDate": "",
+        "labelPrice": ""
+      },
+      {
+        "imageSrc": "art/olej-web/12-jungle-pro-lucku.jpg",
+        "x": -4.42,
+        "y": 1.73,
+        "z": -3.2312,
+        "ry": 1.570796,
+        "w": 0.8,
+        "h": 0.7976,
+        "aspect": 1.003,
+        "wallNormal": [
+          1,
+          0,
+          0
+        ],
+        "frameSize": "light",
+        "frameColor": "#010101",
+        "labelTitle": "Jungle pro Lucku",
+        "labelMedium": "",
+        "labelSize": "50 x 50 cm",
+        "labelDate": "2022",
+        "labelPrice": "Nedostupné"
+      },
+      {
+        "imageSrc": "art/olej-web/13-jungle-s-rokli.jpg",
+        "x": -4.42,
+        "y": 1.73,
+        "z": -0.5757,
+        "ry": 1.570796,
+        "w": 0.8,
+        "h": 0.8,
+        "aspect": 1,
+        "wallNormal": [
+          1,
+          0,
+          0
+        ],
+        "frameSize": "thin",
+        "frameColor": "#000000",
+        "labelTitle": "Jungle s roklí",
+        "labelMedium": "olej na plátně",
+        "labelSize": "80 x 80 cm",
+        "labelDate": "2022 cca",
+        "labelPrice": "Rozpracované/ nedostupné"
+      },
+      {
+        "imageSrc": "art/olej-web/16-voidish-rammus.jpg",
+        "x": 3.15,
+        "y": 1.73,
+        "z": 19.08,
+        "ry": 3.141593,
+        "w": 0.909,
+        "h": 0.909,
+        "aspect": 1,
+        "wallNormal": [
+          0,
+          0,
+          -1
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "Voidish Rammus",
+        "labelMedium": "",
+        "labelSize": "50 x 50cm",
+        "labelDate": "2024",
+        "labelPrice": "nedostupné"
+      },
+      {
+        "imageSrc": "art/olej-web/01-muj-prvni-obraz.jpg",
+        "x": -3.25,
+        "y": 1.73,
+        "z": -5.93,
+        "ry": 0,
+        "w": 1.312,
+        "h": 1.2205,
+        "aspect": 1.075,
+        "wallNormal": [
+          0,
+          0,
+          1
+        ],
+        "frameSize": "medium",
+        "frameColor": "#010101",
+        "labelTitle": "Můj první obraz",
+        "labelMedium": "olej na plátně",
+        "labelSize": "60 x 60 cm",
+        "labelDate": "2018",
+        "labelPrice": ""
+      },
+      {
+        "imageSrc": "art/olej-web/21-kocka.jpg",
+        "x": -4.42,
+        "y": 1.72,
+        "z": 26.3,
+        "ry": 1.570796,
+        "w": 1.136,
+        "h": 1.42,
+        "aspect": 0.8,
+        "wallNormal": [
+          1,
+          0,
+          0
+        ],
+        "frameSize": "medium",
+        "frameColor": "#000000",
+        "labelTitle": "Kočka",
+        "labelMedium": "",
+        "labelSize": "",
+        "labelDate": "",
+        "labelPrice": ""
+      },
+      {
+        "imageSrc": "art/olej-web/22-nemesis.jpg",
+        "x": 4.42,
+        "y": 1.72,
+        "z": 26.3,
+        "ry": -1.570796,
+        "w": 1.065,
+        "h": 1.42,
+        "aspect": 0.75,
+        "wallNormal": [
+          -1,
+          0,
+          0
+        ],
+        "frameSize": "medium",
+        "frameColor": "#000000",
+        "labelTitle": "Nemesis",
+        "labelMedium": "",
+        "labelSize": "",
+        "labelDate": "",
+        "labelPrice": ""
+      },
+      {
+        "imageSrc": "art/olej-web/15-hell.jpg",
+        "x": -2.7365,
+        "y": 1.73,
+        "z": 19.085,
+        "ry": 3.141593,
+        "w": 0.8,
+        "h": 0.8,
+        "aspect": 1,
+        "wallNormal": [
+          0,
+          0,
+          -1
+        ],
+        "frameSize": "light",
+        "frameColor": "#000000",
+        "labelTitle": "Call",
+        "labelMedium": "olej na plátně",
+        "labelSize": "50 x 50 cm",
+        "labelDate": "2024",
+        "labelPrice": "cena dohodou"
+      },
+      {
+        "imageSrc": "art/olej-web/05-teratom.jpg",
+        "x": 4.42,
+        "y": 1.73,
+        "z": 11.395,
+        "ry": -1.570796,
+        "w": 0.526,
+        "h": 0.6985,
+        "aspect": 0.753,
+        "wallNormal": [
+          -1,
+          0,
+          0
+        ],
+        "frameSize": "light",
+        "frameColor": "#010101",
+        "labelTitle": "Teratom",
+        "labelMedium": "",
+        "labelSize": "29.6 x 39.9 cm",
+        "labelDate": "",
+        "labelPrice": ""
+      },
+      {
+        "imageSrc": "art/olej-web/07-hlad.jpg",
+        "x": -2.518,
+        "y": 1.73,
+        "z": 7.215,
+        "ry": 0,
+        "w": 0.696,
+        "h": 0.9039,
+        "aspect": 0.77,
+        "wallNormal": [
+          0,
+          0,
+          1
+        ],
+        "frameSize": "light",
+        "frameColor": "#010101",
+        "labelTitle": "Hlad",
+        "labelMedium": "olej na plátně",
+        "labelSize": "50 x 40 cm",
+        "labelDate": "2020",
+        "labelPrice": "cena dohodou"
+      },
+      {
+        "imageSrc": "art/olej-web/02-jungle.jpg",
+        "x": -0.171,
+        "y": 1.73,
+        "z": -5.935,
+        "ry": 0,
+        "w": 0.7,
+        "h": 0.7,
+        "aspect": 1,
+        "wallNormal": [
+          0,
+          0,
+          1
+        ],
+        "frameSize": "thin",
+        "frameColor": "#010101",
+        "labelTitle": "Jungle",
+        "labelMedium": "",
+        "labelSize": "40 x 40 cm",
+        "labelDate": "2019",
+        "labelPrice": "cena dohodou"
+      }
+    ],
+    "audio": {
+      "volume": 1
+    }
+  },
+  "lighting": {
+    "roomLight": {
+      "enabled": true,
+      "power": 31.5
+    },
+    "selectedLightIndex": 15,
+    "ceilingLights": [
+      {
+        "trackId": "back",
+        "trackPosition": 0.0779,
+        "yaw": 180,
+        "pitch": -57.36,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "right",
+        "trackPosition": 0.226,
+        "yaw": 90,
+        "pitch": -63.43,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "back",
+        "trackPosition": 0.173,
+        "yaw": 180,
+        "pitch": -57.23,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "right",
+        "trackPosition": 0.7356,
+        "yaw": 90,
+        "pitch": -63.43,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "left",
+        "trackPosition": 0.1538,
+        "yaw": -90,
+        "pitch": -63.43,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "front",
+        "trackPosition": 0.8581,
+        "yaw": 0,
+        "pitch": -57.23,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "left",
+        "trackPosition": 0.4605,
+        "yaw": -90,
+        "pitch": -63.29,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "left",
+        "trackPosition": 0.1893,
+        "yaw": -90,
+        "pitch": -63.29,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "left",
+        "trackPosition": 0.4446,
+        "yaw": -90,
+        "pitch": -63.29,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "right",
+        "trackPosition": 0.8462,
+        "yaw": 90,
+        "pitch": -64.71,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "front",
+        "trackPosition": 0.1446,
+        "yaw": 0,
+        "pitch": -57.23,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "front",
+        "trackPosition": 0.9091,
+        "yaw": 0,
+        "pitch": -57.36,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "right",
+        "trackPosition": 0.4672,
+        "yaw": 90,
+        "pitch": -63.29,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "left",
+        "trackPosition": 0.7781,
+        "yaw": -90,
+        "pitch": -63.29,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "front",
+        "trackPosition": 0.1693,
+        "yaw": 0,
+        "pitch": -57.23,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "left",
+        "trackPosition": 0.7452,
+        "yaw": -90,
+        "pitch": -56.65,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "right",
+        "trackPosition": 0.5756,
+        "yaw": 90,
+        "pitch": -59.93,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "back",
+        "trackPosition": 0.9221,
+        "yaw": 180,
+        "pitch": -57.36,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "back",
+        "trackPosition": 0.4778,
+        "yaw": -180,
+        "pitch": -57.23,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 0
+      },
+      {
+        "trackId": "right",
+        "trackPosition": 0.3312,
+        "yaw": 90,
+        "pitch": -63.29,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "left",
+        "trackPosition": 0.5,
+        "yaw": -90,
+        "pitch": -63.43,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 2
+      },
+      {
+        "trackId": "right",
+        "trackPosition": 0.5,
+        "yaw": 90,
+        "pitch": -63.43,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 2
+      }
+    ]
+  }
+}

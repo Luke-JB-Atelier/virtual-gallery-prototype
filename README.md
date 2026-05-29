@@ -29,9 +29,22 @@ npm run build
 
 Vystup pro staticky web je ve slozce `dist`.
 
+## Hudba
+
+Jazzove skladby jsou v `public/audio/jazz/`. Verejna galerie je ma pripravene jako zapnute, ale prohlizec je realne spusti az po prvnim kliknuti, tapnuti nebo stisku `W` ve scene. V editoru panel `Hudba` uklada hlasitost do exportovaneho JSONu.
+
 ## Ukladani galerie
 
 Tlacitko `Ulozit galerii` uklada rozmisteni do `localStorage` v aktualnim prohlizeci. Tlacitko `Exportovat galerii` stahne JSON se stavem galerie a svetel, ktery se pak muze vlozit do kodu pro verejnou verzi.
+
+Import exportu do verejne verze:
+
+```powershell
+npm run import-gallery
+npm run build
+```
+
+Bez zadane cesty skript zkusi najit nejnovejsi `virtual-gallery-state*.json` ve stazenych souborech. Konkretni soubor jde predat za `--`.
 
 ## GitHub Pages
 

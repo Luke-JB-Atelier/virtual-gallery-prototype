@@ -30,12 +30,17 @@ npm run build
 - `src/styles.css` - panely editoru a UI.
 - `index.html` - struktura ovladacich panelu.
 - `public/art/olej-web/` - obrazky pouzite ve verejne galerii.
+- `public/audio/jazz/` - lokalni jazzove MP3 pro prostorove reproduktory v galerii.
 - `.github/workflows/deploy.yml` - GitHub Pages deploy po pushi do `main`.
 
 ## Jak to funguje pro uzivatele
 
 - Verejna verze bez `?edit=1` je cista galerie pro divaky.
 - Editor s `?edit=1` ukazuje nastavovaci panely.
+- Verejna galerie ma hudbu pripravenu jako zapnutou, ale prohlizec ji spusti az po prvnim kliknuti/tapnuti do sceny nebo po stisku `W`. Tlacitko pak slouzi hlavne jako `Vypnout jazz`.
+- Editor ma panel `Hudba` s hlasitosti. Export uklada `gallery.audio.volume`.
+- Playlist je rozvedeny do dvou diagonalnich hornich rohovych reproduktoru v kazde mistnosti.
+- Podstavce maji typ `pillar` nebo `table`. V editoru se vybrany podstavec/stolecek otaci koleckem mysi.
 - Tlacitko `Ulozit galerii` uklada zmeny jen do aktualniho prohlizece (`localStorage`).
 - Tlacitko `Exportovat galerii` vytvori JSON, ktery se da pozdeji vlozit do kodu jako verejna verze.
 - Tlacitko `Vratit GitHub verzi` maze lokalni editorove ulozeni.

@@ -1,13 +1,16 @@
 ﻿import './styles.css';
 import * as THREE from 'three';
+import publicGalleryState from './public-gallery-state.json';
 
 const canvas = document.querySelector('#gallery');
 const hint = document.querySelector('#hint');
 const status = document.querySelector('#status');
 const crosshair = document.querySelector('#crosshair');
+const audioToggle = document.querySelector('#audio-toggle');
 const mobileControls = document.querySelector('#mobile-controls');
-const stick = document.querySelector('#stick');
-const stickKnob = document.querySelector('#stick-knob');
+const moveStick = document.querySelector('#move-stick');
+const moveStickKnob = document.querySelector('#move-stick-knob');
+const lookPad = document.querySelector('#look-pad');
 const toggleLightEditor = document.querySelector('#toggle-light-editor');
 const lightPanel = document.querySelector('#light-panel');
 const lightTitle = document.querySelector('#light-title');
@@ -47,6 +50,20 @@ const artLabelDateInput = document.querySelector('#art-label-date');
 const artLabelPriceInput = document.querySelector('#art-label-price');
 const artFrameSizeInput = document.querySelector('#art-frame-size');
 const artFrameColorInput = document.querySelector('#art-frame-color');
+const togglePedestalEditor = document.querySelector('#toggle-pedestal-editor');
+const pedestalPanel = document.querySelector('#pedestal-panel');
+const pedestalTitle = document.querySelector('#pedestal-title');
+const pedestalStatus = document.querySelector('#pedestal-status');
+const addPedestalButton = document.querySelector('#add-pedestal');
+const movePedestalButton = document.querySelector('#move-pedestal');
+const removePedestalButton = document.querySelector('#remove-pedestal');
+const pedestalTypeInput = document.querySelector('#pedestal-type');
+const pedestalWidthCmInput = document.querySelector('#pedestal-width-cm');
+const pedestalDepthCmInput = document.querySelector('#pedestal-depth-cm');
+const pedestalHeightCmInput = document.querySelector('#pedestal-height-cm');
+const toggleAudioEditor = document.querySelector('#toggle-audio-editor');
+const audioPanel = document.querySelector('#audio-panel');
+const audioVolumeInput = document.querySelector('#audio-volume');
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070a);
@@ -79,13 +96,29 @@ const galleryStorageKey = 'virtual-gallery-art-oil-v1';
 const urlParams = new URLSearchParams(window.location.search);
 const editorMode = urlParams.has('edit');
 const useLocalSavedState = editorMode || urlParams.has('local');
-const savedGallery = useLocalSavedState ? loadGalleryState() : null;
+const exportedGalleryState = publicGalleryState?.version === 1 ? publicGalleryState : null;
+const savedGallery = useLocalSavedState
+  ? loadGalleryState() ?? exportedGalleryState?.gallery ?? null
+  : exportedGalleryState?.gallery ?? null;
+const audioSettings = {
+  volume: THREE.MathUtils.clamp(Number(savedGallery?.audio?.volume ?? 1), 0, 1),
+};
+if (audioVolumeInput) {
+  audioVolumeInput.value = String(Math.round(audioSettings.volume * 100));
+}
 document.body.classList.toggle('viewer-mode', !editorMode);
 
 function publicAssetPath(path) {
   if (!path || /^(data:|blob:|https?:)/i.test(path)) return path;
   return `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
 }
+
+const jazzPlaylist = [
+  'audio/jazz/the_mountain-jazz-cafe-496552.mp3',
+  'audio/jazz/waveloom-jazz-bar-516749.mp3',
+  'audio/jazz/waveloom-jazz-cafe-516774.mp3',
+  'audio/jazz/waveloom-jazz-restaurant-516751.mp3',
+].map(publicAssetPath);
 
 const room = new THREE.Group();
 scene.add(room);
@@ -501,12 +534,283 @@ function addCorridorWalls(startZ, endZ) {
   addWallSegment(doorRightX, startZ, doorRightX, endZ, doorway.height, doorway.height / 2, { floorTrim: false, ceilingTrim: false });
 }
 
+const pedestalBodyMaterial = new THREE.MeshStandardMaterial({
+  color: 0x151515,
+  roughness: 0.72,
+  metalness: 0.04,
+});
+const pedestalTopMaterial = new THREE.MeshStandardMaterial({
+  color: 0x2a2721,
+  roughness: 0.66,
+  metalness: 0.08,
+});
+const pedestalSelectionMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffd46a,
+  transparent: true,
+  opacity: 0.82,
+  depthWrite: false,
+});
+
+function createSpeakerWoodTexture() {
+  const size = 512;
+  const textureCanvas = document.createElement('canvas');
+  textureCanvas.width = size;
+  textureCanvas.height = size;
+  const ctx = textureCanvas.getContext('2d');
+
+  ctx.fillStyle = '#201712';
+  ctx.fillRect(0, 0, size, size);
+  for (let x = 0; x < size; x += 5) {
+    const wobble = Math.sin(x * 0.035) * 7 + Math.sin(x * 0.011) * 16;
+    const shade = 28 + Math.floor(Math.sin(x * 0.09) * 10 + Math.random() * 8);
+    ctx.strokeStyle = `rgba(${shade + 18}, ${shade + 10}, ${shade + 2}, 0.28)`;
+    ctx.lineWidth = Math.random() > 0.78 ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(x + wobble * 0.2, 0);
+    for (let y = 0; y <= size; y += 18) {
+      ctx.lineTo(x + Math.sin(y * 0.024 + x * 0.018) * 9 + wobble * 0.2, y);
+    }
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(textureCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(0.9, 1.15);
+  return texture;
+}
+
+function createSpeakerGrilleTexture() {
+  const size = 512;
+  const textureCanvas = document.createElement('canvas');
+  textureCanvas.width = size;
+  textureCanvas.height = size;
+  const ctx = textureCanvas.getContext('2d');
+  const center = size / 2;
+  const radius = size * 0.42;
+
+  ctx.fillStyle = '#030303';
+  ctx.fillRect(0, 0, size, size);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(center, center, radius, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = '#020202';
+  ctx.fillRect(0, 0, size, size);
+
+  const cell = 15;
+  const holeRadius = 4.6;
+  for (let y = center - radius - cell; y <= center + radius + cell; y += cell * 0.86) {
+    const row = Math.round((y - (center - radius)) / (cell * 0.86));
+    const offset = row % 2 ? cell / 2 : 0;
+    for (let x = center - radius - cell; x <= center + radius + cell; x += cell) {
+      const px = x + offset;
+      if ((px - center) ** 2 + (y - center) ** 2 > radius ** 2) continue;
+      ctx.fillStyle = '#111315';
+      ctx.beginPath();
+      ctx.arc(px, y, holeRadius + 1.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(px, y, holeRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+  ctx.strokeStyle = '#151719';
+  ctx.lineWidth = 18;
+  ctx.beginPath();
+  ctx.arc(center, center, radius + 8, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const texture = new THREE.CanvasTexture(textureCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  return texture;
+}
+
+const speakerCabinetMaterial = new THREE.MeshStandardMaterial({
+  color: 0x2b211a,
+  map: createSpeakerWoodTexture(),
+  roughness: 0.78,
+  metalness: 0.04,
+});
+const speakerGrilleMaterial = new THREE.MeshStandardMaterial({
+  color: 0x0a0b0c,
+  map: createSpeakerGrilleTexture(),
+  roughness: 0.9,
+  metalness: 0.08,
+  side: THREE.DoubleSide,
+});
+const speakerAccentMaterial = new THREE.MeshStandardMaterial({
+  color: 0x090909,
+  roughness: 0.76,
+  metalness: 0.12,
+});
+const audioSpeakers = [];
+
+function createSpeakerFixture(position, target) {
+  const speaker = new THREE.Group();
+  speaker.position.copy(position);
+  speaker.lookAt(target);
+
+  const cabinet = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.14), speakerCabinetMaterial);
+  cabinet.castShadow = true;
+  cabinet.receiveShadow = true;
+  speaker.add(cabinet);
+
+  const grille = new THREE.Mesh(new THREE.CircleGeometry(0.086, 48), speakerGrilleMaterial);
+  grille.position.z = 0.073;
+  speaker.add(grille);
+
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.089, 0.0065, 8, 48), speakerAccentMaterial);
+  rim.position.z = 0.076;
+  speaker.add(rim);
+
+  const tweeter = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.012, 18), speakerAccentMaterial);
+  tweeter.position.set(0, 0.102, 0.08);
+  tweeter.rotation.x = Math.PI / 2;
+  speaker.add(tweeter);
+
+  const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.055, 0.06), speakerAccentMaterial);
+  bracket.position.z = -0.1;
+  speaker.add(bracket);
+
+  room.add(speaker);
+  audioSpeakers.push({ group: speaker, position: position.clone(), target: target.clone(), panner: null });
+}
+
+function addCornerSpeakers() {
+  const roomCenters = [0, roomStep, roomStep * 2];
+  roomCenters.forEach((centerZ) => {
+    const target = new THREE.Vector3(0, 1.48, centerZ);
+    const cornerX = roomWidth / 2 - 0.16;
+    const cornerZ = roomDepth / 2 - 0.18;
+    [
+      new THREE.Vector3(cornerX, roomHeight - 0.34, centerZ - cornerZ),
+      new THREE.Vector3(-cornerX, roomHeight - 0.34, centerZ + cornerZ),
+    ].forEach((position) => createSpeakerFixture(position, target));
+  });
+}
+
+function addEntrancePedestal() {
+  const pedestal = new THREE.Group();
+  pedestal.position.set(2.32, 0, roomDepth / 2 - 0.42);
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.72, 0.38), pedestalBodyMaterial);
+  base.position.y = 0.36;
+  base.castShadow = true;
+  base.receiveShadow = true;
+  pedestal.add(base);
+
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.08, 0.5), pedestalTopMaterial);
+  top.position.y = 0.76;
+  top.castShadow = true;
+  top.receiveShadow = true;
+  pedestal.add(top);
+
+  const foot = new THREE.Mesh(new THREE.BoxGeometry(1.66, 0.08, 0.48), pedestalBodyMaterial);
+  foot.position.y = 0.04;
+  foot.castShadow = true;
+  foot.receiveShadow = true;
+  pedestal.add(foot);
+
+  room.add(pedestal);
+  return pedestal;
+}
+
+function createDisplayPedestal({
+  x = 2.2,
+  z = roomDepth / 2 - 1.05,
+  ry = 0,
+  width = 0.72,
+  depth = 0.72,
+  height = 1.1,
+  type = 'pillar',
+  content = null,
+} = {}) {
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  group.rotation.y = ry;
+
+  if (type === 'table') {
+    const topHeight = Math.max(0.06, height * 0.1);
+    const legWidth = Math.max(0.06, Math.min(width, depth) * 0.08);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(width, topHeight, depth), pedestalTopMaterial);
+    top.position.y = height - topHeight / 2;
+    const lowerShelf = new THREE.Mesh(new THREE.BoxGeometry(width * 0.92, topHeight * 0.72, depth * 0.88), pedestalBodyMaterial);
+    lowerShelf.position.y = Math.max(topHeight, height * 0.22);
+    group.add(top, lowerShelf);
+
+    const legX = width / 2 - legWidth * 1.25;
+    const legZ = depth / 2 - legWidth * 1.25;
+    [
+      [-legX, -legZ],
+      [legX, -legZ],
+      [-legX, legZ],
+      [legX, legZ],
+    ].forEach(([legPosX, legPosZ]) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(legWidth, height - topHeight, legWidth), pedestalBodyMaterial);
+      leg.position.set(legPosX, (height - topHeight) / 2, legPosZ);
+      group.add(leg);
+    });
+  } else {
+    const baseHeight = Math.max(0.08, height * 0.08);
+    const capHeight = Math.max(0.08, height * 0.08);
+    const shaftHeight = Math.max(0.16, height - baseHeight - capHeight);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(width * 1.12, baseHeight, depth * 1.12), pedestalBodyMaterial);
+    base.position.y = baseHeight / 2;
+    const shaft = new THREE.Mesh(new THREE.BoxGeometry(width * 0.82, shaftHeight, depth * 0.82), pedestalBodyMaterial);
+    shaft.position.y = baseHeight + shaftHeight / 2;
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(width, capHeight, depth), pedestalTopMaterial);
+    cap.position.y = baseHeight + shaftHeight + capHeight / 2;
+    group.add(base, shaft, cap);
+  }
+
+  group.children.forEach((part) => {
+    if (!part.isMesh) return;
+    part.castShadow = true;
+    part.receiveShadow = true;
+  });
+
+  const selection = new THREE.Mesh(
+    new THREE.BoxGeometry(width * 1.18, height + 0.04, depth * 1.18),
+    pedestalSelectionMaterial,
+  );
+  selection.position.y = height / 2;
+  selection.visible = false;
+  selection.renderOrder = 12;
+  group.add(selection);
+
+  const pedestalData = {
+    group,
+    selection,
+    width,
+    depth,
+    height,
+    type,
+    content,
+  };
+  group.userData.pedestalData = pedestalData;
+  group.traverse((child) => {
+    child.userData.pedestalData = pedestalData;
+  });
+  room.add(group);
+  displayPedestals.push(pedestalData);
+  return pedestalData;
+}
+
 // Three rectangular rooms connected by short centered passages behind the start.
 addRectangularRoomWalls(0, false, true);
 addCorridorWalls(roomDepth / 2, roomStep - roomDepth / 2);
 addRectangularRoomWalls(roomStep, true, true);
 addCorridorWalls(roomStep + roomDepth / 2, roomStep * 2 - roomDepth / 2);
 addRectangularRoomWalls(roomStep * 2, true, false);
+addCornerSpeakers();
 
 const navigationSpaces = [
   { minX: x0, maxX: x1, minZ: galleryMinZ, maxZ: roomDepth / 2, padZMin: 1, padZMax: 0 },
@@ -583,7 +887,9 @@ const roomLightState = {
   enabled: true,
   power: 12,
 };
-const savedLighting = useLocalSavedState ? loadLightingState() : null;
+const savedLighting = useLocalSavedState
+  ? loadLightingState() ?? exportedGalleryState?.lighting ?? null
+  : exportedGalleryState?.lighting ?? null;
 roomLightEnabledInput.checked = roomLightState.enabled;
 roomLightPowerInput.value = String(roomLightState.power);
 
@@ -1057,6 +1363,9 @@ function loadLightingState() {
 function serializeGalleryState() {
   return {
     version: 1,
+    audio: {
+      volume: Number(audioSettings.volume.toFixed(3)),
+    },
     paintings: editablePaintings.map((paintingData) => ({
       imageSrc: paintingData.imageSrc ?? '',
       x: Number(paintingData.group.position.x.toFixed(4)),
@@ -1074,6 +1383,16 @@ function serializeGalleryState() {
       labelSize: paintingData.labelSize ?? '',
       labelDate: paintingData.labelDate ?? '',
       labelPrice: paintingData.labelPrice ?? '',
+    })),
+    pedestals: displayPedestals.map((pedestalData) => ({
+      type: pedestalData.type ?? 'pillar',
+      x: Number(pedestalData.group.position.x.toFixed(4)),
+      z: Number(pedestalData.group.position.z.toFixed(4)),
+      ry: Number(pedestalData.group.rotation.y.toFixed(6)),
+      width: Number(pedestalData.width.toFixed(4)),
+      depth: Number(pedestalData.depth.toFixed(4)),
+      height: Number(pedestalData.height.toFixed(4)),
+      content: pedestalData.content ?? null,
     })),
   };
 }
@@ -1238,10 +1557,10 @@ function updateArtworkLabel(paintingData) {
   ctx.font = `800 ${titleSize}px Arial, Helvetica, sans-serif`;
   ctx.fillText(title, paddingX, 48);
 
-  ctx.fillStyle = '#222528';
+  ctx.fillStyle = '#101214';
   details.forEach((line, index) => {
-    const lineSize = fitLabelText(ctx, line, maxTextWidth, 39, 27, 700);
-    ctx.font = `700 ${lineSize}px Arial, Helvetica, sans-serif`;
+    const lineSize = fitLabelText(ctx, line, maxTextWidth, 45, 31, 800);
+    ctx.font = `800 ${lineSize}px Arial, Helvetica, sans-serif`;
     ctx.fillText(line, paddingX, 138 + index * 70);
   });
 
@@ -1338,12 +1657,15 @@ const oilArtworks = [
   { title: 'Nemesis', src: 'art/olej-web/22-nemesis.jpg', aspect: 0.75, x: 4.43, z: roomStep * 2, ry: -Math.PI / 2 },
 ];
 const editablePaintings = [];
+const displayPedestals = [];
 let selectedPainting = null;
+let selectedPedestal = null;
 let pendingArtMaterial = null;
 let pendingArtSource = '';
 let pendingArtAspect = defaultArtworkAspect;
 let hoveredEditable = null;
 let movingSelectedPainting = false;
+let movingSelectedPedestal = false;
 let moveOriginalTransform = null;
 let swapSourcePainting = null;
 
@@ -1526,9 +1848,75 @@ function addCuratedOilGallery() {
 
 addCuratedOilGallery();
 
+function isValidPedestalConfig(config) {
+  return config
+    && Number.isFinite(config.x)
+    && Number.isFinite(config.z)
+    && Number.isFinite(config.width)
+    && Number.isFinite(config.depth)
+    && Number.isFinite(config.height)
+    && config.width > 0.2
+    && config.depth > 0.2
+    && config.height > 0.25
+    && (!config.type || ['pillar', 'table'].includes(config.type));
+}
+
+function addSavedDisplayPedestals() {
+  const defaultPedestals = [
+    {
+      type: 'table',
+      x: 2.32,
+      z: roomDepth / 2 - 0.42,
+      ry: 0,
+      width: 1.68,
+      depth: 0.5,
+      height: 0.78,
+      content: null,
+    },
+    {
+      type: 'pillar',
+      x: -2.35,
+      z: roomDepth / 2 - 0.95,
+      ry: 0,
+      width: 0.72,
+      depth: 0.72,
+      height: 1.12,
+      content: null,
+    },
+  ];
+  const savedPedestals = Array.isArray(savedGallery?.pedestals) ? savedGallery.pedestals : defaultPedestals;
+  savedPedestals.filter(isValidPedestalConfig).forEach((config) => {
+    createDisplayPedestal({
+      x: THREE.MathUtils.clamp(config.x, x0 + 0.35, x1 - 0.35),
+      z: THREE.MathUtils.clamp(config.z, galleryMinZ + 0.35, galleryMaxZ - 0.35),
+      ry: Number.isFinite(config.ry) ? config.ry : 0,
+      width: config.width,
+      depth: config.depth,
+      height: config.height,
+      type: config.type ?? 'pillar',
+      content: config.content ?? null,
+    });
+  });
+}
+
+addSavedDisplayPedestals();
+
 function getCenterRaycaster() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
   return raycaster;
+}
+
+const galleryFloorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const floorHitPoint = new THREE.Vector3();
+
+function getFloorPlacement() {
+  getCenterRaycaster();
+  const hit = raycaster.ray.intersectPlane(galleryFloorPlane, floorHitPoint);
+  if (!hit) return null;
+  const position = hit.clone();
+  const previous = body.position.clone();
+  constrainToGallery(position, 0.42, previous);
+  return position;
 }
 
 function getWallPlacement() {
@@ -2090,9 +2478,118 @@ function swapPaintingTransforms(firstPainting, secondPainting) {
   return true;
 }
 
+function getPedestalSizeFromInputs() {
+  return {
+    type: pedestalTypeInput.value === 'table' ? 'table' : 'pillar',
+    width: THREE.MathUtils.clamp(Number(pedestalWidthCmInput.value) / centimetersPerMeter, 0.25, 2.2),
+    depth: THREE.MathUtils.clamp(Number(pedestalDepthCmInput.value) / centimetersPerMeter, 0.25, 2.2),
+    height: THREE.MathUtils.clamp(Number(pedestalHeightCmInput.value) / centimetersPerMeter, 0.35, 1.8),
+  };
+}
+
+function syncPedestalPanel() {
+  pedestalTitle.textContent = selectedPedestal ? 'Vybraný podstavec' : 'Nový podstavec';
+  pedestalStatus.textContent = movingSelectedPedestal
+    ? 'Namiř tečku na podlahu a klikni Přidat na podlahu.'
+      : selectedPedestal
+        ? 'Objekt je vybraný. Můžeš ho přesunout, kolečkem otočit, změnit typ a rozměr, nebo smazat.'
+        : 'Namiř tečku na podlahu a přidej nový podstavec.';
+  movePedestalButton.disabled = !selectedPedestal;
+  removePedestalButton.disabled = !selectedPedestal;
+  movePedestalButton.textContent = movingSelectedPedestal ? 'Zrušit přesun' : 'Přesunout vybraný';
+  addPedestalButton.textContent = movingSelectedPedestal ? 'Uchytit na podlahu' : 'Přidat na podlahu';
+  if (!selectedPedestal) return;
+  pedestalTypeInput.value = selectedPedestal.type ?? 'pillar';
+  pedestalWidthCmInput.value = String(Math.round(selectedPedestal.width * centimetersPerMeter));
+  pedestalDepthCmInput.value = String(Math.round(selectedPedestal.depth * centimetersPerMeter));
+  pedestalHeightCmInput.value = String(Math.round(selectedPedestal.height * centimetersPerMeter));
+}
+
+function updatePedestalSelection() {
+  displayPedestals.forEach((pedestalData) => {
+    pedestalData.selection.visible = pedestalData === selectedPedestal;
+  });
+}
+
+function addPedestalFromFloor() {
+  const placement = getFloorPlacement();
+  if (!placement) {
+    pedestalPanel.classList.add('visible');
+    pedestalTitle.textContent = 'Není vybraná podlaha';
+    pedestalStatus.textContent = 'Namiř tečku níž na podlahu a zkus to znovu.';
+    return false;
+  }
+  const size = getPedestalSizeFromInputs();
+  selectedPedestal = createDisplayPedestal({
+    x: placement.x,
+    z: placement.z,
+    ry: bodyYaw,
+    ...size,
+  });
+  movingSelectedPedestal = false;
+  updatePedestalSelection();
+  syncPedestalPanel();
+  return true;
+}
+
+function moveSelectedPedestalToFloor() {
+  if (!selectedPedestal) return false;
+  const placement = getFloorPlacement();
+  if (!placement) {
+    pedestalTitle.textContent = 'Není vybraná podlaha';
+    pedestalStatus.textContent = 'Namiř tečku níž na podlahu a zkus přesun znovu.';
+    return false;
+  }
+  selectedPedestal.group.position.x = placement.x;
+  selectedPedestal.group.position.z = placement.z;
+  movingSelectedPedestal = false;
+  syncPedestalPanel();
+  return true;
+}
+
+function removeSelectedPedestal() {
+  if (!selectedPedestal) return;
+  room.remove(selectedPedestal.group);
+  const index = displayPedestals.indexOf(selectedPedestal);
+  if (index >= 0) displayPedestals.splice(index, 1);
+  selectedPedestal = null;
+  movingSelectedPedestal = false;
+  syncPedestalPanel();
+}
+
+function updateSelectedPedestalSize() {
+  if (!selectedPedestal) return;
+  const size = getPedestalSizeFromInputs();
+  const position = selectedPedestal.group.position.clone();
+  const ry = selectedPedestal.group.rotation.y;
+  const content = selectedPedestal.content ?? null;
+  const type = pedestalTypeInput.value === 'table' ? 'table' : 'pillar';
+  room.remove(selectedPedestal.group);
+  const index = displayPedestals.indexOf(selectedPedestal);
+  if (index >= 0) displayPedestals.splice(index, 1);
+  selectedPedestal = createDisplayPedestal({
+    x: position.x,
+    z: position.z,
+    ry,
+    content,
+    type,
+    ...size,
+  });
+  updatePedestalSelection();
+}
+
+function rotateSelectedPedestal(direction) {
+  if (!selectedPedestal) return false;
+  selectedPedestal.group.rotation.y += direction * THREE.MathUtils.degToRad(7.5);
+  pedestalTitle.textContent = 'Podstavec otočený';
+  pedestalStatus.textContent = 'Kolečkem můžeš doladit natočení. Nezapomeň galerii uložit nebo exportovat.';
+  return true;
+}
+
 function saveGalleryFromEditor() {
   updateSelectedPaintingLabel();
   updateSelectedPaintingSize();
+  updateSelectedPedestalSize();
   ensurePaintingLights();
   saveLightingState();
   const saved = saveGalleryState();
@@ -2114,6 +2611,7 @@ function serializePublicGalleryConfig() {
 function exportGalleryFromEditor() {
   updateSelectedPaintingLabel();
   updateSelectedPaintingSize();
+  updateSelectedPedestalSize();
   saveLightingState();
   saveGalleryState();
 
@@ -2158,6 +2656,11 @@ function getEditableTargetFromCrosshair() {
       if (child.isMesh) objects.push(child);
     });
   });
+  displayPedestals.forEach((pedestalData) => {
+    pedestalData.group.traverse((child) => {
+      if (child.isMesh) objects.push(child);
+    });
+  });
   const hit = raycaster.intersectObjects(objects, false)[0];
   return hit?.object?.userData ?? null;
 }
@@ -2169,6 +2672,8 @@ function selectEditableFromCrosshair() {
     selectedLightIndex = ceilingLights.indexOf(target.lightData);
     lightPanel.classList.add('visible');
     artPanel.classList.remove('visible');
+    pedestalPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
     artPreview.visible = false;
     syncLightPanel();
     return true;
@@ -2182,6 +2687,8 @@ function selectEditableFromCrosshair() {
       swapSourcePainting = null;
       artPanel.classList.add('visible');
       lightPanel.classList.remove('visible');
+      pedestalPanel.classList.remove('visible');
+      audioPanel.classList.remove('visible');
       updateLightLabels();
       syncArtPanel();
       syncArtPreview();
@@ -2193,9 +2700,21 @@ function selectEditableFromCrosshair() {
     movingSelectedPainting = false;
     artPanel.classList.add('visible');
     lightPanel.classList.remove('visible');
+    pedestalPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
     updateLightLabels();
     syncArtPanel();
     syncArtPreview();
+    return true;
+  }
+  if (target.pedestalData) {
+    selectedPedestal = target.pedestalData;
+    movingSelectedPedestal = false;
+    pedestalPanel.classList.add('visible');
+    artPanel.classList.remove('visible');
+    lightPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
+    syncPedestalPanel();
     return true;
   }
   return false;
@@ -2205,6 +2724,186 @@ const body = new THREE.Object3D();
 body.position.set(0, 1.68, 4.6);
 scene.add(body);
 body.add(camera);
+
+const galleryAudio = new Audio();
+galleryAudio.preload = 'auto';
+galleryAudio.volume = 1;
+let audioContext = null;
+let audioSourceNode = null;
+let audioMasterGain = null;
+let currentJazzTrackIndex = 0;
+let galleryAudioRequested = !editorMode;
+const audioPosition = new THREE.Vector3();
+const audioDirection = new THREE.Vector3();
+const audioUp = new THREE.Vector3();
+const audioQuaternion = new THREE.Quaternion();
+
+function setAudioParam(param, value) {
+  if (!param) return;
+  if (audioContext && typeof param.setTargetAtTime === 'function') {
+    param.setTargetAtTime(value, audioContext.currentTime, 0.035);
+  } else {
+    param.value = value;
+  }
+}
+
+function setPannerPosition(panner, position) {
+  if (panner.positionX) {
+    setAudioParam(panner.positionX, position.x);
+    setAudioParam(panner.positionY, position.y);
+    setAudioParam(panner.positionZ, position.z);
+  } else if (typeof panner.setPosition === 'function') {
+    panner.setPosition(position.x, position.y, position.z);
+  }
+}
+
+function setPannerOrientation(panner, direction) {
+  if (panner.orientationX) {
+    setAudioParam(panner.orientationX, direction.x);
+    setAudioParam(panner.orientationY, direction.y);
+    setAudioParam(panner.orientationZ, direction.z);
+  } else if (typeof panner.setOrientation === 'function') {
+    panner.setOrientation(direction.x, direction.y, direction.z);
+  }
+}
+
+function updateAudioToggle() {
+  if (!audioToggle) return;
+  const playing = !galleryAudio.paused && galleryAudioRequested;
+  audioToggle.textContent = galleryAudioRequested || playing ? 'Vypnout jazz' : 'Zapnout jazz';
+  audioToggle.classList.toggle('playing', playing);
+}
+
+function applyAudioVolume() {
+  if (audioMasterGain) {
+    setAudioParam(audioMasterGain.gain, audioSettings.volume);
+  }
+}
+
+function getJazzTrackUrl(index) {
+  return new URL(jazzPlaylist[index], window.location.href).href;
+}
+
+function initGalleryAudio() {
+  if (!jazzPlaylist.length || audioContext) return;
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) {
+    if (audioToggle) audioToggle.textContent = 'Audio nejde';
+    return;
+  }
+
+  audioContext = new AudioContextCtor();
+  audioSourceNode = audioContext.createMediaElementSource(galleryAudio);
+  audioMasterGain = audioContext.createGain();
+  audioMasterGain.gain.value = audioSettings.volume;
+  audioMasterGain.connect(audioContext.destination);
+
+  audioSpeakers.forEach((speaker) => {
+    const gain = audioContext.createGain();
+    gain.gain.value = 0.095;
+
+    const panner = audioContext.createPanner();
+    panner.panningModel = 'equalpower';
+    panner.distanceModel = 'exponential';
+    panner.refDistance = 0.9;
+    panner.maxDistance = 9.5;
+    panner.rolloffFactor = 1.9;
+    panner.coneInnerAngle = 130;
+    panner.coneOuterAngle = 230;
+    panner.coneOuterGain = 0.16;
+    setPannerPosition(panner, speaker.position);
+    setPannerOrientation(panner, speaker.target.clone().sub(speaker.position).normalize());
+
+    audioSourceNode.connect(gain);
+    gain.connect(panner);
+    panner.connect(audioMasterGain);
+    speaker.panner = panner;
+  });
+}
+
+async function playCurrentJazzTrack() {
+  if (!jazzPlaylist.length) return;
+  const trackUrl = getJazzTrackUrl(currentJazzTrackIndex);
+  if (galleryAudio.src !== trackUrl) {
+    galleryAudio.src = trackUrl;
+  }
+  galleryAudioRequested = true;
+  updateAudioToggle();
+  try {
+    await audioContext?.resume();
+    await galleryAudio.play();
+  } catch {
+    galleryAudioRequested = false;
+    if (audioToggle) audioToggle.textContent = 'Klikni znovu';
+  }
+  updateAudioToggle();
+}
+
+function playNextJazzTrack() {
+  currentJazzTrackIndex = (currentJazzTrackIndex + 1) % jazzPlaylist.length;
+  galleryAudio.src = getJazzTrackUrl(currentJazzTrackIndex);
+  if (galleryAudioRequested) {
+    playCurrentJazzTrack();
+  }
+}
+
+function toggleGalleryAudio() {
+  if (!jazzPlaylist.length) return;
+  initGalleryAudio();
+  if (!audioContext) return;
+
+  if (galleryAudioRequested) {
+    galleryAudioRequested = false;
+    galleryAudio.pause();
+    updateAudioToggle();
+    return;
+  }
+
+  playCurrentJazzTrack();
+}
+
+function tryStartRequestedAudio() {
+  if (!galleryAudioRequested || !galleryAudio.paused) return;
+  initGalleryAudio();
+  if (!audioContext) return;
+  playCurrentJazzTrack();
+}
+
+function updateGalleryAudioListener() {
+  if (!audioContext) return;
+
+  camera.getWorldPosition(audioPosition);
+  camera.getWorldDirection(audioDirection);
+  camera.getWorldQuaternion(audioQuaternion);
+  audioUp.set(0, 1, 0).applyQuaternion(audioQuaternion);
+
+  const { listener } = audioContext;
+  if (listener.positionX) {
+    setAudioParam(listener.positionX, audioPosition.x);
+    setAudioParam(listener.positionY, audioPosition.y);
+    setAudioParam(listener.positionZ, audioPosition.z);
+    setAudioParam(listener.forwardX, audioDirection.x);
+    setAudioParam(listener.forwardY, audioDirection.y);
+    setAudioParam(listener.forwardZ, audioDirection.z);
+    setAudioParam(listener.upX, audioUp.x);
+    setAudioParam(listener.upY, audioUp.y);
+    setAudioParam(listener.upZ, audioUp.z);
+  } else {
+    listener.setPosition(audioPosition.x, audioPosition.y, audioPosition.z);
+    listener.setOrientation(audioDirection.x, audioDirection.y, audioDirection.z, audioUp.x, audioUp.y, audioUp.z);
+  }
+}
+
+galleryAudio.addEventListener('ended', playNextJazzTrack);
+audioToggle?.addEventListener('click', toggleGalleryAudio);
+window.addEventListener('pointerdown', (event) => {
+  if (event.target instanceof Element && event.target.closest('#audio-toggle, #light-editor, #art-editor, #pedestal-editor, #audio-editor')) {
+    return;
+  }
+  tryStartRequestedAudio();
+}, { passive: true });
+updateAudioToggle();
 
 function addLightFromView() {
   const worldPosition = new THREE.Vector3();
@@ -2247,6 +2946,8 @@ toggleLightEditor.addEventListener('click', () => {
   lightPanel.classList.toggle('visible');
   if (lightPanel.classList.contains('visible')) {
     artPanel.classList.remove('visible');
+    pedestalPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
     artPreview.visible = false;
   }
   updateLightLabels();
@@ -2322,10 +3023,57 @@ toggleArtEditor.addEventListener('click', () => {
   artPanel.classList.toggle('visible');
   if (artPanel.classList.contains('visible')) {
     lightPanel.classList.remove('visible');
+    pedestalPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
     updateLightLabels();
   }
   syncArtPanel();
   syncArtPreview();
+});
+
+togglePedestalEditor.addEventListener('click', () => {
+  pedestalPanel.classList.toggle('visible');
+  if (pedestalPanel.classList.contains('visible')) {
+    lightPanel.classList.remove('visible');
+    artPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
+    artPreview.visible = false;
+  }
+  syncPedestalPanel();
+});
+
+toggleAudioEditor.addEventListener('click', () => {
+  audioPanel.classList.toggle('visible');
+  if (audioPanel.classList.contains('visible')) {
+    lightPanel.classList.remove('visible');
+    artPanel.classList.remove('visible');
+    pedestalPanel.classList.remove('visible');
+    artPreview.visible = false;
+  }
+});
+
+audioVolumeInput.addEventListener('input', () => {
+  audioSettings.volume = THREE.MathUtils.clamp(Number(audioVolumeInput.value) / 100, 0, 1);
+  applyAudioVolume();
+  saveGalleryState();
+});
+
+addPedestalButton.addEventListener('click', () => {
+  if (movingSelectedPedestal) {
+    moveSelectedPedestalToFloor();
+  } else {
+    addPedestalFromFloor();
+  }
+});
+movePedestalButton.addEventListener('click', () => {
+  if (!selectedPedestal) return;
+  movingSelectedPedestal = !movingSelectedPedestal;
+  syncPedestalPanel();
+});
+removePedestalButton.addEventListener('click', removeSelectedPedestal);
+[pedestalTypeInput, pedestalWidthCmInput, pedestalDepthCmInput, pedestalHeightCmInput].forEach((input) => {
+  input.addEventListener('input', updateSelectedPedestalSize);
+  input.addEventListener('change', updateSelectedPedestalSize);
 });
 
 addArtButton.addEventListener('click', () => {
@@ -2489,8 +3237,8 @@ const fallbackPitchSpeed = 0.52;
 const eyeHeight = 1.68;
 const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
 const touchMove = new THREE.Vector2();
-const stickPointer = { id: null, originX: 0, originY: 0 };
-const lookPointer = { id: null };
+const stickPointer = { id: null };
+const lookPointer = { id: null, lastX: 0, lastY: 0 };
 
 function isTextEditingTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
@@ -2501,7 +3249,7 @@ function isTextEditingTarget(target) {
 }
 
 if (isTouchDevice) {
-  hint.textContent = 'Levy palec chuze/otoceni · pravy palec pohled';
+  hint.textContent = 'Levy palec chuze · pravy palec pohled';
   hint.classList.add('active');
   mobileControls.classList.add('visible');
 }
@@ -2570,6 +3318,9 @@ document.addEventListener('keydown', (event) => {
 
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE'].includes(event.code)) {
     event.preventDefault();
+    if (event.code === 'KeyW') {
+      tryStartRequestedAudio();
+    }
   }
 
   if (event.code === 'Escape') {
@@ -2622,6 +3373,11 @@ canvas.addEventListener('mousedown', (event) => {
     moveSelectedPaintingToPreview();
     return;
   }
+  if (movingSelectedPedestal) {
+    event.preventDefault();
+    moveSelectedPedestalToFloor();
+    return;
+  }
   if (selectEditableFromCrosshair()) {
     event.preventDefault();
     return;
@@ -2647,6 +3403,12 @@ canvas.addEventListener('mousedown', (event) => {
     canvas.requestPointerLock();
   }
 });
+
+canvas.addEventListener('wheel', (event) => {
+  if (!editorMode || !selectedPedestal || !pedestalPanel.classList.contains('visible')) return;
+  event.preventDefault();
+  rotateSelectedPedestal(event.deltaY > 0 ? -1 : 1);
+}, { passive: false });
 
 document.addEventListener('mousedown', (event) => {
   if (event.button !== 2 || isTouchDevice) return;
@@ -2715,35 +3477,44 @@ window.addEventListener('mousemove', (event) => {
 function resetStick() {
   stickPointer.id = null;
   touchMove.set(0, 0);
-  stickKnob.style.transform = 'translate(-50%, -50%)';
+  moveStickKnob.style.transform = 'translate(-50%, -50%)';
 }
 
 function updateStick(event) {
-  const dx = event.clientX - stickPointer.originX;
-  const dy = event.clientY - stickPointer.originY;
+  const rect = moveStick.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const dx = event.clientX - centerX;
+  const dy = event.clientY - centerY;
   const max = 46;
   const length = Math.min(Math.hypot(dx, dy), max);
   const angle = Math.atan2(dy, dx);
   const knobX = Math.cos(angle) * length;
   const knobY = Math.sin(angle) * length;
 
-  stickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+  moveStickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
   touchMove.set(knobX / max, knobY / max);
 }
 
-window.addEventListener('pointerdown', (event) => {
+moveStick.addEventListener('pointerdown', (event) => {
   if (!isTouchDevice) return;
+  if (stickPointer.id !== null) return;
 
-  if (event.clientX < window.innerWidth * 0.45 && stickPointer.id === null) {
-    stickPointer.id = event.pointerId;
-    stickPointer.originX = event.clientX;
-    stickPointer.originY = event.clientY;
-    updateStick(event);
-    event.preventDefault();
-  } else if (lookPointer.id === null) {
-    lookPointer.id = event.pointerId;
-    event.preventDefault();
-  }
+  stickPointer.id = event.pointerId;
+  moveStick.setPointerCapture?.(event.pointerId);
+  updateStick(event);
+  event.preventDefault();
+});
+
+lookPad.addEventListener('pointerdown', (event) => {
+  if (!isTouchDevice) return;
+  if (lookPointer.id !== null) return;
+
+  lookPointer.id = event.pointerId;
+  lookPointer.lastX = event.clientX;
+  lookPointer.lastY = event.clientY;
+  lookPad.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
 });
 
 window.addEventListener('pointermove', (event) => {
@@ -2755,7 +3526,11 @@ window.addEventListener('pointermove', (event) => {
   }
 
   if (event.pointerId === lookPointer.id) {
-    applyLookDelta(event.movementX, event.movementY, 0.003);
+    const deltaX = event.clientX - lookPointer.lastX;
+    const deltaY = event.clientY - lookPointer.lastY;
+    lookPointer.lastX = event.clientX;
+    lookPointer.lastY = event.clientY;
+    applyLookDelta(deltaX, deltaY, 0.0042);
     event.preventDefault();
   }
 }, { passive: false });
@@ -2796,7 +3571,7 @@ function updateMovement(delta) {
   if (keys.has('KeyS')) movement.sub(forward);
   if (isTouchDevice) {
     movement.addScaledVector(forward, -touchMove.y);
-    bodyYaw -= touchMove.x * turnSpeed * delta;
+    movement.addScaledVector(right, touchMove.x);
   }
 
   const moving = movement.lengthSq() > 0;
@@ -2862,7 +3637,18 @@ function updateArtworkBrightness(delta) {
 
 function updateCrosshairAndEditors() {
   hoveredEditable = getEditableTargetFromCrosshair();
-  crosshair.classList.toggle('target', Boolean(hoveredEditable?.lightData || hoveredEditable?.paintingData));
+  const isPaintingTarget = Boolean(hoveredEditable?.paintingData);
+  const isAnyEditableTarget = Boolean(hoveredEditable?.lightData || hoveredEditable?.paintingData || hoveredEditable?.pedestalData);
+  crosshair.classList.toggle('target', editorMode && isAnyEditableTarget);
+  crosshair.classList.toggle('viewer-hidden', !editorMode && isPaintingTarget);
+  if (movingSelectedPedestal && selectedPedestal) {
+    const placement = getFloorPlacement();
+    if (placement) {
+      selectedPedestal.group.position.x = placement.x;
+      selectedPedestal.group.position.z = placement.z;
+    }
+  }
+  updatePedestalSelection();
   syncArtPreview();
 }
 
@@ -2872,6 +3658,7 @@ function animate() {
   updateAutoRoomLights(delta);
   updateArtworkBrightness(delta);
   updateCrosshairAndEditors();
+  updateGalleryAudioListener();
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
@@ -2907,6 +3694,14 @@ window.__galleryDebug = () => ({
     intensity: Number(fixture.light.intensity.toFixed(3)),
   })),
   visibleSpotLights: ceilingLights.filter((lightData) => lightData.spot.visible).length,
+  displayPedestals: displayPedestals.length,
+  audio: {
+    tracks: jazzPlaylist.length,
+    speakers: audioSpeakers.length,
+    requested: galleryAudioRequested,
+    paused: galleryAudio.paused,
+    currentTrack: jazzPlaylist[currentJazzTrackIndex] ?? null,
+  },
   rendererInfo: {
     calls: renderer.info.render.calls,
     triangles: renderer.info.render.triangles,
