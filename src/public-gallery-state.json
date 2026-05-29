@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-05-29T20:31:51.638Z",
+  "exportedAt": "2026-05-29T21:29:18.625Z",
   "gallery": {
     "version": 1,
     "audio": {
@@ -124,7 +124,7 @@
       },
       {
         "imageSrc": "art/olej-web/16-voidish-rammus.jpg",
-        "x": 4.435,
+        "x": 4.42,
         "y": 1.73,
         "z": 11.3407,
         "ry": -1.570796,
@@ -377,7 +377,7 @@
       },
       {
         "imageSrc": "art/olej-web/05-teratom.jpg",
-        "x": 4.435,
+        "x": 4.42,
         "y": 1.73,
         "z": 9.2721,
         "ry": -1.570796,
@@ -396,29 +396,6 @@
         "labelSize": "29.6 x 39.9 cm",
         "labelDate": "2019",
         "labelPrice": "cena dohodou",
-        "actionUrl": ""
-      },
-      {
-        "imageSrc": "art/olej-web/11-catool.jpg",
-        "x": -4.435,
-        "y": 1.73,
-        "z": 10.1202,
-        "ry": 1.570796,
-        "w": 0.977,
-        "h": 1.2398,
-        "aspect": 0.788,
-        "wallNormal": [
-          1,
-          0,
-          0
-        ],
-        "frameSize": "light",
-        "frameColor": "#010101",
-        "labelTitle": "CaTool",
-        "labelMedium": "olej na plátně",
-        "labelSize": "70 x 26.3 cm",
-        "labelDate": "datum ?",
-        "labelPrice": "nedostupné",
         "actionUrl": ""
       },
       {
@@ -494,7 +471,7 @@
         "imageSrc": "art/olej-web/22-nemesis.jpg",
         "x": -4.435,
         "y": 1.93,
-        "z": 12.8495,
+        "z": 11.2576,
         "ry": 1.570796,
         "w": 1.065,
         "h": 1.42,
@@ -512,6 +489,52 @@
         "labelDate": "2026",
         "labelPrice": "scena Dohodou",
         "actionUrl": ""
+      },
+      {
+        "imageSrc": "art/olej-web/11-catool.jpg",
+        "x": 2.3717,
+        "y": 1.73,
+        "z": 7.215,
+        "ry": 0,
+        "w": 0.977,
+        "h": 1.2398,
+        "aspect": 0.788,
+        "wallNormal": [
+          0,
+          0,
+          1
+        ],
+        "frameSize": "light",
+        "frameColor": "#010101",
+        "labelTitle": "CaTool",
+        "labelMedium": "olej na plátně",
+        "labelSize": "70 x 26.3 cm",
+        "labelDate": "datum ?",
+        "labelPrice": "nedostupné",
+        "actionUrl": ""
+      },
+      {
+        "imageSrc": "art/olej-web/23-pyramid-head.jpg",
+        "x": 4.435,
+        "y": 1.83,
+        "z": 14.3054,
+        "ry": -1.570796,
+        "w": 1.431,
+        "h": 2.3854,
+        "aspect": 0.599898,
+        "wallNormal": [
+          -1,
+          0,
+          0
+        ],
+        "frameSize": "medium",
+        "frameColor": "#000000",
+        "labelTitle": "Pyramid Head",
+        "labelMedium": "jediná Digitální tvorba zde",
+        "labelSize": "113.1 x 208.5 cm",
+        "labelDate": "2025",
+        "labelPrice": "",
+        "actionUrl": ""
       }
     ],
     "pedestals": [
@@ -524,6 +547,22 @@
         "depth": 0.5,
         "height": 0.78,
         "content": null
+      },
+      {
+        "type": "pillar",
+        "x": 1.2921,
+        "z": 30.0569,
+        "ry": -3.06544,
+        "width": 0.7,
+        "depth": 0.7,
+        "height": 1.1,
+        "content": {
+          "type": "flat-cap",
+          "scale": 1.05,
+          "offsetX": 0,
+          "offsetZ": 0,
+          "rotationY": 0.12
+        }
       }
     ],
     "textPanels": [
@@ -534,7 +573,7 @@
         "ry": 3.141593,
         "width": 0.66,
         "height": 0.28,
-        "text": "odělení 3\nDigitální art",
+        "text": "Mecenášství",
         "bgColor": "#824cb8",
         "textColor": "#111315",
         "fontSize": 128,
@@ -568,7 +607,7 @@
       {
         "x": 2.5111,
         "y": 2.0734,
-        "z": 32.229,
+        "z": 32.22,
         "ry": 3.141593,
         "width": 1.48,
         "height": 0.7,
@@ -591,7 +630,7 @@
       "enabled": true,
       "power": 8
     },
-    "selectedLightIndex": 16,
+    "selectedLightIndex": 22,
     "ceilingLights": [
       {
         "trackId": "back",
@@ -654,10 +693,10 @@
         "roomIndex": 0
       },
       {
-        "trackId": "left",
-        "trackPosition": 0.2087,
-        "yaw": -90,
-        "pitch": -62.84,
+        "trackId": "back",
+        "trackPosition": 0.808,
+        "yaw": -180,
+        "pitch": -57.23,
         "power": 105,
         "color": "#fff4e8",
         "angle": 30,
@@ -707,7 +746,7 @@
         "trackId": "right",
         "trackPosition": 0.326,
         "yaw": 90,
-        "pitch": -62.84,
+        "pitch": -63.29,
         "power": 105,
         "color": "#fff4e8",
         "angle": 30,
@@ -754,16 +793,6 @@
         "roomIndex": 0
       },
       {
-        "trackId": "left",
-        "trackPosition": 0.4711,
-        "yaw": -90,
-        "pitch": -59.45,
-        "power": 105,
-        "color": "#fff4e8",
-        "angle": 30,
-        "roomIndex": 1
-      },
-      {
         "trackId": "back",
         "trackPosition": 0.9221,
         "yaw": 180,
@@ -787,7 +816,7 @@
         "trackId": "right",
         "trackPosition": 0.1271,
         "yaw": 90,
-        "pitch": -62.84,
+        "pitch": -63.29,
         "power": 105,
         "color": "#fff4e8",
         "angle": 30,
@@ -812,6 +841,26 @@
         "color": "#a805ff",
         "angle": 30,
         "roomIndex": 2
+      },
+      {
+        "trackId": "left",
+        "trackPosition": 0.318,
+        "yaw": -90,
+        "pitch": -59.45,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
+      },
+      {
+        "trackId": "right",
+        "trackPosition": 0.6111,
+        "yaw": 90,
+        "pitch": -61.24,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 1
       }
     ]
   }

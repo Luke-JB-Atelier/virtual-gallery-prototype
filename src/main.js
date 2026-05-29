@@ -679,8 +679,76 @@ const pedestalTopMaterial = new THREE.MeshStandardMaterial({
 const pedestalSelectionMaterial = new THREE.MeshBasicMaterial({
   color: 0xffd46a,
   transparent: true,
-  opacity: 0.82,
+  opacity: 0.42,
   depthWrite: false,
+  wireframe: true,
+});
+
+function createFlatCapTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#2c2d2d';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = 0; i < 2600; i += 1) {
+    const shade = 30 + Math.floor(Math.random() * 45);
+    ctx.fillStyle = `rgba(${shade}, ${shade}, ${shade}, 0.22)`;
+    ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 1.2, 1.2);
+  }
+
+  ctx.lineWidth = 1.15;
+  for (let x = -256; x < canvas.width * 2; x += 12) {
+    ctx.strokeStyle = 'rgba(210, 210, 205, 0.07)';
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x + 256, 256);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)';
+    ctx.beginPath();
+    ctx.moveTo(x + 6, 0);
+    ctx.lineTo(x + 262, 256);
+    ctx.stroke();
+  }
+
+  for (let x = 0; x < canvas.width * 2; x += 12) {
+    ctx.strokeStyle = 'rgba(185, 185, 180, 0.055)';
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x - 256, 256);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(1.35, 1.35);
+  texture.anisotropy = 4;
+  return texture;
+}
+
+const flatCapTexture = createFlatCapTexture();
+const flatCapMaterial = new THREE.MeshStandardMaterial({
+  color: 0x4a4b49,
+  map: flatCapTexture,
+  bumpMap: flatCapTexture,
+  bumpScale: 0.018,
+  roughness: 0.96,
+  metalness: 0,
+});
+const flatCapInsideMaterial = new THREE.MeshStandardMaterial({
+  color: 0x070707,
+  roughness: 0.9,
+  metalness: 0,
+  side: THREE.DoubleSide,
+});
+const capCoinMaterial = new THREE.MeshStandardMaterial({
+  color: 0xc79b42,
+  roughness: 0.28,
+  metalness: 0.72,
 });
 
 function createSpeakerWoodTexture() {
@@ -854,6 +922,74 @@ function addEntrancePedestal() {
   return pedestal;
 }
 
+function createFlatCapContent(pedestalWidth, pedestalDepth, pedestalHeight, content = {}) {
+  const cap = new THREE.Group();
+  const scale = THREE.MathUtils.clamp(Number(content.scale) || 1, 0.55, 1.4);
+  const capRadius = Math.min(pedestalWidth, pedestalDepth) * 0.28 * scale;
+  const topY = pedestalHeight + 0.026;
+  cap.position.set(
+    Number.isFinite(content.offsetX) ? content.offsetX : 0,
+    topY,
+    Number.isFinite(content.offsetZ) ? content.offsetZ : 0,
+  );
+  cap.rotation.y = Number.isFinite(content.rotationY) ? content.rotationY : 0;
+
+  const side = new THREE.Mesh(
+    new THREE.CylinderGeometry(capRadius * 1.08, capRadius * 1.28, capRadius * 0.34, 36, 1, true),
+    flatCapMaterial,
+  );
+  side.position.y = capRadius * 0.16;
+  side.scale.z = 0.72;
+
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(capRadius * 1.15, capRadius * 0.075, 10, 44), flatCapMaterial);
+  rim.position.y = capRadius * 0.34;
+  rim.rotation.x = Math.PI / 2;
+  rim.scale.z = 0.72;
+
+  const inside = new THREE.Mesh(new THREE.CircleGeometry(capRadius * 1.02, 36), flatCapInsideMaterial);
+  inside.position.y = capRadius * 0.325;
+  inside.rotation.x = -Math.PI / 2;
+  inside.scale.z = 0.68;
+
+  const crown = new THREE.Mesh(
+    new THREE.SphereGeometry(capRadius * 0.92, 32, 10, 0, Math.PI * 2, 0, Math.PI * 0.5),
+    flatCapMaterial,
+  );
+  crown.position.set(0, capRadius * 0.32, -capRadius * 0.04);
+  crown.scale.set(1.22, 0.18, 0.82);
+
+  const visor = new THREE.Mesh(new THREE.SphereGeometry(capRadius * 0.72, 24, 8), flatCapMaterial);
+  visor.position.set(0, capRadius * 0.18, capRadius * 0.82);
+  visor.scale.set(0.9, 0.08, 0.28);
+  visor.rotation.x = -0.16;
+
+  const button = new THREE.Mesh(new THREE.CylinderGeometry(capRadius * 0.09, capRadius * 0.11, capRadius * 0.035, 18), flatCapMaterial);
+  button.position.set(0, capRadius * 0.46, -capRadius * 0.03);
+
+  cap.add(side, rim, inside, crown, visor, button);
+
+  [
+    [-0.16, 0.1, 0.1],
+    [0.07, -0.02, -0.28],
+    [0.2, 0.08, 0.28],
+  ].forEach(([coinX, coinZ, rotation], index) => {
+    const coin = new THREE.Mesh(new THREE.CylinderGeometry(capRadius * 0.105, capRadius * 0.105, capRadius * 0.018, 24), capCoinMaterial);
+    coin.position.set(capRadius * coinX, capRadius * 0.36 + index * capRadius * 0.012, capRadius * coinZ);
+    coin.rotation.set(Math.PI / 2 + 0.08 * index, rotation, 0.18 * index);
+    coin.castShadow = true;
+    coin.receiveShadow = true;
+    cap.add(coin);
+  });
+
+  cap.children.forEach((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+  });
+
+  return cap;
+}
+
 function createDisplayPedestal({
   x = 2.2,
   z = roomDepth / 2 - 1.05,
@@ -907,6 +1043,10 @@ function createDisplayPedestal({
     part.castShadow = true;
     part.receiveShadow = true;
   });
+
+  if (content?.type === 'flat-cap') {
+    group.add(createFlatCapContent(width, depth, height, content));
+  }
 
   const selection = new THREE.Mesh(
     new THREE.BoxGeometry(width * 1.18, height + 0.04, depth * 1.18),
@@ -3177,7 +3317,8 @@ function syncPedestalPanel() {
 
 function updatePedestalSelection() {
   displayPedestals.forEach((pedestalData) => {
-    pedestalData.selection.visible = pedestalData === selectedPedestal;
+    pedestalData.selection.visible = pedestalData === selectedPedestal
+      && (movingSelectedPedestal || pedestalPanel.classList.contains('visible'));
   });
 }
 
