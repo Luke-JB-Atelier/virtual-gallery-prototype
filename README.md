@@ -36,3 +36,9 @@ Tlacitko `Ulozit galerii` uklada rozmisteni do `localStorage` v aktualnim prohli
 ## GitHub Pages
 
 Repozitar obsahuje workflow `.github/workflows/deploy.yml`, ktere po pushi do vetve `main` sestavi projekt a publikuje `dist` na GitHub Pages.
+
+Verejna beta:
+
+```text
+https://lukasjanbalek-bit.github.io/virtual-gallery-prototype/
+```
