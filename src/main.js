@@ -74,6 +74,8 @@ const textPanelTextInput = document.querySelector('#text-panel-text');
 const textPanelWidthCmInput = document.querySelector('#text-panel-width-cm');
 const textPanelHeightCmInput = document.querySelector('#text-panel-height-cm');
 const textPanelFontSizeInput = document.querySelector('#text-panel-font-size');
+const textPanelFontWeightInput = document.querySelector('#text-panel-font-weight');
+const textPanelAlignInput = document.querySelector('#text-panel-align');
 const textPanelBgColorInput = document.querySelector('#text-panel-bg-color');
 const textPanelTextColorInput = document.querySelector('#text-panel-text-color');
 const toggleAudioEditor = document.querySelector('#toggle-audio-editor');
@@ -1509,6 +1511,8 @@ function serializeGalleryState() {
       bgColor: textPanelData.bgColor ?? '#f7f4ea',
       textColor: textPanelData.textColor ?? '#111315',
       fontSize: Number((textPanelData.fontSize ?? 50).toFixed(2)),
+      fontWeight: Number((textPanelData.fontWeight ?? 850).toFixed(0)),
+      textAlign: textPanelData.textAlign ?? 'center',
       wallNormal: textPanelData.wallNormal?.toArray().map((value) => Number(value.toFixed(4))) ?? null,
     })),
   };
@@ -1670,14 +1674,14 @@ function updateArtworkLabel(paintingData) {
   ctx.textAlign = 'left';
   const paddingX = 58;
   const maxTextWidth = labelCanvas.width - paddingX * 2;
-  const titleSize = fitLabelText(ctx, title, maxTextWidth, 54, 34, 800);
-  ctx.font = `800 ${titleSize}px Arial, Helvetica, sans-serif`;
+  const titleSize = fitLabelText(ctx, title, maxTextWidth, 56, 36, 900);
+  ctx.font = `900 ${titleSize}px Arial, Helvetica, sans-serif`;
   ctx.fillText(title, paddingX, 48);
 
   ctx.fillStyle = '#101214';
   details.forEach((line, index) => {
-    const lineSize = fitLabelText(ctx, line, maxTextWidth, 45, 31, 800);
-    ctx.font = `800 ${lineSize}px Arial, Helvetica, sans-serif`;
+    const lineSize = fitLabelText(ctx, line, maxTextWidth, 47, 33, 900);
+    ctx.font = `900 ${lineSize}px Arial, Helvetica, sans-serif`;
     ctx.fillText(line, paddingX, 138 + index * 70);
   });
 
@@ -1722,7 +1726,9 @@ function redrawTextPanel(textPanelData) {
   const text = textPanelData.text?.trim() || 'Textová tabulka';
   const bgColor = textPanelData.bgColor || '#f7f4ea';
   const textColor = textPanelData.textColor || '#111315';
-  const fontSize = THREE.MathUtils.clamp(Number(textPanelData.fontSize ?? 50), 24, 96);
+  const fontSize = THREE.MathUtils.clamp(Number(textPanelData.fontSize ?? 58), 24, 136);
+  const fontWeight = THREE.MathUtils.clamp(Number(textPanelData.fontWeight ?? 850), 500, 1000);
+  const textAlign = ['left', 'center', 'right'].includes(textPanelData.textAlign) ? textPanelData.textAlign : 'center';
   const paddingX = 56;
   const paddingY = 44;
   const maxTextWidth = labelCanvas.width - paddingX * 2;
@@ -1731,7 +1737,7 @@ function redrawTextPanel(textPanelData) {
   let lines = [];
 
   do {
-    ctx.font = `800 ${resolvedFontSize}px Arial, Helvetica, sans-serif`;
+    ctx.font = `${fontWeight} ${resolvedFontSize}px Arial, Helvetica, sans-serif`;
     lines = wrapCanvasText(ctx, text, maxTextWidth);
     if (lines.length * resolvedFontSize * 1.28 <= maxTextHeight || resolvedFontSize <= 24) break;
     resolvedFontSize -= 2;
@@ -1746,12 +1752,17 @@ function redrawTextPanel(textPanelData) {
 
   ctx.fillStyle = textColor;
   ctx.textBaseline = 'top';
-  ctx.textAlign = 'left';
-  ctx.font = `800 ${resolvedFontSize}px Arial, Helvetica, sans-serif`;
+  ctx.textAlign = textAlign;
+  ctx.font = `${fontWeight} ${resolvedFontSize}px Arial, Helvetica, sans-serif`;
   const lineHeight = resolvedFontSize * 1.28;
   const startY = Math.max(paddingY, (labelCanvas.height - lines.length * lineHeight) / 2);
+  const textX = textAlign === 'left'
+    ? paddingX
+    : textAlign === 'right'
+      ? labelCanvas.width - paddingX
+      : labelCanvas.width / 2;
   lines.forEach((line, index) => {
-    ctx.fillText(line, paddingX, startY + index * lineHeight);
+    ctx.fillText(line, textX, startY + index * lineHeight);
   });
 
   texture.needsUpdate = true;
@@ -1791,7 +1802,9 @@ function createTextPanel({
   text = 'Textová tabulka',
   bgColor = '#f7f4ea',
   textColor = '#111315',
-  fontSize = 50,
+  fontSize = 58,
+  fontWeight = 850,
+  textAlign = 'center',
   wallNormal = null,
 } = {}) {
   const labelCanvas = document.createElement('canvas');
@@ -1837,6 +1850,8 @@ function createTextPanel({
     bgColor,
     textColor,
     fontSize,
+    fontWeight,
+    textAlign,
     wallNormal,
   };
   updateTextPanelGeometry(textPanelData);
@@ -2208,7 +2223,9 @@ function addSavedTextPanels() {
       text: typeof config.text === 'string' ? config.text : 'Textová tabulka',
       bgColor: typeof config.bgColor === 'string' ? config.bgColor : '#f7f4ea',
       textColor: typeof config.textColor === 'string' ? config.textColor : '#111315',
-      fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 50,
+      fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 58,
+      fontWeight: Number.isFinite(config.fontWeight) ? config.fontWeight : 850,
+      textAlign: ['left', 'center', 'right'].includes(config.textAlign) ? config.textAlign : 'center',
       wallNormal: Array.isArray(config.wallNormal) && config.wallNormal.length === 3
         ? new THREE.Vector3(...config.wallNormal)
         : null,
@@ -2952,7 +2969,9 @@ function syncTextPanelPanel() {
   textPanelTextInput.value = selectedTextPanel.text ?? '';
   textPanelWidthCmInput.value = String(Math.round(selectedTextPanel.width * centimetersPerMeter));
   textPanelHeightCmInput.value = String(Math.round(selectedTextPanel.height * centimetersPerMeter));
-  textPanelFontSizeInput.value = String(Math.round(selectedTextPanel.fontSize ?? 50));
+  textPanelFontSizeInput.value = String(Math.round(selectedTextPanel.fontSize ?? 58));
+  textPanelFontWeightInput.value = String(Math.round(selectedTextPanel.fontWeight ?? 850));
+  textPanelAlignInput.value = selectedTextPanel.textAlign ?? 'center';
   textPanelBgColorInput.value = selectedTextPanel.bgColor ?? '#f7f4ea';
   textPanelTextColorInput.value = selectedTextPanel.textColor ?? '#111315';
 }
@@ -2982,6 +3001,8 @@ function addTextPanelFromWall() {
     bgColor: textPanelBgColorInput.value,
     textColor: textPanelTextColorInput.value,
     fontSize: Number(textPanelFontSizeInput.value),
+    fontWeight: Number(textPanelFontWeightInput.value),
+    textAlign: textPanelAlignInput.value,
     wallNormal: placement.normal.clone(),
   });
   movingSelectedTextPanel = false;
@@ -3025,6 +3046,8 @@ function updateSelectedTextPanel() {
   selectedTextPanel.bgColor = textPanelBgColorInput.value;
   selectedTextPanel.textColor = textPanelTextColorInput.value;
   selectedTextPanel.fontSize = Number(textPanelFontSizeInput.value);
+  selectedTextPanel.fontWeight = Number(textPanelFontWeightInput.value);
+  selectedTextPanel.textAlign = textPanelAlignInput.value;
   updateTextPanelGeometry(selectedTextPanel);
   redrawTextPanel(selectedTextPanel);
 }
@@ -3594,6 +3617,8 @@ removeTextPanelButton.addEventListener('click', removeSelectedTextPanel);
   textPanelWidthCmInput,
   textPanelHeightCmInput,
   textPanelFontSizeInput,
+  textPanelFontWeightInput,
+  textPanelAlignInput,
   textPanelBgColorInput,
   textPanelTextColorInput,
 ].forEach((input) => {

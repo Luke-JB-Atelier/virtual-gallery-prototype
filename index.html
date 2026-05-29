@@ -102,7 +102,13 @@
           <label>Text <textarea id="text-panel-text" rows="4" placeholder="Napiš text na tabulku"></textarea></label>
           <label>Šířka (cm) <input id="text-panel-width-cm" type="number" min="20" max="260" step="1" value="120" /></label>
           <label>Výška (cm) <input id="text-panel-height-cm" type="number" min="12" max="160" step="1" value="38" /></label>
-          <label>Velikost písma <input id="text-panel-font-size" type="range" min="24" max="96" step="1" value="50" /></label>
+          <label>Velikost písma <input id="text-panel-font-size" type="range" min="24" max="136" step="1" value="58" /></label>
+          <label>Síla písma <input id="text-panel-font-weight" type="range" min="500" max="1000" step="50" value="850" /></label>
+          <label>Zarovnání <select id="text-panel-align">
+            <option value="left">vlevo</option>
+            <option value="center" selected>na střed</option>
+            <option value="right">vpravo</option>
+          </select></label>
           <label>Barva tabulky <input id="text-panel-bg-color" type="color" value="#f7f4ea" /></label>
           <label>Barva písma <input id="text-panel-text-color" type="color" value="#111315" /></label>
         </div>
