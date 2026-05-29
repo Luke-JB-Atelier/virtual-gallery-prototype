@@ -374,10 +374,13 @@ const doorway = {
 };
 const corridorLength = 1.15;
 const roomStep = roomDepth + corridorLength;
+const sideRoomStep = roomWidth + corridorLength;
 const galleryRooms = [
   { id: 'main', centerX: 0, centerZ: 0, hasBackDoor: false, hasFrontDoor: true },
-  { id: 'room-2', centerX: 0, centerZ: roomStep, hasBackDoor: true, hasFrontDoor: true },
+  { id: 'room-2', centerX: 0, centerZ: roomStep, hasBackDoor: true, hasFrontDoor: true, hasLeftDoor: true },
   { id: 'room-3', centerX: 0, centerZ: roomStep * 2, hasBackDoor: true, hasFrontDoor: false },
+  { id: 'future-1', centerX: -sideRoomStep, centerZ: roomStep, hasRightDoor: true, hasLeftDoor: true },
+  { id: 'future-2', centerX: -sideRoomStep * 2, centerZ: roomStep, hasRightDoor: true },
 ];
 
 function addRoomFloorAndCeiling(centerX, centerZ) {
@@ -428,10 +431,16 @@ function addBarrelVault(centerZ) {
   room.add(vault);
 }
 
-function addCorridorFloorAndCeiling(centerZ) {
-  const floorMesh = plane(doorway.width, corridorLength, floorMaterial, [0, 0, centerZ], [-Math.PI / 2, 0, 0], 8);
+function addCorridorFloorAndCeiling(centerX, centerZ) {
+  const floorMesh = plane(doorway.width, corridorLength, floorMaterial, [centerX, 0, centerZ], [-Math.PI / 2, 0, 0], 8);
   addFloorEdgeDarkening(floorMesh);
   addBarrelVault(centerZ);
+}
+
+function addSideCorridorFloorAndCeiling(centerX, centerZ) {
+  const floorMesh = plane(corridorLength, doorway.width, floorMaterial, [centerX, 0, centerZ], [-Math.PI / 2, 0, Math.PI / 2], 8);
+  addFloorEdgeDarkening(floorMesh);
+  plane(corridorLength, doorway.width, ceilingMaterial, [centerX, roomHeight, centerZ], [Math.PI / 2, 0, Math.PI / 2]);
 }
 
 function addWall(width, height, position, rotation, segments = 18) {
@@ -471,7 +480,7 @@ function addWallTrim(length, position, rotationY) {
   return trim;
 }
 
-function addArchedDoorHeader(z) {
+function addArchedDoorHeader(z, centerX = 0) {
   const halfWidth = doorway.width / 2;
   const springY = doorway.height;
   const archSegments = 36;
@@ -481,10 +490,10 @@ function addArchedDoorHeader(z) {
 
   for (let i = 0; i <= archSegments; i += 1) {
     const theta = Math.PI - (i / archSegments) * Math.PI;
-    const x = Math.cos(theta) * halfWidth;
+    const x = centerX + Math.cos(theta) * halfWidth;
     const archY = springY + Math.sin(theta) * halfWidth;
     vertices.push(x, archY, z, x, roomHeight, z);
-    uvs.push((x + halfWidth) / doorway.width, archY / roomHeight, (x + halfWidth) / doorway.width, 1);
+    uvs.push((x - centerX + halfWidth) / doorway.width, archY / roomHeight, (x - centerX + halfWidth) / doorway.width, 1);
   }
 
   for (let i = 0; i < archSegments; i += 1) {
@@ -510,6 +519,8 @@ galleryRooms.forEach(({ centerX, centerZ }) => addRoomFloorAndCeiling(centerX, c
 
 const x0 = -roomWidth / 2;
 const x1 = roomWidth / 2;
+const galleryMinX = Math.min(...galleryRooms.map(({ centerX }) => centerX - roomWidth / 2));
+const galleryMaxX = Math.max(...galleryRooms.map(({ centerX }) => centerX + roomWidth / 2));
 const galleryMinZ = -roomDepth / 2;
 const galleryMaxZ = roomStep * 2 + roomDepth / 2;
 const doorTopHeight = roomHeight - doorway.height;
@@ -517,39 +528,63 @@ const doorTopCenterY = doorway.height + doorTopHeight / 2;
 const doorLeftX = -doorway.width / 2;
 const doorRightX = doorway.width / 2;
 
-function addDoorWall(z) {
-  addWallSegment(x0, z, doorLeftX, z);
-  addWallSegment(doorRightX, z, x1, z);
-  addArchedDoorHeader(z);
+function addDoorWallZ(centerX, z) {
+  addWallSegment(centerX + x0, z, centerX + doorLeftX, z);
+  addWallSegment(centerX + doorRightX, z, centerX + x1, z);
+  addArchedDoorHeader(z, centerX);
 }
 
-function addSolidRoomWall(z, rotationY) {
-  addWall(roomWidth, roomHeight, [0, roomHeight / 2, z], [0, rotationY, 0], 18);
-  addWallTrim(roomWidth, [0, 0.035, z], rotationY);
-  addWallTrim(roomWidth, [0, roomHeight - 0.035, z], rotationY);
-}
-
-function addRectangularRoomWalls(centerZ, hasBackDoor, hasFrontDoor) {
+function addDoorWallX(x, centerZ) {
   const backZ = centerZ - roomDepth / 2;
   const frontZ = centerZ + roomDepth / 2;
+  addWallSegment(x, backZ, x, centerZ - doorway.width / 2);
+  addWallSegment(x, centerZ + doorway.width / 2, x, frontZ);
+  addWallSegment(x, centerZ - doorway.width / 2, x, centerZ + doorway.width / 2, doorTopHeight, doorTopCenterY);
+}
+
+function addSolidRoomWallZ(centerX, z, rotationY) {
+  addWall(roomWidth, roomHeight, [centerX, roomHeight / 2, z], [0, rotationY, 0], 18);
+  addWallTrim(roomWidth, [centerX, 0.035, z], rotationY);
+  addWallTrim(roomWidth, [centerX, roomHeight - 0.035, z], rotationY);
+}
+
+function addRectangularRoomWalls({ centerX, centerZ, hasBackDoor = false, hasFrontDoor = false, hasLeftDoor = false, hasRightDoor = false }) {
+  const backZ = centerZ - roomDepth / 2;
+  const frontZ = centerZ + roomDepth / 2;
+  const leftX = centerX - roomWidth / 2;
+  const rightX = centerX + roomWidth / 2;
   if (hasBackDoor) {
-    addDoorWall(backZ);
+    addDoorWallZ(centerX, backZ);
   } else {
-    addSolidRoomWall(backZ, 0);
+    addSolidRoomWallZ(centerX, backZ, 0);
   }
   if (hasFrontDoor) {
-    addDoorWall(frontZ);
+    addDoorWallZ(centerX, frontZ);
   } else {
-    addSolidRoomWall(frontZ, Math.PI);
+    addSolidRoomWallZ(centerX, frontZ, Math.PI);
   }
-  addWallSegment(x0, backZ, x0, frontZ);
-  addWallSegment(x1, backZ, x1, frontZ);
+  if (hasLeftDoor) {
+    addDoorWallX(leftX, centerZ);
+  } else {
+    addWallSegment(leftX, backZ, leftX, frontZ);
+  }
+  if (hasRightDoor) {
+    addDoorWallX(rightX, centerZ);
+  } else {
+    addWallSegment(rightX, backZ, rightX, frontZ);
+  }
 }
 
 function addCorridorWalls(startZ, endZ) {
-  addCorridorFloorAndCeiling((startZ + endZ) / 2);
+  addCorridorFloorAndCeiling(0, (startZ + endZ) / 2);
   addWallSegment(doorLeftX, startZ, doorLeftX, endZ, doorway.height, doorway.height / 2, { floorTrim: false, ceilingTrim: false });
   addWallSegment(doorRightX, startZ, doorRightX, endZ, doorway.height, doorway.height / 2, { floorTrim: false, ceilingTrim: false });
+}
+
+function addSideCorridorWalls(startX, endX, centerZ) {
+  addSideCorridorFloorAndCeiling((startX + endX) / 2, centerZ);
+  addWallSegment(startX, centerZ - doorway.width / 2, endX, centerZ - doorway.width / 2, doorway.height, doorway.height / 2, { floorTrim: false, ceilingTrim: false });
+  addWallSegment(startX, centerZ + doorway.width / 2, endX, centerZ + doorway.width / 2, doorway.height, doorway.height / 2, { floorTrim: false, ceilingTrim: false });
 }
 
 const pedestalBodyMaterial = new THREE.MeshStandardMaterial({
@@ -703,14 +738,13 @@ function createSpeakerFixture(position, target) {
 }
 
 function addCornerSpeakers() {
-  const roomCenters = [0, roomStep, roomStep * 2];
-  roomCenters.forEach((centerZ) => {
-    const target = new THREE.Vector3(0, 1.48, centerZ);
+  galleryRooms.forEach(({ centerX, centerZ }) => {
+    const target = new THREE.Vector3(centerX, 1.48, centerZ);
     const cornerX = roomWidth / 2 - 0.16;
     const cornerZ = roomDepth / 2 - 0.18;
     [
-      new THREE.Vector3(cornerX, roomHeight - 0.34, centerZ - cornerZ),
-      new THREE.Vector3(-cornerX, roomHeight - 0.34, centerZ + cornerZ),
+      new THREE.Vector3(centerX + cornerX, roomHeight - 0.34, centerZ - cornerZ),
+      new THREE.Vector3(centerX - cornerX, roomHeight - 0.34, centerZ + cornerZ),
     ].forEach((position) => createSpeakerFixture(position, target));
   });
 }
@@ -822,12 +856,76 @@ function createDisplayPedestal({
   return pedestalData;
 }
 
-// Three rectangular rooms connected by short centered passages behind the start.
-addRectangularRoomWalls(0, false, true);
+const barrierPostMaterial = new THREE.MeshStandardMaterial({
+  color: 0x151515,
+  roughness: 0.72,
+  metalness: 0.12,
+});
+const barrierTapeMaterial = new THREE.MeshBasicMaterial({ color: 0xded7c8 });
+const barrierStripeMaterial = new THREE.MeshBasicMaterial({ color: 0xb72622 });
+
+function addFutureWingBarrier() {
+  const group = new THREE.Group();
+  group.position.set(x0 - 0.16, 0, roomStep);
+
+  [-0.56, 0.56].forEach((z) => {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.12, 18), barrierPostMaterial);
+    post.position.set(0, 0.56, z);
+    post.castShadow = true;
+    post.receiveShadow = true;
+    group.add(post);
+  });
+
+  [0.92, 1.16].forEach((y, rowIndex) => {
+    const tape = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.07, doorway.width * 0.9), barrierTapeMaterial);
+    tape.position.set(0, y, 0);
+    group.add(tape);
+    for (let i = -4; i <= 4; i += 1) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.076, 0.095), barrierStripeMaterial);
+      stripe.position.set(0.002, y, i * 0.16 + (rowIndex ? 0.06 : 0));
+      stripe.rotation.x = THREE.MathUtils.degToRad(24);
+      group.add(stripe);
+    }
+  });
+
+  const signCanvas = document.createElement('canvas');
+  signCanvas.width = 512;
+  signCanvas.height = 180;
+  const ctx = signCanvas.getContext('2d');
+  ctx.fillStyle = '#f7f4ea';
+  ctx.fillRect(0, 0, signCanvas.width, signCanvas.height);
+  ctx.strokeStyle = '#1b1b1b';
+  ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, signCanvas.width - 10, signCanvas.height - 10);
+  ctx.fillStyle = '#151515';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '900 54px Arial, Helvetica, sans-serif';
+  ctx.fillText('PŘIPRAVUJEME', signCanvas.width / 2, signCanvas.height / 2);
+  const signTexture = new THREE.CanvasTexture(signCanvas);
+  signTexture.colorSpace = THREE.SRGBColorSpace;
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.98, 0.35),
+    new THREE.MeshBasicMaterial({ map: signTexture, side: THREE.DoubleSide, toneMapped: false }),
+  );
+  sign.position.set(-0.02, 1.48, 0);
+  sign.rotation.y = Math.PI / 2;
+  group.add(sign);
+
+  room.add(group);
+}
+
+// Three main rooms plus a closed future wing connected from the middle room.
+addRectangularRoomWalls(galleryRooms[0]);
 addCorridorWalls(roomDepth / 2, roomStep - roomDepth / 2);
-addRectangularRoomWalls(roomStep, true, true);
+addRectangularRoomWalls(galleryRooms[1]);
 addCorridorWalls(roomStep + roomDepth / 2, roomStep * 2 - roomDepth / 2);
-addRectangularRoomWalls(roomStep * 2, true, false);
+addRectangularRoomWalls(galleryRooms[2]);
+addSideCorridorWalls(-sideRoomStep + roomWidth / 2, -roomWidth / 2, roomStep);
+addRectangularRoomWalls(galleryRooms[3]);
+addSideCorridorWalls(-sideRoomStep * 2 + roomWidth / 2, -sideRoomStep - roomWidth / 2, roomStep);
+addRectangularRoomWalls(galleryRooms[4]);
+addFutureWingBarrier();
 addCornerSpeakers();
 
 const navigationSpaces = [
@@ -836,6 +934,12 @@ const navigationSpaces = [
   { minX: x0, maxX: x1, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
   { minX: doorLeftX, maxX: doorRightX, minZ: roomStep + roomDepth / 2, maxZ: roomStep * 2 - roomDepth / 2, isConnector: true },
   { minX: x0, maxX: x1, minZ: roomStep * 2 - roomDepth / 2, maxZ: galleryMaxZ, padZMin: 0, padZMax: 1 },
+  ...(editorMode ? [
+    { minX: -sideRoomStep + roomWidth / 2, maxX: x0, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
+    { minX: -sideRoomStep - roomWidth / 2, maxX: -sideRoomStep + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
+    { minX: -sideRoomStep * 2 + roomWidth / 2, maxX: -sideRoomStep - roomWidth / 2, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
+    { minX: -sideRoomStep * 2 - roomWidth / 2, maxX: -sideRoomStep * 2 + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
+  ] : []),
 ];
 
 function getNavigationBounds(space, margin) {
@@ -891,17 +995,18 @@ function constrainToGallery(position, margin, previousPosition) {
 scene.add(new THREE.AmbientLight(0xf4f7ff, 0.24));
 scene.add(new THREE.HemisphereLight(0x6f86a3, 0x241014, 0.22));
 
-function addRoomNavigationLight(centerZ) {
+function addRoomNavigationLight(centerX, centerZ) {
   const fill = new THREE.PointLight(0x6f8195, 2.8, roomDepth * 1.45, 1.05);
-  fill.position.set(0, roomHeight * 0.52, centerZ);
+  fill.position.set(centerX, roomHeight * 0.52, centerZ);
   fill.castShadow = false;
   scene.add(fill);
   return fill;
 }
 
-const navigationFillLights = galleryRooms.map(({ centerZ }) => ({
+const navigationFillLights = galleryRooms.map(({ centerX, centerZ }) => ({
+  centerX,
   centerZ,
-  light: addRoomNavigationLight(centerZ),
+  light: addRoomNavigationLight(centerX, centerZ),
 }));
 
 const roomLightState = {
@@ -958,48 +1063,55 @@ const roomLight = new THREE.PointLight(0xfff4e8, 0, 11, 1.25);
 roomLight.position.set(0, roomHeight - 0.28, 0);
 scene.add(roomLight);
 
-function addRoomLightPanel(centerZ) {
+function addRoomLightPanel(centerX, centerZ) {
   const panelMaterial = roomLightPanelMaterial.clone();
   panelMaterial.color.set(0x15120d);
   const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 1.05), panelMaterial);
-  panel.position.set(0, roomHeight - 0.075, centerZ);
+  panel.position.set(centerX, roomHeight - 0.075, centerZ);
   panel.rotation.x = Math.PI / 2;
   room.add(panel);
 
   const frame = new THREE.Group();
   frameParts.forEach(({ size, position }) => {
     const framePart = new THREE.Mesh(new THREE.BoxGeometry(...size), roomLightFrameMaterial);
-    framePart.position.set(position[0], position[1], position[2] + centerZ);
+    framePart.position.set(position[0] + centerX, position[1], position[2] + centerZ);
     frame.add(framePart);
   });
   room.add(frame);
 
   const light = new THREE.PointLight(0xfff4e8, 0, 11, 1.25);
-  light.position.set(0, roomHeight - 0.28, centerZ);
+  light.position.set(centerX, roomHeight - 0.28, centerZ);
   scene.add(light);
 
   return {
+    centerX,
     centerZ,
+    minX: centerX - roomWidth / 2 - corridorLength,
+    maxX: centerX + roomWidth / 2 + corridorLength,
     minZ: centerZ - roomDepth / 2 - corridorLength,
-    maxZ: centerZ + roomDepth / 2,
+    maxZ: centerZ + roomDepth / 2 + corridorLength,
     panelMaterial,
     light,
     currentPower: 0,
   };
 }
 
-const autoRoomLights = [
-  {
-    centerZ: 0,
-    minZ: galleryMinZ,
-    maxZ: roomDepth / 2,
-    panelMaterial: roomLightPanelMaterial,
-    light: roomLight,
-    currentPower: 0,
-  },
-  addRoomLightPanel(roomStep),
-  addRoomLightPanel(roomStep * 2),
-];
+const autoRoomLights = galleryRooms.map(({ centerX, centerZ }, index) => {
+  if (index === 0) {
+    return {
+      centerX,
+      centerZ,
+      minX: centerX - roomWidth / 2 - corridorLength,
+      maxX: centerX + roomWidth / 2 + corridorLength,
+      minZ: centerZ - roomDepth / 2 - corridorLength,
+      maxZ: centerZ + roomDepth / 2 + corridorLength,
+      panelMaterial: roomLightPanelMaterial,
+      light: roomLight,
+      currentPower: 0,
+    };
+  }
+  return addRoomLightPanel(centerX, centerZ);
+});
 const roomLightSwitches = [];
 const roomLightSwitchMaterial = new THREE.MeshStandardMaterial({
   color: 0xd8d0bf,
@@ -1185,11 +1297,12 @@ const trackSpecs = {
 
 function getTrackPosition(trackId, trackPosition, roomIndex = 0) {
   const spec = trackSpecs[trackId] ?? trackSpecs.back;
+  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
   const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
   const t = THREE.MathUtils.clamp(trackPosition, 0, 1);
   const along = THREE.MathUtils.lerp(spec.min, spec.max, t);
   return new THREE.Vector3(
-    spec.axis === 'x' ? along : spec.fixed,
+    spec.axis === 'x' ? centerX + along : centerX + spec.fixed,
     roomHeight - 0.14,
     spec.axis === 'z' ? centerZ + along : centerZ + spec.fixed,
   );
@@ -1197,29 +1310,31 @@ function getTrackPosition(trackId, trackPosition, roomIndex = 0) {
 
 function getTrackPositionRatio(trackId, position, roomIndex = 0) {
   const spec = trackSpecs[trackId] ?? trackSpecs.back;
+  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
   const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
-  const along = spec.axis === 'x' ? position.x : position.z - centerZ;
+  const along = spec.axis === 'x' ? position.x - centerX : position.z - centerZ;
   return THREE.MathUtils.clamp((along - spec.min) / (spec.max - spec.min), 0, 1);
 }
 
 function chooseTrackForTarget(targetPoint) {
-  const roomIndex = getRoomIndexForZ(targetPoint.z);
+  const roomIndex = getRoomIndexForPosition(targetPoint.x, targetPoint.z);
+  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
   const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
   const distances = [
     { id: 'back', distance: Math.abs(targetPoint.z - (centerZ - roomDepth / 2)) },
     { id: 'front', distance: Math.abs(targetPoint.z - (centerZ + roomDepth / 2)) },
-    { id: 'left', distance: Math.abs(targetPoint.x + roomWidth / 2) },
-    { id: 'right', distance: Math.abs(targetPoint.x - roomWidth / 2) },
+    { id: 'left', distance: Math.abs(targetPoint.x - (centerX - roomWidth / 2)) },
+    { id: 'right', distance: Math.abs(targetPoint.x - (centerX + roomWidth / 2)) },
   ];
   distances.sort((a, b) => a.distance - b.distance);
   return distances[0].id;
 }
 
-function getRoomIndexForZ(z) {
+function getRoomIndexForPosition(x, z) {
   let bestIndex = 0;
   let bestDistance = Infinity;
   galleryRooms.forEach((galleryRoom, index) => {
-    const distance = Math.abs(z - galleryRoom.centerZ);
+    const distance = (x - galleryRoom.centerX) ** 2 + (z - galleryRoom.centerZ) ** 2;
     if (distance < bestDistance) {
       bestDistance = distance;
       bestIndex = index;
@@ -1228,7 +1343,11 @@ function getRoomIndexForZ(z) {
   return bestIndex;
 }
 
-function createTrack(spec, centerZ = 0) {
+function getRoomIndexForZ(z) {
+  return getRoomIndexForPosition(0, z);
+}
+
+function createTrack(spec, centerX = 0, centerZ = 0) {
   const length = spec.max - spec.min;
   const geometry = spec.axis === 'x'
     ? new THREE.BoxGeometry(length, 0.035, 0.08)
@@ -1236,15 +1355,15 @@ function createTrack(spec, centerZ = 0) {
   const mesh = new THREE.Mesh(geometry, trackMaterial);
   const center = (spec.min + spec.max) / 2;
   mesh.position.set(
-    spec.axis === 'x' ? center : spec.fixed,
+    spec.axis === 'x' ? centerX + center : centerX + spec.fixed,
     trackHeight,
     spec.axis === 'z' ? centerZ + center : centerZ + spec.fixed,
   );
   room.add(mesh);
 }
 
-galleryRooms.forEach(({ centerZ }) => {
-  Object.values(trackSpecs).forEach((spec) => createTrack(spec, centerZ));
+galleryRooms.forEach(({ centerX, centerZ }) => {
+  Object.values(trackSpecs).forEach((spec) => createTrack(spec, centerX, centerZ));
 });
 
 const ceilingLights = [];
@@ -1334,7 +1453,8 @@ function createFixture() {
 }
 
 function addCeilingLight({ position, targetPoint, trackId = 'back', trackPosition, yaw = 180, pitch = -38, power = 100, color = '#fff4e8', angle = 30, roomIndex, select = true }) {
-  const resolvedRoomIndex = roomIndex ?? getRoomIndexForZ(targetPoint?.z ?? position?.z ?? 0);
+  const roomPoint = targetPoint ?? position ?? new THREE.Vector3();
+  const resolvedRoomIndex = roomIndex ?? getRoomIndexForPosition(roomPoint.x ?? 0, roomPoint.z ?? 0);
   const resolvedTrackPosition = trackPosition ?? (position ? getTrackPositionRatio(trackId, position, resolvedRoomIndex) : 0.5);
   const resolvedPosition = getTrackPosition(trackId, resolvedTrackPosition, resolvedRoomIndex);
   const direction = targetPoint ? targetPoint.clone().sub(resolvedPosition) : directionFromAngles(yaw, pitch);
@@ -1869,7 +1989,10 @@ function isValidArtworkConfig(config) {
   if (!config) return false;
   const finiteNumbers = ['x', 'y', 'z', 'ry', 'w', 'h'].every((key) => Number.isFinite(config[key]));
   if (!finiteNumbers) return false;
-  const withinGallery = config.z >= galleryMinZ - 0.2 && config.z <= galleryMaxZ + 0.2;
+  const withinGallery = config.x >= galleryMinX - 0.2
+    && config.x <= galleryMaxX + 0.2
+    && config.z >= galleryMinZ - 0.2
+    && config.z <= galleryMaxZ + 0.2;
   const sensibleSize = config.w > 0.1 && config.w < 4 && config.h > 0.1 && config.h < 3;
   return withinGallery && sensibleSize;
 }
@@ -1899,7 +2022,7 @@ function createPaintingFromConfig(config, fallbackArtwork = {}, index = 0) {
   const ry = Number.isFinite(config.ry) ? config.ry : fallbackArtwork.ry ?? 0;
   const imageSrc = config.imageSrc || fallbackArtwork.src || '';
   const paintingData = addPainting({
-    x: THREE.MathUtils.clamp(Number.isFinite(config.x) ? config.x : fallbackArtwork.x ?? 0, -roomWidth / 2 + 0.08, roomWidth / 2 - 0.08),
+    x: THREE.MathUtils.clamp(Number.isFinite(config.x) ? config.x : fallbackArtwork.x ?? 0, galleryMinX + 0.08, galleryMaxX - 0.08),
     y: THREE.MathUtils.clamp(Number.isFinite(config.y) ? config.y : 1.72, 0.75, roomHeight - 0.45),
     z: THREE.MathUtils.clamp(Number.isFinite(config.z) ? config.z : fallbackArtwork.z ?? 0, galleryMinZ, galleryMaxZ),
     ry,
@@ -2184,7 +2307,7 @@ function addSavedDisplayPedestals() {
   const savedPedestals = Array.isArray(savedGallery?.pedestals) ? savedGallery.pedestals : defaultPedestals;
   savedPedestals.filter(isValidPedestalConfig).forEach((config) => {
     createDisplayPedestal({
-      x: THREE.MathUtils.clamp(config.x, x0 + 0.35, x1 - 0.35),
+      x: THREE.MathUtils.clamp(config.x, galleryMinX + 0.35, galleryMaxX - 0.35),
       z: THREE.MathUtils.clamp(config.z, galleryMinZ + 0.35, galleryMaxZ - 0.35),
       ry: Number.isFinite(config.ry) ? config.ry : 0,
       width: config.width,
@@ -2214,7 +2337,7 @@ function addSavedTextPanels() {
   const savedTextPanels = Array.isArray(savedGallery?.textPanels) ? savedGallery.textPanels : [];
   savedTextPanels.filter(isValidTextPanelConfig).forEach((config) => {
     createTextPanel({
-      x: THREE.MathUtils.clamp(config.x, x0 + 0.08, x1 - 0.08),
+      x: THREE.MathUtils.clamp(config.x, galleryMinX + 0.08, galleryMaxX - 0.08),
       y: THREE.MathUtils.clamp(config.y, 0.45, roomHeight - 0.28),
       z: THREE.MathUtils.clamp(config.z, galleryMinZ + 0.08, galleryMaxZ - 0.08),
       ry: config.ry,
@@ -2307,7 +2430,7 @@ function getWallPlacement({ usePointer = false } = {}) {
   const onBackWall = Math.abs(hit.point.z - (roomLayout.centerZ - roomDepth / 2)) < 0.12;
   const onFrontWall = Math.abs(hit.point.z - (roomLayout.centerZ + roomDepth / 2)) < 0.12;
   const doorClearance = doorway.width / 2 + width / 2 + 0.28;
-  if (((onBackWall && roomLayout.hasBackDoor) || (onFrontWall && roomLayout.hasFrontDoor)) && Math.abs(hit.point.x) < doorClearance) {
+  if (((onBackWall && roomLayout.hasBackDoor) || (onFrontWall && roomLayout.hasFrontDoor)) && Math.abs(hit.point.x - roomLayout.centerX) < doorClearance) {
     return null;
   }
 
@@ -2553,17 +2676,18 @@ function syncPaintingSelection() {
 function getSpotPlacementForPainting(paintingData) {
   const targetPoint = paintingData.group.position.clone();
   const normal = paintingData.wallNormal ?? new THREE.Vector3(0, 0, 1).applyQuaternion(paintingData.group.quaternion);
-  const roomIndex = getRoomIndexForZ(targetPoint.z);
+  const roomIndex = getRoomIndexForPosition(targetPoint.x, targetPoint.z);
+  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
+  const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
   const trackId = chooseTrackForTarget(targetPoint);
   const trackSpec = trackSpecs[trackId] ?? trackSpecs.back;
   const position = targetPoint.clone().addScaledVector(normal, 1.35);
   position.y = roomHeight - 0.14;
   if (trackSpec.axis === 'x') {
-    position.z = (galleryRooms[roomIndex]?.centerZ ?? 0) + trackSpec.fixed;
-    position.x = THREE.MathUtils.clamp(position.x, trackSpec.min, trackSpec.max);
+    position.z = centerZ + trackSpec.fixed;
+    position.x = centerX + THREE.MathUtils.clamp(position.x - centerX, trackSpec.min, trackSpec.max);
   } else {
-    position.x = trackSpec.fixed;
-    const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
+    position.x = centerX + trackSpec.fixed;
     position.z = centerZ + THREE.MathUtils.clamp(position.z - centerZ, trackSpec.min, trackSpec.max);
   }
   const trackPosition = getTrackPositionRatio(trackId, position, roomIndex);
@@ -3248,10 +3372,51 @@ function selectEditableFromCrosshair() {
   return false;
 }
 
+const paintingActionMaxDistance = 2.2;
+
+function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        status.textContent = 'E-mail zkopírovaný';
+      })
+      .catch(() => {
+        status.textContent = text;
+      });
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand('copy');
+    status.textContent = 'E-mail zkopírovaný';
+  } catch {
+    status.textContent = text;
+  }
+  textarea.remove();
+}
+
 function openPaintingActionFromCrosshair() {
   const target = getEditableTargetFromCrosshair();
-  const actionUrl = target?.paintingData?.actionUrl?.trim();
+  const paintingData = target?.paintingData;
+  const actionUrl = paintingData?.actionUrl?.trim();
   if (!actionUrl) return false;
+  const cameraPosition = new THREE.Vector3();
+  camera.getWorldPosition(cameraPosition);
+  if (cameraPosition.distanceTo(paintingData.group.position) > paintingActionMaxDistance) {
+    status.textContent = 'Přijď blíž k obrazu';
+    return true;
+  }
+  if (actionUrl.startsWith('copy:')) {
+    copyTextToClipboard(actionUrl.slice(5));
+    return true;
+  }
   window.open(actionUrl, '_blank', 'noopener,noreferrer');
   return true;
 }
@@ -3448,17 +3613,20 @@ function addLightFromView() {
   camera.getWorldDirection(viewDirection);
 
   const targetPoint = worldPosition.add(viewDirection.multiplyScalar(4.2));
-  targetPoint.x = THREE.MathUtils.clamp(targetPoint.x, -roomWidth / 2 + 0.45, roomWidth / 2 - 0.45);
+  const roomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
+  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
+  const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
+  targetPoint.x = centerX + THREE.MathUtils.clamp(targetPoint.x - centerX, -roomWidth / 2 + 0.45, roomWidth / 2 - 0.45);
   targetPoint.y = THREE.MathUtils.clamp(targetPoint.y, 0.85, roomHeight - 0.55);
-  targetPoint.z = THREE.MathUtils.clamp(targetPoint.z, -roomDepth / 2 + 0.1, roomDepth / 2 - 0.1);
+  targetPoint.z = centerZ + THREE.MathUtils.clamp(targetPoint.z - centerZ, -roomDepth / 2 + 0.1, roomDepth / 2 - 0.1);
 
   const position = new THREE.Vector3(
-    THREE.MathUtils.clamp(targetPoint.x * 0.72, -roomWidth / 2 + 0.55, roomWidth / 2 - 0.55),
+    centerX + THREE.MathUtils.clamp((targetPoint.x - centerX) * 0.72, -roomWidth / 2 + 0.55, roomWidth / 2 - 0.55),
     roomHeight - 0.14,
-    THREE.MathUtils.clamp(targetPoint.z * 0.58, -roomDepth / 2 + 0.75, roomDepth / 2 - 0.75),
+    centerZ + THREE.MathUtils.clamp((targetPoint.z - centerZ) * 0.58, -roomDepth / 2 + 0.75, roomDepth / 2 - 0.75),
   );
   const trackId = chooseTrackForTarget(targetPoint);
-  addCeilingLight({ position, targetPoint, trackId, power: 105, roomIndex: getRoomIndexForZ(targetPoint.z) });
+  addCeilingLight({ position, targetPoint, trackId, power: 105, roomIndex });
   saveLightingState();
 }
 
@@ -4206,7 +4374,7 @@ function updateMovement(delta) {
 }
 
 function updateAutoRoomLights(delta) {
-  const currentRoomIndex = getRoomIndexForZ(body.position.z);
+  const currentRoomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
   ceilingLights.forEach((lightData) => {
     const active = Math.abs((lightData.roomIndex ?? currentRoomIndex) - currentRoomIndex) <= 0;
     if (lightData.spot.visible !== active) {
@@ -4223,7 +4391,10 @@ function updateAutoRoomLights(delta) {
   });
 
   autoRoomLights.forEach((fixture) => {
-    const playerIsNearRoom = body.position.z >= fixture.minZ && body.position.z <= fixture.maxZ;
+    const playerIsNearRoom = body.position.x >= fixture.minX
+      && body.position.x <= fixture.maxX
+      && body.position.z >= fixture.minZ
+      && body.position.z <= fixture.maxZ;
     const requestedPower = roomLightState.enabled ? roomLightState.power : 0;
     const targetPower = playerIsNearRoom ? requestedPower : 0;
     fixture.currentPower = THREE.MathUtils.lerp(fixture.currentPower, targetPower, 1 - Math.pow(0.0004, delta));
@@ -4233,11 +4404,11 @@ function updateAutoRoomLights(delta) {
 }
 
 function updateArtworkBrightness(delta) {
-  const currentRoomIndex = getRoomIndexForZ(body.position.z);
+  const currentRoomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
   editablePaintings.forEach((paintingData) => {
     const lightData = paintingData.artSpot;
-    const lightRoomIndex = lightData?.roomIndex ?? getRoomIndexForZ(paintingData.group.position.z);
-    const paintingRoomIndex = getRoomIndexForZ(paintingData.group.position.z);
+    const lightRoomIndex = lightData?.roomIndex ?? getRoomIndexForPosition(paintingData.group.position.x, paintingData.group.position.z);
+    const paintingRoomIndex = getRoomIndexForPosition(paintingData.group.position.x, paintingData.group.position.z);
     const lightIsInCurrentRoom = lightRoomIndex === currentRoomIndex && paintingRoomIndex === currentRoomIndex;
     const lightIsOn = Boolean(lightData && lightIsInCurrentRoom && (lightData.power ?? 0) > 0.5);
     const targetBrightness = lightIsOn
@@ -4304,7 +4475,7 @@ animate();
 
 window.__galleryDebug = () => ({
   bodyPosition: body.position.toArray(),
-  currentRoomIndex: getRoomIndexForZ(body.position.z),
+  currentRoomIndex: getRoomIndexForPosition(body.position.x, body.position.z),
   wallMeshes: wallMeshes.length,
   wallMaterial: {
     type: wallMaterial.type,
@@ -4316,7 +4487,10 @@ window.__galleryDebug = () => ({
   },
   autoRoomLights: autoRoomLights.map((fixture, index) => ({
     index,
+    x: fixture.centerX,
     z: fixture.centerZ,
+    minX: fixture.minX,
+    maxX: fixture.maxX,
     minZ: fixture.minZ,
     maxZ: fixture.maxZ,
     currentPower: Number(fixture.currentPower.toFixed(3)),
