@@ -133,6 +133,7 @@ body,
 #light-editor,
 #art-editor,
 #pedestal-editor,
+#text-panel-editor,
 #audio-editor {
   position: fixed;
   left: 14px;
@@ -144,6 +145,7 @@ body,
 .viewer-mode #light-editor,
 .viewer-mode #art-editor,
 .viewer-mode #pedestal-editor,
+.viewer-mode #text-panel-editor,
 .viewer-mode #audio-editor {
   display: none;
 }
@@ -161,16 +163,22 @@ body,
 }
 
 #audio-editor {
+  top: 190px;
+}
+
+#text-panel-editor {
   top: 146px;
 }
 
 #toggle-light-editor,
 #toggle-art-editor,
 #toggle-pedestal-editor,
+#toggle-text-panel-editor,
 #toggle-audio-editor,
 #light-panel button,
 #art-panel button,
-#pedestal-panel button {
+#pedestal-panel button,
+#text-panel-panel button {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 6px;
   background: rgba(12, 13, 14, 0.72);
@@ -182,16 +190,19 @@ body,
 #toggle-light-editor:hover,
 #toggle-art-editor:hover,
 #toggle-pedestal-editor:hover,
+#toggle-text-panel-editor:hover,
 #toggle-audio-editor:hover,
 #light-panel button:hover,
 #art-panel button:hover,
-#pedestal-panel button:hover {
+#pedestal-panel button:hover,
+#text-panel-panel button:hover {
   background: rgba(28, 30, 32, 0.82);
 }
 
 #light-panel,
 #art-panel,
 #pedestal-panel,
+#text-panel-panel,
 #audio-panel {
   display: none;
   width: min(270px, calc(100vw - 28px));
@@ -209,6 +220,7 @@ body,
 #light-panel.visible,
 #art-panel.visible,
 #pedestal-panel.visible,
+#text-panel-panel.visible,
 #audio-panel.visible {
   display: grid;
   gap: 8px;
@@ -217,12 +229,14 @@ body,
 #light-title,
 #art-title,
 #pedestal-title,
+#text-panel-title,
 #audio-title {
   color: rgba(255, 229, 184, 0.92);
   font-weight: 700;
 }
 
 #pedestal-status,
+#text-panel-status,
 #art-status {
   color: rgba(255, 255, 255, 0.64);
   font-size: 11px;
@@ -230,14 +244,16 @@ body,
 }
 
 #art-panel .editor-buttons,
-#pedestal-panel .editor-buttons {
+#pedestal-panel .editor-buttons,
+#text-panel-panel .editor-buttons {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
 #art-panel .editor-buttons button,
-#pedestal-panel .editor-buttons button {
+#pedestal-panel .editor-buttons button,
+#text-panel-panel .editor-buttons button {
   min-height: 30px;
   padding: 6px 7px;
   font-size: 11px;
@@ -254,6 +270,7 @@ body,
 #light-panel label,
 #art-panel label,
 #pedestal-panel label,
+#text-panel-panel label,
 #audio-panel label {
   display: grid;
   gap: 4px;
@@ -277,6 +294,8 @@ body,
 #art-panel select,
 #pedestal-panel input,
 #pedestal-panel select,
+#text-panel-panel input,
+#text-panel-panel textarea,
 #audio-panel input {
   width: 100%;
 }
@@ -284,7 +303,9 @@ body,
 #art-panel input[type="text"],
 #art-panel input[type="number"],
 #pedestal-panel input[type="number"],
-#pedestal-panel select {
+#pedestal-panel select,
+#text-panel-panel input[type="number"],
+#text-panel-panel textarea {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 5px;
   background: rgba(255, 255, 255, 0.9);
@@ -292,9 +313,16 @@ body,
   padding: 5px 6px;
 }
 
+#text-panel-panel textarea {
+  min-height: 72px;
+  resize: vertical;
+  font: inherit;
+}
+
 #light-panel button:disabled,
 #art-panel button:disabled,
-#pedestal-panel button:disabled {
+#pedestal-panel button:disabled,
+#text-panel-panel button:disabled {
   opacity: 0.45;
   cursor: default;
 }

@@ -89,6 +89,24 @@
           <label>Výška (cm) <input id="pedestal-height-cm" type="number" min="35" max="180" step="1" value="110" /></label>
         </div>
       </section>
+      <section id="text-panel-editor">
+        <button id="toggle-text-panel-editor" type="button">Tabulky</button>
+        <div id="text-panel-panel">
+          <div id="text-panel-title">Textové tabulky</div>
+          <div id="text-panel-status">Namiř tečku na stěnu.</div>
+          <div class="editor-buttons">
+            <button id="add-text-panel" type="button">Přidat na stěnu</button>
+            <button id="move-text-panel" type="button">Přesunout vybranou</button>
+            <button id="remove-text-panel" type="button">Smazat vybranou</button>
+          </div>
+          <label>Text <textarea id="text-panel-text" rows="4" placeholder="Napiš text na tabulku"></textarea></label>
+          <label>Šířka (cm) <input id="text-panel-width-cm" type="number" min="20" max="260" step="1" value="120" /></label>
+          <label>Výška (cm) <input id="text-panel-height-cm" type="number" min="12" max="160" step="1" value="38" /></label>
+          <label>Velikost písma <input id="text-panel-font-size" type="range" min="24" max="96" step="1" value="50" /></label>
+          <label>Barva tabulky <input id="text-panel-bg-color" type="color" value="#f7f4ea" /></label>
+          <label>Barva písma <input id="text-panel-text-color" type="color" value="#111315" /></label>
+        </div>
+      </section>
       <section id="audio-editor">
         <button id="toggle-audio-editor" type="button">Hudba</button>
         <div id="audio-panel">

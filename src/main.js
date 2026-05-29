@@ -63,6 +63,19 @@ const pedestalTypeInput = document.querySelector('#pedestal-type');
 const pedestalWidthCmInput = document.querySelector('#pedestal-width-cm');
 const pedestalDepthCmInput = document.querySelector('#pedestal-depth-cm');
 const pedestalHeightCmInput = document.querySelector('#pedestal-height-cm');
+const toggleTextPanelEditor = document.querySelector('#toggle-text-panel-editor');
+const textPanelPanel = document.querySelector('#text-panel-panel');
+const textPanelTitle = document.querySelector('#text-panel-title');
+const textPanelStatus = document.querySelector('#text-panel-status');
+const addTextPanelButton = document.querySelector('#add-text-panel');
+const moveTextPanelButton = document.querySelector('#move-text-panel');
+const removeTextPanelButton = document.querySelector('#remove-text-panel');
+const textPanelTextInput = document.querySelector('#text-panel-text');
+const textPanelWidthCmInput = document.querySelector('#text-panel-width-cm');
+const textPanelHeightCmInput = document.querySelector('#text-panel-height-cm');
+const textPanelFontSizeInput = document.querySelector('#text-panel-font-size');
+const textPanelBgColorInput = document.querySelector('#text-panel-bg-color');
+const textPanelTextColorInput = document.querySelector('#text-panel-text-color');
 const toggleAudioEditor = document.querySelector('#toggle-audio-editor');
 const audioPanel = document.querySelector('#audio-panel');
 const audioVolumeInput = document.querySelector('#audio-volume');
@@ -486,7 +499,9 @@ function addArchedDoorHeader(z) {
   geometry.setIndex(indices);
   setGeometryColor(geometry);
   geometry.computeVertexNormals();
-  room.add(new THREE.Mesh(geometry, archWallMaterial));
+  const mesh = new THREE.Mesh(geometry, archWallMaterial);
+  room.add(mesh);
+  wallMeshes.push(mesh);
 }
 
 galleryRooms.forEach(({ centerX, centerZ }) => addRoomFloorAndCeiling(centerX, centerZ));
@@ -1483,6 +1498,19 @@ function serializeGalleryState() {
       height: Number(pedestalData.height.toFixed(4)),
       content: pedestalData.content ?? null,
     })),
+    textPanels: displayTextPanels.map((textPanelData) => ({
+      x: Number(textPanelData.group.position.x.toFixed(4)),
+      y: Number(textPanelData.group.position.y.toFixed(4)),
+      z: Number(textPanelData.group.position.z.toFixed(4)),
+      ry: Number(textPanelData.group.rotation.y.toFixed(6)),
+      width: Number(textPanelData.width.toFixed(4)),
+      height: Number(textPanelData.height.toFixed(4)),
+      text: textPanelData.text ?? '',
+      bgColor: textPanelData.bgColor ?? '#f7f4ea',
+      textColor: textPanelData.textColor ?? '#111315',
+      fontSize: Number((textPanelData.fontSize ?? 50).toFixed(2)),
+      wallNormal: textPanelData.wallNormal?.toArray().map((value) => Number(value.toFixed(4))) ?? null,
+    })),
   };
 }
 
@@ -1663,6 +1691,165 @@ function updateArtworkLabel(paintingData) {
   );
 }
 
+function wrapCanvasText(ctx, text, maxWidth) {
+  const wrapped = [];
+  const paragraphs = String(text || '').split(/\r?\n/);
+  paragraphs.forEach((paragraph) => {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      wrapped.push('');
+      return;
+    }
+    let line = '';
+    words.forEach((word) => {
+      const candidate = line ? `${line} ${word}` : word;
+      if (ctx.measureText(candidate).width <= maxWidth || !line) {
+        line = candidate;
+      } else {
+        wrapped.push(line);
+        line = word;
+      }
+    });
+    if (line) wrapped.push(line);
+  });
+  return wrapped;
+}
+
+function redrawTextPanel(textPanelData) {
+  if (!textPanelData?.panel) return;
+  const { canvas: labelCanvas, texture } = textPanelData.panel.userData;
+  const ctx = labelCanvas.getContext('2d');
+  const text = textPanelData.text?.trim() || 'Textová tabulka';
+  const bgColor = textPanelData.bgColor || '#f7f4ea';
+  const textColor = textPanelData.textColor || '#111315';
+  const fontSize = THREE.MathUtils.clamp(Number(textPanelData.fontSize ?? 50), 24, 96);
+  const paddingX = 56;
+  const paddingY = 44;
+  const maxTextWidth = labelCanvas.width - paddingX * 2;
+  const maxTextHeight = labelCanvas.height - paddingY * 2;
+  let resolvedFontSize = fontSize;
+  let lines = [];
+
+  do {
+    ctx.font = `800 ${resolvedFontSize}px Arial, Helvetica, sans-serif`;
+    lines = wrapCanvasText(ctx, text, maxTextWidth);
+    if (lines.length * resolvedFontSize * 1.28 <= maxTextHeight || resolvedFontSize <= 24) break;
+    resolvedFontSize -= 2;
+  } while (resolvedFontSize >= 24);
+
+  ctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, labelCanvas.width, labelCanvas.height);
+  ctx.strokeStyle = 'rgba(20, 20, 18, 0.24)';
+  ctx.lineWidth = 12;
+  ctx.strokeRect(6, 6, labelCanvas.width - 12, labelCanvas.height - 12);
+
+  ctx.fillStyle = textColor;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  ctx.font = `800 ${resolvedFontSize}px Arial, Helvetica, sans-serif`;
+  const lineHeight = resolvedFontSize * 1.28;
+  const startY = Math.max(paddingY, (labelCanvas.height - lines.length * lineHeight) / 2);
+  lines.forEach((line, index) => {
+    ctx.fillText(line, paddingX, startY + index * lineHeight);
+  });
+
+  texture.needsUpdate = true;
+}
+
+function updateTextPanelGeometry(textPanelData) {
+  if (!textPanelData?.panel) return;
+  textPanelData.panel.geometry.dispose();
+  textPanelData.panel.geometry = new THREE.PlaneGeometry(textPanelData.width, textPanelData.height);
+
+  const thickness = 0.012;
+  const depth = 0.012;
+  const selectionWidth = textPanelData.width + thickness * 2;
+  const selectionHeight = textPanelData.height + thickness * 2;
+  const [top, bottom, left, right] = textPanelData.selection.children;
+  top.geometry.dispose();
+  top.geometry = new THREE.BoxGeometry(selectionWidth, thickness, depth);
+  top.position.set(0, selectionHeight / 2, 0.018);
+  bottom.geometry.dispose();
+  bottom.geometry = new THREE.BoxGeometry(selectionWidth, thickness, depth);
+  bottom.position.set(0, -selectionHeight / 2, 0.018);
+  left.geometry.dispose();
+  left.geometry = new THREE.BoxGeometry(thickness, selectionHeight, depth);
+  left.position.set(-selectionWidth / 2, 0, 0.018);
+  right.geometry.dispose();
+  right.geometry = new THREE.BoxGeometry(thickness, selectionHeight, depth);
+  right.position.set(selectionWidth / 2, 0, 0.018);
+}
+
+function createTextPanel({
+  x = 0,
+  y = 1.7,
+  z = roomDepth / 2 - 0.06,
+  ry = Math.PI,
+  width = 1.2,
+  height = 0.38,
+  text = 'Textová tabulka',
+  bgColor = '#f7f4ea',
+  textColor = '#111315',
+  fontSize = 50,
+  wallNormal = null,
+} = {}) {
+  const labelCanvas = document.createElement('canvas');
+  labelCanvas.width = 1024;
+  labelCanvas.height = 420;
+  const texture = new THREE.CanvasTexture(labelCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+    depthWrite: false,
+  });
+
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+  group.rotation.y = ry;
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(width, height), material);
+  panel.renderOrder = 10;
+  panel.userData.canvas = labelCanvas;
+  panel.userData.texture = texture;
+  group.add(panel);
+
+  const selection = new THREE.Group();
+  const selectionTop = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), selectedPaintingMaterial);
+  const selectionBottom = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), selectedPaintingMaterial);
+  const selectionLeft = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), selectedPaintingMaterial);
+  const selectionRight = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), selectedPaintingMaterial);
+  selection.add(selectionTop, selectionBottom, selectionLeft, selectionRight);
+  selection.visible = false;
+  selection.renderOrder = 12;
+  group.add(selection);
+
+  const textPanelData = {
+    group,
+    panel,
+    selection,
+    width,
+    height,
+    text,
+    bgColor,
+    textColor,
+    fontSize,
+    wallNormal,
+  };
+  updateTextPanelGeometry(textPanelData);
+  redrawTextPanel(textPanelData);
+  group.userData.textPanelData = textPanelData;
+  group.traverse((child) => {
+    child.userData.textPanelData = textPanelData;
+  });
+  room.add(group);
+  displayTextPanels.push(textPanelData);
+  return textPanelData;
+}
+
 function isValidArtworkConfig(config) {
   if (!config) return false;
   const finiteNumbers = ['x', 'y', 'z', 'ry', 'w', 'h'].every((key) => Number.isFinite(config[key]));
@@ -1748,14 +1935,17 @@ const oilArtworks = [
 ];
 const editablePaintings = [];
 const displayPedestals = [];
+const displayTextPanels = [];
 let selectedPainting = null;
 let selectedPedestal = null;
+let selectedTextPanel = null;
 let pendingArtMaterial = null;
 let pendingArtSource = '';
 let pendingArtAspect = defaultArtworkAspect;
 let hoveredEditable = null;
 let movingSelectedPainting = false;
 let movingSelectedPedestal = false;
+let movingSelectedTextPanel = false;
 let moveOriginalTransform = null;
 let swapSourcePainting = null;
 
@@ -1993,6 +2183,41 @@ function addSavedDisplayPedestals() {
 
 addSavedDisplayPedestals();
 
+function isValidTextPanelConfig(config) {
+  return config
+    && Number.isFinite(config.x)
+    && Number.isFinite(config.y)
+    && Number.isFinite(config.z)
+    && Number.isFinite(config.ry)
+    && Number.isFinite(config.width)
+    && Number.isFinite(config.height)
+    && config.width > 0.15
+    && config.height > 0.08;
+}
+
+function addSavedTextPanels() {
+  const savedTextPanels = Array.isArray(savedGallery?.textPanels) ? savedGallery.textPanels : [];
+  savedTextPanels.filter(isValidTextPanelConfig).forEach((config) => {
+    createTextPanel({
+      x: THREE.MathUtils.clamp(config.x, x0 + 0.08, x1 - 0.08),
+      y: THREE.MathUtils.clamp(config.y, 0.45, roomHeight - 0.28),
+      z: THREE.MathUtils.clamp(config.z, galleryMinZ + 0.08, galleryMaxZ - 0.08),
+      ry: config.ry,
+      width: THREE.MathUtils.clamp(config.width, 0.2, 2.6),
+      height: THREE.MathUtils.clamp(config.height, 0.12, 1.6),
+      text: typeof config.text === 'string' ? config.text : 'Textová tabulka',
+      bgColor: typeof config.bgColor === 'string' ? config.bgColor : '#f7f4ea',
+      textColor: typeof config.textColor === 'string' ? config.textColor : '#111315',
+      fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 50,
+      wallNormal: Array.isArray(config.wallNormal) && config.wallNormal.length === 3
+        ? new THREE.Vector3(...config.wallNormal)
+        : null,
+    });
+  });
+}
+
+addSavedTextPanels();
+
 function getCenterRaycaster() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
   return raycaster;
@@ -2061,6 +2286,33 @@ function getWallPlacement() {
   }
 
   return { point, normal, ry, width, height, axis, aspect };
+}
+
+function getTextPanelPlacement() {
+  getCenterRaycaster();
+  const hit = raycaster.intersectObjects(wallMeshes, false)[0];
+  if (!hit) return null;
+
+  const cameraPosition = new THREE.Vector3();
+  camera.getWorldPosition(cameraPosition);
+  const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+  if (normal.dot(cameraPosition.clone().sub(hit.point)) < 0) {
+    normal.negate();
+  }
+
+  const { width, height } = getTextPanelSizeFromInputs();
+  const point = hit.point.clone();
+  point.y = THREE.MathUtils.clamp(point.y, 0.55 + height / 2, roomHeight - 0.24 - height / 2);
+  point.addScaledVector(normal, 0.071);
+
+  let ry = 0;
+  if (Math.abs(normal.x) > Math.abs(normal.z)) {
+    ry = normal.x > 0 ? Math.PI / 2 : -Math.PI / 2;
+  } else {
+    ry = normal.z > 0 ? 0 : Math.PI;
+  }
+
+  return { point, normal, ry, width, height };
 }
 
 function syncArtPreview() {
@@ -2678,16 +2930,124 @@ function rotateSelectedPedestal(direction) {
   return true;
 }
 
+function getTextPanelSizeFromInputs() {
+  return {
+    width: THREE.MathUtils.clamp(Number(textPanelWidthCmInput.value) / centimetersPerMeter, 0.2, 2.6),
+    height: THREE.MathUtils.clamp(Number(textPanelHeightCmInput.value) / centimetersPerMeter, 0.12, 1.6),
+  };
+}
+
+function syncTextPanelPanel() {
+  textPanelTitle.textContent = selectedTextPanel ? 'Vybraná tabulka' : 'Nová tabulka';
+  textPanelStatus.textContent = movingSelectedTextPanel
+    ? 'Namiř tečku na stěnu a klikni Přidat na stěnu.'
+      : selectedTextPanel
+        ? 'Tabulka je vybraná. Můžeš změnit text, barvy, velikost, přesunout ji, kolečkem otočit, nebo smazat.'
+        : 'Namiř tečku na stěnu a přidej textovou tabulku.';
+  moveTextPanelButton.disabled = !selectedTextPanel;
+  removeTextPanelButton.disabled = !selectedTextPanel;
+  moveTextPanelButton.textContent = movingSelectedTextPanel ? 'Zrušit přesun' : 'Přesunout vybranou';
+  addTextPanelButton.textContent = movingSelectedTextPanel ? 'Uchytit na stěnu' : 'Přidat na stěnu';
+  if (!selectedTextPanel) return;
+  textPanelTextInput.value = selectedTextPanel.text ?? '';
+  textPanelWidthCmInput.value = String(Math.round(selectedTextPanel.width * centimetersPerMeter));
+  textPanelHeightCmInput.value = String(Math.round(selectedTextPanel.height * centimetersPerMeter));
+  textPanelFontSizeInput.value = String(Math.round(selectedTextPanel.fontSize ?? 50));
+  textPanelBgColorInput.value = selectedTextPanel.bgColor ?? '#f7f4ea';
+  textPanelTextColorInput.value = selectedTextPanel.textColor ?? '#111315';
+}
+
+function updateTextPanelSelection() {
+  displayTextPanels.forEach((textPanelData) => {
+    textPanelData.selection.visible = textPanelData === selectedTextPanel;
+  });
+}
+
+function addTextPanelFromWall() {
+  const placement = getTextPanelPlacement();
+  if (!placement) {
+    textPanelPanel.classList.add('visible');
+    textPanelTitle.textContent = 'Není vybraná stěna';
+    textPanelStatus.textContent = 'Namiř tečku na stěnu nebo nad dveře a zkus to znovu.';
+    return false;
+  }
+  selectedTextPanel = createTextPanel({
+    x: placement.point.x,
+    y: placement.point.y,
+    z: placement.point.z,
+    ry: placement.ry,
+    width: placement.width,
+    height: placement.height,
+    text: textPanelTextInput.value.trim() || 'Textová tabulka',
+    bgColor: textPanelBgColorInput.value,
+    textColor: textPanelTextColorInput.value,
+    fontSize: Number(textPanelFontSizeInput.value),
+    wallNormal: placement.normal.clone(),
+  });
+  movingSelectedTextPanel = false;
+  updateTextPanelSelection();
+  syncTextPanelPanel();
+  return true;
+}
+
+function moveSelectedTextPanelToWall() {
+  if (!selectedTextPanel) return false;
+  const placement = getTextPanelPlacement();
+  if (!placement) {
+    textPanelTitle.textContent = 'Není vybraná stěna';
+    textPanelStatus.textContent = 'Pro přesun namiř tečku na stěnu nebo nad dveře.';
+    return false;
+  }
+  selectedTextPanel.group.position.copy(placement.point);
+  selectedTextPanel.group.rotation.y = placement.ry;
+  selectedTextPanel.wallNormal = placement.normal.clone();
+  movingSelectedTextPanel = false;
+  syncTextPanelPanel();
+  return true;
+}
+
+function removeSelectedTextPanel() {
+  if (!selectedTextPanel) return;
+  room.remove(selectedTextPanel.group);
+  const index = displayTextPanels.indexOf(selectedTextPanel);
+  if (index >= 0) displayTextPanels.splice(index, 1);
+  selectedTextPanel = null;
+  movingSelectedTextPanel = false;
+  syncTextPanelPanel();
+}
+
+function updateSelectedTextPanel() {
+  if (!selectedTextPanel) return;
+  const { width, height } = getTextPanelSizeFromInputs();
+  selectedTextPanel.width = width;
+  selectedTextPanel.height = height;
+  selectedTextPanel.text = textPanelTextInput.value.trim();
+  selectedTextPanel.bgColor = textPanelBgColorInput.value;
+  selectedTextPanel.textColor = textPanelTextColorInput.value;
+  selectedTextPanel.fontSize = Number(textPanelFontSizeInput.value);
+  updateTextPanelGeometry(selectedTextPanel);
+  redrawTextPanel(selectedTextPanel);
+}
+
+function rotateSelectedTextPanel(direction) {
+  if (!selectedTextPanel) return false;
+  selectedTextPanel.group.rotation.y += direction * THREE.MathUtils.degToRad(7.5);
+  textPanelTitle.textContent = 'Tabulka otočená';
+  textPanelStatus.textContent = 'Kolečkem můžeš doladit natočení. Nezapomeň galerii uložit nebo exportovat.';
+  return true;
+}
+
 function saveGalleryFromEditor() {
   updateSelectedPaintingLabel();
   updateSelectedPaintingSize();
   updateSelectedPedestalSize();
+  updateSelectedTextPanel();
   ensurePaintingLights();
   saveLightingState();
   const saved = saveGalleryState();
   artTitle.textContent = saved ? 'Galerie uložená' : 'Uložení se nepovedlo';
   artStatus.textContent = saved
-    ? `Uloženo ${editablePaintings.length} obrazů. Změny zůstanou po zavření a znovu otevření téhle stránky v tomto prohlížeči.`
+    ? `Uloženo ${editablePaintings.length} obrazů a ${displayTextPanels.length} tabulek. Změny zůstanou po zavření a znovu otevření téhle stránky v tomto prohlížeči.`
     : 'Prohlížeč odmítl uložit data. To se může stát u velkých vložených obrázků.';
 }
 
@@ -2704,6 +3064,7 @@ function exportGalleryFromEditor() {
   updateSelectedPaintingLabel();
   updateSelectedPaintingSize();
   updateSelectedPedestalSize();
+  updateSelectedTextPanel();
   saveLightingState();
   saveGalleryState();
 
@@ -2718,7 +3079,7 @@ function exportGalleryFromEditor() {
   URL.revokeObjectURL(link.href);
 
   artTitle.textContent = 'Galerie exportovaná';
-  artStatus.textContent = 'Stáhl se JSON se světly a rozmístěním obrazů. Ten pak můžeme vložit do kódu pro veřejnou verzi.';
+  artStatus.textContent = 'Stáhl se JSON se světly, obrazy, podstavci a textovými tabulkami. Ten pak můžeme vložit do kódu pro veřejnou verzi.';
 }
 
 function resetLocalGalleryFromEditor() {
@@ -2753,6 +3114,11 @@ function getEditableTargetFromCrosshair() {
       if (child.isMesh) objects.push(child);
     });
   });
+  displayTextPanels.forEach((textPanelData) => {
+    textPanelData.group.traverse((child) => {
+      if (child.isMesh) objects.push(child);
+    });
+  });
   const hit = raycaster.intersectObjects(objects, false)[0];
   return hit?.object?.userData ?? null;
 }
@@ -2766,6 +3132,7 @@ function selectEditableFromCrosshair() {
     lightPanel.classList.add('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
+    textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
     artPreview.visible = false;
     syncLightPanel();
@@ -2781,6 +3148,7 @@ function selectEditableFromCrosshair() {
       artPanel.classList.add('visible');
       lightPanel.classList.remove('visible');
       pedestalPanel.classList.remove('visible');
+      textPanelPanel.classList.remove('visible');
       audioPanel.classList.remove('visible');
       updateLightLabels();
       syncArtPanel();
@@ -2794,6 +3162,7 @@ function selectEditableFromCrosshair() {
     artPanel.classList.add('visible');
     lightPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
+    textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
     updateLightLabels();
     syncArtPanel();
@@ -2806,8 +3175,20 @@ function selectEditableFromCrosshair() {
     pedestalPanel.classList.add('visible');
     artPanel.classList.remove('visible');
     lightPanel.classList.remove('visible');
+    textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
     syncPedestalPanel();
+    return true;
+  }
+  if (target.textPanelData) {
+    selectedTextPanel = target.textPanelData;
+    movingSelectedTextPanel = false;
+    textPanelPanel.classList.add('visible');
+    artPanel.classList.remove('visible');
+    lightPanel.classList.remove('visible');
+    pedestalPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
+    syncTextPanelPanel();
     return true;
   }
   return false;
@@ -2999,7 +3380,7 @@ function updateGalleryAudioListener() {
 galleryAudio.addEventListener('ended', playNextJazzTrack);
 audioToggle?.addEventListener('click', toggleGalleryAudio);
 window.addEventListener('pointerdown', (event) => {
-  if (event.target instanceof Element && event.target.closest('#audio-toggle, #light-editor, #art-editor, #pedestal-editor, #audio-editor')) {
+  if (event.target instanceof Element && event.target.closest('#audio-toggle, #light-editor, #art-editor, #pedestal-editor, #text-panel-editor, #audio-editor')) {
     return;
   }
   tryStartRequestedAudio();
@@ -3050,6 +3431,7 @@ toggleLightEditor.addEventListener('click', () => {
   if (lightPanel.classList.contains('visible')) {
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
+    textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
     artPreview.visible = false;
   }
@@ -3127,6 +3509,7 @@ toggleArtEditor.addEventListener('click', () => {
   if (artPanel.classList.contains('visible')) {
     lightPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
+    textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
     updateLightLabels();
   }
@@ -3139,10 +3522,23 @@ togglePedestalEditor.addEventListener('click', () => {
   if (pedestalPanel.classList.contains('visible')) {
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
+    textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
     artPreview.visible = false;
   }
   syncPedestalPanel();
+});
+
+toggleTextPanelEditor.addEventListener('click', () => {
+  textPanelPanel.classList.toggle('visible');
+  if (textPanelPanel.classList.contains('visible')) {
+    lightPanel.classList.remove('visible');
+    artPanel.classList.remove('visible');
+    pedestalPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
+    artPreview.visible = false;
+  }
+  syncTextPanelPanel();
 });
 
 toggleAudioEditor.addEventListener('click', () => {
@@ -3151,6 +3547,7 @@ toggleAudioEditor.addEventListener('click', () => {
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
+    textPanelPanel.classList.remove('visible');
     artPreview.visible = false;
   }
 });
@@ -3177,6 +3574,31 @@ removePedestalButton.addEventListener('click', removeSelectedPedestal);
 [pedestalTypeInput, pedestalWidthCmInput, pedestalDepthCmInput, pedestalHeightCmInput].forEach((input) => {
   input.addEventListener('input', updateSelectedPedestalSize);
   input.addEventListener('change', updateSelectedPedestalSize);
+});
+
+addTextPanelButton.addEventListener('click', () => {
+  if (movingSelectedTextPanel) {
+    moveSelectedTextPanelToWall();
+  } else {
+    addTextPanelFromWall();
+  }
+});
+moveTextPanelButton.addEventListener('click', () => {
+  if (!selectedTextPanel) return;
+  movingSelectedTextPanel = !movingSelectedTextPanel;
+  syncTextPanelPanel();
+});
+removeTextPanelButton.addEventListener('click', removeSelectedTextPanel);
+[
+  textPanelTextInput,
+  textPanelWidthCmInput,
+  textPanelHeightCmInput,
+  textPanelFontSizeInput,
+  textPanelBgColorInput,
+  textPanelTextColorInput,
+].forEach((input) => {
+  input.addEventListener('input', updateSelectedTextPanel);
+  input.addEventListener('change', updateSelectedTextPanel);
 });
 
 addArtButton.addEventListener('click', () => {
@@ -3481,6 +3903,11 @@ canvas.addEventListener('mousedown', (event) => {
     moveSelectedPedestalToFloor();
     return;
   }
+  if (movingSelectedTextPanel) {
+    event.preventDefault();
+    moveSelectedTextPanelToWall();
+    return;
+  }
   if (tryOpenRoomLightSwitch()) {
     event.preventDefault();
     return;
@@ -3521,7 +3948,13 @@ canvas.addEventListener('wheel', (event) => {
     adjustRoomLightPowerFromWheel(event);
     return;
   }
-  if (!editorMode || !selectedPedestal || !pedestalPanel.classList.contains('visible')) return;
+  if (!editorMode) return;
+  if (selectedTextPanel && textPanelPanel.classList.contains('visible')) {
+    event.preventDefault();
+    rotateSelectedTextPanel(event.deltaY > 0 ? -1 : 1);
+    return;
+  }
+  if (!selectedPedestal || !pedestalPanel.classList.contains('visible')) return;
   event.preventDefault();
   rotateSelectedPedestal(event.deltaY > 0 ? -1 : 1);
 }, { passive: false });
@@ -3760,7 +4193,7 @@ function updateArtworkBrightness(delta) {
 function updateCrosshairAndEditors() {
   hoveredEditable = getEditableTargetFromCrosshair();
   const isPaintingTarget = Boolean(hoveredEditable?.paintingData);
-  const isAnyEditableTarget = Boolean(hoveredEditable?.lightData || hoveredEditable?.paintingData || hoveredEditable?.pedestalData);
+  const isAnyEditableTarget = Boolean(hoveredEditable?.lightData || hoveredEditable?.paintingData || hoveredEditable?.pedestalData || hoveredEditable?.textPanelData);
   crosshair.classList.toggle('target', editorMode && isAnyEditableTarget);
   crosshair.classList.toggle('viewer-hidden', !editorMode && isPaintingTarget);
   if (movingSelectedPedestal && selectedPedestal) {
@@ -3770,7 +4203,16 @@ function updateCrosshairAndEditors() {
       selectedPedestal.group.position.z = placement.z;
     }
   }
+  if (movingSelectedTextPanel && selectedTextPanel) {
+    const placement = getTextPanelPlacement();
+    if (placement) {
+      selectedTextPanel.group.position.copy(placement.point);
+      selectedTextPanel.group.rotation.y = placement.ry;
+      selectedTextPanel.wallNormal = placement.normal.clone();
+    }
+  }
   updatePedestalSelection();
+  updateTextPanelSelection();
   syncArtPreview();
 }
 
@@ -3817,6 +4259,7 @@ window.__galleryDebug = () => ({
   })),
   visibleSpotLights: ceilingLights.filter((lightData) => lightData.spot.visible).length,
   displayPedestals: displayPedestals.length,
+  displayTextPanels: displayTextPanels.length,
   audio: {
     tracks: jazzPlaylist.length,
     speakers: audioSpeakers.length,
