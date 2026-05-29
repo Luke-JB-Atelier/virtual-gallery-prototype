@@ -164,7 +164,8 @@ body,
 }
 
 #art-panel .editor-buttons #save-art,
-#art-panel .editor-buttons #export-art {
+#art-panel .editor-buttons #export-art,
+#art-panel .editor-buttons #reset-local-art {
   grid-column: 1 / -1;
 }
 

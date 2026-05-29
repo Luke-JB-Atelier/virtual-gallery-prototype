@@ -34,6 +34,7 @@ const removeArtButton = document.querySelector('#remove-art');
 const swapArtButton = document.querySelector('#swap-art');
 const saveArtButton = document.querySelector('#save-art');
 const exportArtButton = document.querySelector('#export-art');
+const resetLocalArtButton = document.querySelector('#reset-local-art');
 const artFileInput = document.querySelector('#art-file');
 const artOffsetXInput = document.querySelector('#art-offset-x');
 const artHeightInput = document.querySelector('#art-height');
@@ -75,8 +76,10 @@ const defaultArtworkWidthCm = 120;
 const defaultArtworkAspect = 1;
 const lightingStorageKey = 'virtual-gallery-lighting-oil-v3';
 const galleryStorageKey = 'virtual-gallery-art-oil-v1';
-const savedGallery = loadGalleryState();
-const editorMode = new URLSearchParams(window.location.search).has('edit');
+const urlParams = new URLSearchParams(window.location.search);
+const editorMode = urlParams.has('edit');
+const useLocalSavedState = editorMode || urlParams.has('local');
+const savedGallery = useLocalSavedState ? loadGalleryState() : null;
 document.body.classList.toggle('viewer-mode', !editorMode);
 
 function publicAssetPath(path) {
@@ -580,7 +583,7 @@ const roomLightState = {
   enabled: true,
   power: 12,
 };
-const savedLighting = loadLightingState();
+const savedLighting = useLocalSavedState ? loadLightingState() : null;
 roomLightEnabledInput.checked = roomLightState.enabled;
 roomLightPowerInput.value = String(roomLightState.power);
 
@@ -1106,80 +1109,38 @@ if (Number.isInteger(savedLighting?.selectedLightIndex) && ceilingLights.length)
   syncLightPanel();
 }
 
-const defaultFrameColor = '#010101';
-const frameShadowMaterial = new THREE.MeshStandardMaterial({ color: 0x030303, roughness: 0.96, metalness: 0 });
+const defaultFrameColor = '#000000';
+const frameShadowMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1, metalness: 0 });
 const frameSizes = {
-  hairline: 0.022,
-  thin: 0.034,
-  light: 0.052,
-  medium: 0.078,
-  heavy: 0.112,
-  bold: 0.155,
+  hairline: { width: 0.022, depth: 0.028, backingDepth: 0.012 },
+  thin: { width: 0.034, depth: 0.038, backingDepth: 0.014 },
+  light: { width: 0.052, depth: 0.052, backingDepth: 0.018 },
+  medium: { width: 0.078, depth: 0.072, backingDepth: 0.022 },
+  heavy: { width: 0.112, depth: 0.09, backingDepth: 0.026 },
+  bold: { width: 0.155, depth: 0.11, backingDepth: 0.032 },
 };
 const artworkLabelWidth = 0.68;
 const artworkLabelHeight = 0.28;
 
-function createFrameTexture() {
-  const size = 1024;
-  const textureCanvas = document.createElement('canvas');
-  textureCanvas.width = size;
-  textureCanvas.height = size;
-  const ctx = textureCanvas.getContext('2d');
-  const image = ctx.createImageData(size, size);
-  const noise = new Float32Array(size * size);
-
-  for (let i = 0; i < noise.length; i += 1) {
-    noise[i] = Math.random();
-  }
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const i = (y * size + x) * 4;
-      const center = noise[y * size + x];
-      const offsetA = noise[((y + 13) % size) * size + ((x + 7) % size)];
-      const offsetB = noise[((y + 31) % size) * size + ((x + 23) % size)];
-      const mottled = ((center + offsetA + offsetB) / 3 - 0.5) * 28;
-      const fineSpeckle = (Math.random() - 0.5) * 10;
-      const pore = Math.random() > 0.996 ? -28 : 0;
-      const edge = Math.max(
-        Math.abs(x / size - 0.5),
-        Math.abs(y / size - 0.5),
-      ) * 2;
-      const edgeShade = THREE.MathUtils.smoothstep(edge, 0.72, 1.0) * -18;
-      const value = THREE.MathUtils.clamp(186 + mottled + fineSpeckle + pore + edgeShade, 136, 214);
-      image.data[i] = value;
-      image.data[i + 1] = value;
-      image.data[i + 2] = value;
-      image.data[i + 3] = 255;
-    }
-  }
-
-  ctx.putImageData(image, 0, 0);
-
-  const texture = new THREE.CanvasTexture(textureCanvas);
-  texture.colorSpace = THREE.NoColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(0.55, 0.55);
-  texture.generateMipmaps = true;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  return texture;
+function getFrameProfile(frameSize = 'medium') {
+  return frameSizes[frameSize] ?? frameSizes.medium;
 }
-
-const frameTexture = createFrameTexture();
 
 function createFrameMaterial(color = defaultFrameColor) {
   const frameColor = new THREE.Color(color);
-  const isNearBlack = Math.max(frameColor.r, frameColor.g, frameColor.b) < 0.09;
-  const material = new THREE.MeshStandardMaterial({
-    color: isNearBlack ? 0x010101 : frameColor,
-    map: isNearBlack ? null : frameTexture,
-    roughness: isNearBlack ? 0.98 : 0.9,
-    metalness: isNearBlack ? 0 : 0.02,
-    envMapIntensity: 0,
+  const isNearBlack = Math.max(frameColor.r, frameColor.g, frameColor.b) < 0.12;
+  const displayColor = isNearBlack
+    ? new THREE.Color(0x000000)
+    : frameColor;
+  const faceMaterial = new THREE.MeshBasicMaterial({
+    color: displayColor,
+    toneMapped: false,
   });
-  return material;
+  const sideMaterial = new THREE.MeshBasicMaterial({
+    color: isNearBlack ? 0x030303 : frameColor.clone().multiplyScalar(0.62),
+    toneMapped: false,
+  });
+  return [faceMaterial, sideMaterial];
 }
 
 function createFrameGeometry(width, height, frameWidth, frameDepth) {
@@ -1286,7 +1247,7 @@ function updateArtworkLabel(paintingData) {
 
   labelTexture.needsUpdate = true;
 
-  const frameWidth = frameSizes[paintingData.frameSize] ?? frameSizes.medium;
+  const frameWidth = getFrameProfile(paintingData.frameSize).width;
   label.position.set(
     paintingData.w / 2 + frameWidth - artworkLabelWidth / 2,
     -paintingData.h / 2 - frameWidth - artworkLabelHeight / 2 - 0.11,
@@ -1422,24 +1383,28 @@ function addPainting({
   group.position.set(x, y, z);
   group.rotation.y = ry;
 
-  const frameWidth = frameSizes[frameSize] ?? frameSizes.medium;
+  const frameProfile = getFrameProfile(frameSize);
+  const frameWidth = frameProfile.width;
+  const frameDepth = frameProfile.depth;
+  const backingDepth = frameProfile.backingDepth;
   const paintingFrameMaterial = createFrameMaterial(frameColor);
-  const frameDepth = 0.085;
+  const frameCenterZ = 0.02;
+  const artInset = Math.min(0.014, frameDepth * 0.32);
   const selectionThickness = 0.012;
   const selectionDepth = 0.012;
   const frame = new THREE.Mesh(createFrameGeometry(w, h, frameWidth, frameDepth), paintingFrameMaterial);
-  frame.position.z = 0.02;
+  frame.position.z = frameCenterZ;
 
-  const backing = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, h + 0.03, 0.025), frameShadowMaterial);
-  backing.position.z = -0.01;
-  [frame, backing].forEach((part) => {
-    part.castShadow = true;
-    part.receiveShadow = true;
-  });
+  const backing = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, h + 0.03, backingDepth), frameShadowMaterial);
+  backing.position.z = frameCenterZ - frameDepth / 2 - backingDepth / 2 + 0.002;
+  frame.castShadow = true;
+  frame.receiveShadow = false;
+  backing.castShadow = true;
+  backing.receiveShadow = true;
   group.add(backing, frame);
 
   const art = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
-  art.position.z = 0.018;
+  art.position.z = frameCenterZ + frameDepth / 2 - artInset;
   group.add(art);
 
   const selectionOutline = new THREE.Group();
@@ -2067,6 +2032,20 @@ function exportGalleryFromEditor() {
   artStatus.textContent = 'Stáhl se JSON se světly a rozmístěním obrazů. Ten pak můžeme vložit do kódu pro veřejnou verzi.';
 }
 
+function resetLocalGalleryFromEditor() {
+  try {
+    localStorage.removeItem(galleryStorageKey);
+    localStorage.removeItem(lightingStorageKey);
+  } catch {
+    // Embedded browser storage can be unavailable.
+  }
+  artTitle.textContent = 'Lokální úpravy smazané';
+  artStatus.textContent = 'Po znovunačtení se otevře čistá verze z GitHubu.';
+  window.setTimeout(() => {
+    window.location.href = `${window.location.origin}${window.location.pathname}?edit=1`;
+  }, 450);
+}
+
 function getEditableTargetFromCrosshair() {
   getCenterRaycaster();
   const objects = [];
@@ -2269,6 +2248,7 @@ removeArtButton.addEventListener('click', removeSelectedPainting);
 loadArtButton.addEventListener('click', () => artFileInput.click());
 saveArtButton.addEventListener('click', saveGalleryFromEditor);
 exportArtButton.addEventListener('click', exportGalleryFromEditor);
+resetLocalArtButton.addEventListener('click', resetLocalGalleryFromEditor);
 swapArtButton.addEventListener('click', () => {
   if (!selectedPainting) return;
   swapSourcePainting = selectedPainting;
