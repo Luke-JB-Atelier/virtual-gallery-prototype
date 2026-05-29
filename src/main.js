@@ -1092,6 +1092,18 @@ function createFlatCapContent(pedestalWidth, pedestalDepth, pedestalHeight, cont
   return cap;
 }
 
+function normalizePedestalContent(content) {
+  if (!content) return null;
+  if (['bowler-hat', 'flat-cap', 'coins'].includes(content.type)) {
+    return {
+      ...content,
+      type: 'coins',
+      scale: Number.isFinite(content.scale) ? content.scale : 1.18,
+    };
+  }
+  return content;
+}
+
 function createDisplayPedestal({
   x = 2.2,
   z = roomDepth / 2 - 1.05,
@@ -1105,6 +1117,7 @@ function createDisplayPedestal({
   const group = new THREE.Group();
   group.position.set(x, 0, z);
   group.rotation.y = ry;
+  const resolvedContent = normalizePedestalContent(content);
 
   if (type === 'table') {
     const topHeight = Math.max(0.06, height * 0.1);
@@ -1146,12 +1159,8 @@ function createDisplayPedestal({
     part.receiveShadow = true;
   });
 
-  if (content?.type === 'coins') {
-    group.add(createPedestalCoinsContent(width, depth, height, content));
-  } else if (content?.type === 'bowler-hat') {
-    group.add(createTipHatContent(width, depth, height, content));
-  } else if (content?.type === 'flat-cap') {
-    group.add(createFlatCapContent(width, depth, height, content));
+  if (resolvedContent?.type === 'coins') {
+    group.add(createPedestalCoinsContent(width, depth, height, resolvedContent));
   }
 
   const selection = new THREE.Mesh(
@@ -1170,7 +1179,7 @@ function createDisplayPedestal({
     depth,
     height,
     type,
-    content,
+    content: resolvedContent,
   };
   group.userData.pedestalData = pedestalData;
   group.traverse((child) => {
@@ -1586,7 +1595,9 @@ function setRoomLightPower(power, { persist = true } = {}) {
 
 function showRoomLightControl() {
   roomLightControl.classList.add('visible');
-  roomLightPublicPowerInput.focus({ preventScroll: true });
+  if (document.activeElement === roomLightPublicPowerInput) {
+    roomLightPublicPowerInput.blur();
+  }
   window.clearTimeout(showRoomLightControl.hideTimer);
   showRoomLightControl.hideTimer = window.setTimeout(() => {
     roomLightControl.classList.remove('visible');
@@ -4397,6 +4408,7 @@ const lookPointer = { id: null, lastX: 0, lastY: 0 };
 
 function isTextEditingTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
+  if (target === roomLightPublicPowerInput) return false;
   return target.isContentEditable
     || target.tagName === 'INPUT'
     || target.tagName === 'TEXTAREA'
