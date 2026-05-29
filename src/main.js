@@ -1476,25 +1476,30 @@ function attachSavedLightsToPaintings() {
   editablePaintings.forEach((paintingData) => {
     let bestLight = null;
     let bestDistance = Infinity;
+    const expectedPlacement = getSpotPlacementForPainting(paintingData);
     unusedLights.forEach((lightData) => {
-      const distance = lightData.target.position.distanceToSquared(paintingData.group.position);
+      const lightRoomIndex = lightData.roomIndex ?? getRoomIndexForZ(lightData.position.z);
+      if (lightRoomIndex !== expectedPlacement.roomIndex) return;
+      const distance = lightData.position.distanceToSquared(expectedPlacement.position);
       if (distance < bestDistance) {
         bestLight = lightData;
         bestDistance = distance;
       }
     });
-    if (bestLight && bestDistance < 2.6) {
+    if (bestLight && bestDistance < 2.8) {
       paintingData.artSpot = bestLight;
       unusedLights.delete(bestLight);
+      moveSpotToPainting(paintingData, bestLight);
     }
   });
 }
 
 function ensurePaintingLights() {
   editablePaintings.forEach((paintingData) => {
-    if (paintingData.artSpot) return;
-    paintingData.artSpot = addSpotForPainting(paintingData, { select: false, openPanel: false, persist: false });
+    paintingData.artSpot = addSpotForPainting(paintingData, { select: false, openPanel: false, persist: false, sync: false });
   });
+  removeOrphanPaintingLights({ persist: false, sync: false });
+  syncLightPanel();
 }
 
 function addCuratedOilGallery() {
@@ -1760,7 +1765,7 @@ function syncPaintingSelection() {
   });
 }
 
-function addSpotForPainting(paintingData, { select = true, openPanel = true, persist = true } = {}) {
+function getSpotPlacementForPainting(paintingData) {
   const targetPoint = paintingData.group.position.clone();
   const normal = paintingData.wallNormal ?? new THREE.Vector3(0, 0, 1).applyQuaternion(paintingData.group.quaternion);
   const roomIndex = getRoomIndexForZ(targetPoint.z);
@@ -1776,35 +1781,123 @@ function addSpotForPainting(paintingData, { select = true, openPanel = true, per
     const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
     position.z = centerZ + THREE.MathUtils.clamp(position.z - centerZ, trackSpec.min, trackSpec.max);
   }
+  const trackPosition = getTrackPositionRatio(trackId, position, roomIndex);
+  return { targetPoint, position, trackId, trackPosition, roomIndex };
+}
+
+function moveSpotToPainting(paintingData, lightData) {
+  const placement = getSpotPlacementForPainting(paintingData);
+  const resolvedPosition = getTrackPosition(placement.trackId, placement.trackPosition, placement.roomIndex);
+  const direction = placement.targetPoint.clone().sub(resolvedPosition);
+  const angles = anglesFromDirection(direction);
+  lightData.position.copy(resolvedPosition);
+  lightData.trackId = placement.trackId;
+  lightData.trackPosition = placement.trackPosition;
+  lightData.roomIndex = placement.roomIndex;
+  lightData.yaw = THREE.MathUtils.clamp(angles.yaw, -180, 180);
+  lightData.pitch = THREE.MathUtils.clamp(angles.pitch, -86, -18);
+  if (!Number.isFinite(lightData.power)) lightData.power = 105;
+  updateCeilingLight(lightData);
+  return lightData;
+}
+
+function addSpotForPainting(paintingData, { select = true, openPanel = true, persist = true, sync = true } = {}) {
+  if (paintingData.artSpot && ceilingLights.includes(paintingData.artSpot)) {
+    moveSpotToPainting(paintingData, paintingData.artSpot);
+    if (select) {
+      selectedLightIndex = ceilingLights.indexOf(paintingData.artSpot);
+    }
+    if (openPanel) {
+      lightPanel.classList.add('visible');
+    }
+    if (sync) {
+      syncLightPanel();
+    }
+    if (persist) {
+      saveLightingState();
+    }
+    return paintingData.artSpot;
+  }
+
+  const placement = getSpotPlacementForPainting(paintingData);
   const lightData = addCeilingLight({
-    position,
-    targetPoint,
-    trackId,
+    position: placement.position,
+    targetPoint: placement.targetPoint,
+    trackId: placement.trackId,
+    trackPosition: placement.trackPosition,
     power: 105,
-    roomIndex,
+    roomIndex: placement.roomIndex,
     select,
   });
+  paintingData.artSpot = lightData;
   if (openPanel) {
     lightPanel.classList.add('visible');
   }
-  syncLightPanel();
+  if (sync) {
+    syncLightPanel();
+  }
   if (persist) {
     saveLightingState();
   }
   return lightData;
 }
 
-function removeArtworkLight(paintingData) {
-  if (!paintingData?.artSpot) return;
-  const index = ceilingLights.indexOf(paintingData.artSpot);
+function removeCeilingLight(lightData, { persist = true, sync = true } = {}) {
+  if (!lightData) return false;
+  const index = ceilingLights.indexOf(lightData);
   if (index >= 0) {
     ceilingLights.splice(index, 1);
     selectedLightIndex = Math.min(selectedLightIndex, Math.max(ceilingLights.length - 1, 0));
   }
-  lightRig.remove(paintingData.artSpot.spot, paintingData.artSpot.target, paintingData.artSpot.fixture);
+  editablePaintings.forEach((paintingData) => {
+    if (paintingData.artSpot === lightData) {
+      paintingData.artSpot = null;
+    }
+  });
+  lightRig.remove(lightData.spot, lightData.target, lightData.fixture);
+  spotShadowSetupDirty = true;
+  renderer.shadowMap.needsUpdate = true;
+  if (sync) {
+    syncLightPanel();
+  }
+  if (persist) {
+    saveLightingState();
+  }
+  return index >= 0;
+}
+
+function removeArtworkLight(paintingData) {
+  if (!paintingData?.artSpot) return;
+  const lightData = paintingData.artSpot;
   paintingData.artSpot = null;
-  syncLightPanel();
-  saveLightingState();
+  removeCeilingLight(lightData);
+}
+
+function removeOrphanPaintingLights({ persist = true, sync = true } = {}) {
+  const assignedLights = new Set();
+
+  editablePaintings.forEach((paintingData) => {
+    if (!paintingData.artSpot || !ceilingLights.includes(paintingData.artSpot)) {
+      paintingData.artSpot = null;
+      return;
+    }
+    if (assignedLights.has(paintingData.artSpot)) {
+      paintingData.artSpot = null;
+      return;
+    }
+    assignedLights.add(paintingData.artSpot);
+  });
+
+  ceilingLights
+    .filter((lightData) => !assignedLights.has(lightData))
+    .forEach((lightData) => removeCeilingLight(lightData, { persist: false, sync: false }));
+
+  if (sync) {
+    syncLightPanel();
+  }
+  if (persist) {
+    saveLightingState();
+  }
 }
 
 function addArtworkFromPreview() {
@@ -1861,7 +1954,6 @@ function moveSelectedPaintingToPreview() {
   selectedPainting.group.position.copy(placement.point);
   selectedPainting.group.rotation.y = placement.ry;
   selectedPainting.wallNormal = placement.normal.clone();
-  removeArtworkLight(selectedPainting);
   selectedPainting.artSpot = addSpotForPainting(selectedPainting);
   movingSelectedPainting = false;
   moveOriginalTransform = null;
@@ -1903,8 +1995,8 @@ function cancelMoveSelectedPainting() {
 
 function removeSelectedPainting() {
   if (!selectedPainting) return;
-  room.remove(selectedPainting.group);
   removeArtworkLight(selectedPainting);
+  room.remove(selectedPainting.group);
   const index = editablePaintings.indexOf(selectedPainting);
   if (index >= 0) editablePaintings.splice(index, 1);
   selectedPainting = null;
@@ -1953,6 +2045,7 @@ function updateSelectedPaintingSize() {
     imageSrc,
   });
   selectedPainting.artSpot = artSpot;
+  selectedPainting.artSpot = addSpotForPainting(selectedPainting, { select: false, openPanel: false, persist: false, sync: false });
   syncArtPanel();
 }
 
@@ -1967,7 +2060,6 @@ function updateSelectedPaintingLabel() {
 }
 
 function relightPainting(paintingData) {
-  removeArtworkLight(paintingData);
   paintingData.artSpot = addSpotForPainting(paintingData, { select: false, openPanel: false, persist: false });
 }
 
@@ -1995,6 +2087,7 @@ function swapPaintingTransforms(firstPainting, secondPainting) {
 function saveGalleryFromEditor() {
   updateSelectedPaintingLabel();
   updateSelectedPaintingSize();
+  ensurePaintingLights();
   saveLightingState();
   const saved = saveGalleryState();
   artTitle.textContent = saved ? 'Galerie uložená' : 'Uložení se nepovedlo';
@@ -2164,9 +2257,9 @@ nextLightButton.addEventListener('click', () => {
 
 removeLightButton.addEventListener('click', () => {
   if (ceilingLights.length <= 1) return;
-  const [removed] = ceilingLights.splice(selectedLightIndex, 1);
-  lightRig.remove(removed.spot, removed.target, removed.fixture);
+  removeCeilingLight(ceilingLights[selectedLightIndex], { persist: false, sync: false });
   selectedLightIndex %= ceilingLights.length;
+  ensurePaintingLights();
   syncLightPanel();
   saveLightingState();
 });
