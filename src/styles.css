@@ -139,6 +139,7 @@ body,
 #audio-editor {
   position: fixed;
   left: 14px;
+  --editor-top: 14px;
   color: rgba(255, 255, 255, 0.86);
   font-size: 12px;
   max-width: min(340px, calc(100vw - 28px));
@@ -154,22 +155,27 @@ body,
 
 #light-editor {
   top: 14px;
+  --editor-top: 14px;
 }
 
 #art-editor {
   top: 58px;
+  --editor-top: 58px;
 }
 
 #pedestal-editor {
   top: 102px;
+  --editor-top: 102px;
 }
 
 #audio-editor {
   top: 190px;
+  --editor-top: 190px;
 }
 
 #text-panel-editor {
   top: 146px;
+  --editor-top: 146px;
 }
 
 #toggle-light-editor,
@@ -208,15 +214,16 @@ body,
 #audio-panel {
   display: none;
   width: min(270px, calc(100vw - 28px));
-  max-height: calc(100vh - 88px);
+  max-height: max(180px, calc(100dvh - var(--editor-top) - 68px - env(safe-area-inset-bottom)));
   overflow-y: auto;
   scrollbar-gutter: stable;
   margin-top: 8px;
-  padding: 9px;
+  padding: 9px 9px 34px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
   background: rgba(9, 10, 11, 0.72);
   backdrop-filter: blur(8px);
+  overscroll-behavior: contain;
 }
 
 #light-panel.visible,
@@ -279,14 +286,16 @@ body,
 }
 
 #light-panel .toggle-row,
-#art-panel .toggle-row {
+#art-panel .toggle-row,
+#text-panel-panel .toggle-row {
   display: flex;
   align-items: center;
   gap: 7px;
 }
 
 #light-panel .toggle-row input,
-#art-panel .toggle-row input {
+#art-panel .toggle-row input,
+#text-panel-panel .toggle-row input {
   width: auto;
 }
 

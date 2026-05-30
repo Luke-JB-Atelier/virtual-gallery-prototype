@@ -603,6 +603,7 @@
         "labelSize": "",
         "labelDate": "2025",
         "labelPrice": "",
+        "labelVisible": false,
         "actionUrl": ""
       },
       {

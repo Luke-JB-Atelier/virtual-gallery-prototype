@@ -52,6 +52,7 @@ const artLabelMediumInput = document.querySelector('#art-label-medium');
 const artLabelSizeInput = document.querySelector('#art-label-size');
 const artLabelDateInput = document.querySelector('#art-label-date');
 const artLabelPriceInput = document.querySelector('#art-label-price');
+const artLabelVisibleInput = document.querySelector('#art-label-visible');
 const artFrameSizeInput = document.querySelector('#art-frame-size');
 const artFrameColorInput = document.querySelector('#art-frame-color');
 const togglePedestalEditor = document.querySelector('#toggle-pedestal-editor');
@@ -2291,6 +2292,7 @@ function serializeGalleryState() {
       labelSize: paintingData.labelSize ?? '',
       labelDate: paintingData.labelDate ?? '',
       labelPrice: paintingData.labelPrice ?? '',
+      labelVisible: paintingData.labelVisible !== false,
       actionUrl: paintingData.actionUrl ?? '',
     })),
     pedestals: displayPedestals.map((pedestalData) => ({
@@ -2458,6 +2460,7 @@ function updateArtworkLabel(paintingData) {
   const labelCanvas = label.userData.labelCanvas;
   const labelTexture = label.userData.labelTexture;
   const ctx = labelCanvas.getContext('2d');
+  label.visible = paintingData.labelVisible !== false;
   const title = paintingData.labelTitle?.trim() || 'Bez názvu';
   const details = [
     paintingData.labelMedium?.trim(),
@@ -2945,6 +2948,7 @@ function createPaintingFromConfig(config, fallbackArtwork = {}, index = 0) {
     labelSize: config.labelSize ?? '',
     labelDate: config.labelDate ?? '',
     labelPrice: config.labelPrice ?? '',
+    labelVisible: config.labelVisible !== false,
     actionUrl: config.actionUrl ?? '',
     imageSrc,
   });
@@ -3022,6 +3026,7 @@ function addPainting({
   labelSize = '',
   labelDate = '',
   labelPrice = '',
+  labelVisible = true,
   actionUrl = '',
   imageSrc = '',
 }) {
@@ -3090,6 +3095,7 @@ function addPainting({
     labelSize,
     labelDate,
     labelPrice,
+    labelVisible: labelVisible !== false,
     actionUrl,
     imageSrc,
   };
@@ -3443,6 +3449,7 @@ function syncArtPanel() {
   artLabelSizeInput.value = selectedPainting.labelSize ?? '';
   artLabelDateInput.value = selectedPainting.labelDate ?? '';
   artLabelPriceInput.value = selectedPainting.labelPrice ?? '';
+  artLabelVisibleInput.checked = selectedPainting.labelVisible !== false;
 }
 
 function createMaterialFromImageUrl(url) {
@@ -3781,6 +3788,7 @@ function addArtworkFromPreview() {
     labelSize: artLabelSizeInput.value.trim(),
     labelDate: artLabelDateInput.value.trim(),
     labelPrice: artLabelPriceInput.value.trim(),
+    labelVisible: artLabelVisibleInput.checked,
     imageSrc: pendingArtSource,
   });
   selectedPainting = paintingData;
@@ -3877,6 +3885,8 @@ function updateSelectedPaintingSize() {
   const labelSize = selectedPainting.labelSize ?? '';
   const labelDate = selectedPainting.labelDate ?? '';
   const labelPrice = selectedPainting.labelPrice ?? '';
+  const labelVisible = selectedPainting.labelVisible !== false;
+  const actionUrl = selectedPainting.actionUrl ?? '';
   const imageSrc = selectedPainting.imageSrc ?? '';
   room.remove(selectedPainting.group);
   const index = editablePaintings.indexOf(selectedPainting);
@@ -3898,6 +3908,8 @@ function updateSelectedPaintingSize() {
     labelSize,
     labelDate,
     labelPrice,
+    labelVisible,
+    actionUrl,
     imageSrc,
   });
   selectedPainting.artSpot = artSpot;
@@ -3912,6 +3924,7 @@ function updateSelectedPaintingLabel() {
   selectedPainting.labelSize = artLabelSizeInput.value.trim();
   selectedPainting.labelDate = artLabelDateInput.value.trim();
   selectedPainting.labelPrice = artLabelPriceInput.value.trim();
+  selectedPainting.labelVisible = artLabelVisibleInput.checked;
   updateArtworkLabel(selectedPainting);
 }
 
@@ -4573,7 +4586,18 @@ function openPaintingActionFromCrosshair() {
     copyTextToClipboard(actionUrl.slice(5));
     return true;
   }
-  window.open(actionUrl, '_blank', 'noopener,noreferrer');
+  let resolvedUrl = actionUrl;
+  try {
+    resolvedUrl = new URL(actionUrl, window.location.href).href;
+  } catch {
+    status.textContent = 'Odkaz není platný';
+    return true;
+  }
+  if (!window.confirm('Otevřít odkaz v novém okně?')) {
+    status.textContent = 'Otevření odkazu zrušeno';
+    return true;
+  }
+  window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
   return true;
 }
 
@@ -5288,7 +5312,7 @@ artHeightCmInput.addEventListener('change', () => {
   updateSelectedPaintingSize();
 });
 
-[artLabelTitleInput, artLabelMediumInput, artLabelSizeInput, artLabelDateInput, artLabelPriceInput].forEach((input) => {
+[artLabelVisibleInput, artLabelTitleInput, artLabelMediumInput, artLabelSizeInput, artLabelDateInput, artLabelPriceInput].forEach((input) => {
   input.addEventListener('input', updateSelectedPaintingLabel);
   input.addEventListener('change', updateSelectedPaintingLabel);
 });
@@ -5320,10 +5344,12 @@ function selectLightFromPointer(event) {
 const keys = new Set();
 let draggingLook = false;
 let pointerLocked = false;
-let lookEnabled = false;
+let lookEnabled = !isTouchDevice;
 let lastMouseX = 0;
 let lastMouseY = 0;
 let hasCanvasPointer = false;
+let passiveMouseLook = !isTouchDevice;
+let passiveLookInitialized = false;
 let fallbackTurning = false;
 let fallbackOriginX = 0;
 let fallbackOriginY = 0;
@@ -5403,6 +5429,8 @@ function updateStatus() {
     status.textContent = 'FPS pohled zapnutý';
   } else if (fallbackTurning) {
     status.textContent = 'plynulé otáčení myší';
+  } else if (passiveMouseLook && lookEnabled) {
+    status.textContent = 'pohled myší zapnutý';
   } else if (lookEnabled) {
     status.textContent = 'pohled zapnutý bez zamknutí myši';
   } else {
@@ -5412,6 +5440,8 @@ function updateStatus() {
 
 function disableLook() {
   lookEnabled = false;
+  passiveMouseLook = false;
+  passiveLookInitialized = false;
   draggingLook = false;
   fallbackTurning = false;
   fallbackTurnVelocity = 0;
@@ -5484,6 +5514,10 @@ function updateFallbackTurn(event) {
 canvas.addEventListener('mousedown', (event) => {
   if (event.button === 2) {
     event.preventDefault();
+    if (openPaintingActionFromCrosshair()) {
+      releaseLook();
+      return;
+    }
     releaseLook();
     return;
   }
@@ -5519,10 +5553,6 @@ canvas.addEventListener('mousedown', (event) => {
     event.preventDefault();
     return;
   }
-  if (openPaintingActionFromCrosshair()) {
-    event.preventDefault();
-    return;
-  }
   if (selectEditableFromCrosshair()) {
     event.preventDefault();
     return;
@@ -5533,6 +5563,8 @@ canvas.addEventListener('mousedown', (event) => {
   }
   canvas.focus();
   lookEnabled = true;
+  passiveMouseLook = false;
+  passiveLookInitialized = false;
   draggingLook = true;
   fallbackTurning = true;
   fallbackOriginX = event.clientX;
@@ -5607,12 +5639,13 @@ document.addEventListener('pointerlockchange', () => {
 
 window.addEventListener('mouseup', () => {
   if (pointerLocked) return;
-  disableLook();
+  if (draggingLook || fallbackTurning) disableLook();
 });
 
 canvas.addEventListener('mouseleave', () => {
   hasCanvasPointer = false;
-  if (!pointerLocked) disableLook();
+  passiveLookInitialized = false;
+  if (!pointerLocked && !passiveMouseLook) disableLook();
 });
 
 function resetTouchControls() {
@@ -5637,7 +5670,7 @@ document.addEventListener('visibilitychange', () => {
 
 window.addEventListener('mousemove', (event) => {
   if (isTouchDevice) return;
-  if (!pointerLocked) {
+  if (!pointerLocked && !(lookEnabled && passiveMouseLook)) {
     rememberCanvasPointer(event);
   }
 
@@ -5647,9 +5680,19 @@ window.addEventListener('mousemove', (event) => {
   }
 
   if (lookEnabled) {
-    updateFallbackTurn(event);
-    lastMouseX = event.clientX;
-    lastMouseY = event.clientY;
+    if (fallbackTurning) {
+      updateFallbackTurn(event);
+      lastMouseX = event.clientX;
+      lastMouseY = event.clientY;
+    } else if (passiveMouseLook && event.target === canvas) {
+      if (passiveLookInitialized) {
+        applyLookDelta(event.clientX - lastMouseX, event.clientY - lastMouseY, 0.0019);
+      }
+      passiveLookInitialized = true;
+      lastMouseX = event.clientX;
+      lastMouseY = event.clientY;
+      hasCanvasPointer = true;
+    }
     return;
   }
 

@@ -9,8 +9,8 @@
   <body>
     <main id="app">
       <canvas id="gallery"></canvas>
-      <div id="hint">Klikni do scény: myš otáčí tělo · W/S chůze · Shift rychleji · A/D otočení · Esc vypnout pohled</div>
-      <div id="status">pohled vypnutý</div>
+      <div id="hint">Pohyb myší rozhlíží · klik zamkne FPS pohled · W/S chůze · Shift rychleji · A/D otočení · pravý klik otevře odkaz</div>
+      <div id="status">pohled myší zapnutý</div>
       <button id="audio-toggle" type="button">Zapnout jazz</button>
       <div id="room-light-control">
         <label>Světlo místnosti <input id="room-light-public-power" type="range" min="0" max="100" step="1" value="12" /></label>
@@ -60,6 +60,7 @@
           <label>Výška zavěšení <input id="art-height" type="range" min="0.05" max="3.35" step="0.01" value="1.45" /></label>
           <label>Šířka obrazu (cm) <input id="art-width-cm" type="number" min="10" max="300" step="0.1" value="120" /></label>
           <label>Výška obrazu (cm) <input id="art-height-cm" type="number" min="10" max="300" step="0.1" value="120" /></label>
+          <label class="toggle-row"><input id="art-label-visible" type="checkbox" checked /> Zobrazit štítek</label>
           <label>Název <input id="art-label-title" type="text" placeholder="Název obrazu" /></label>
           <label>Materiál <input id="art-label-medium" type="text" placeholder="např. olej na plátně" /></label>
           <label>Rozměr na štítku <input id="art-label-size" type="text" placeholder="např. 60 x 80 cm" /></label>
