@@ -308,6 +308,7 @@ body,
 #light-panel select,
 #pedestal-panel input[type="number"],
 #pedestal-panel select,
+#text-panel-donor-tools input[type="text"],
 #text-panel-panel input[type="number"],
 #text-panel-panel select,
 #text-panel-panel textarea {
@@ -322,6 +323,31 @@ body,
   min-height: 72px;
   resize: vertical;
   font: inherit;
+}
+
+#text-panel-donor-tools {
+  display: none;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(255, 229, 184, 0.18);
+  border-radius: 7px;
+  background: rgba(255, 229, 184, 0.07);
+}
+
+#text-panel-donor-tools.visible {
+  display: grid;
+}
+
+#text-panel-donor-tools .donor-hint {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+#text-panel-donor-tools button {
+  min-height: 30px;
+  padding: 6px 7px;
+  font-size: 11px;
 }
 
 #light-panel button:disabled,

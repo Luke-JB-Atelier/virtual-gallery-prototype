@@ -81,6 +81,10 @@ const moveTextPanelButton = document.querySelector('#move-text-panel');
 const removeTextPanelButton = document.querySelector('#remove-text-panel');
 const textPanelKindInput = document.querySelector('#text-panel-kind');
 const textPanelTextInput = document.querySelector('#text-panel-text');
+const textPanelDonorTools = document.querySelector('#text-panel-donor-tools');
+const donorNameInput = document.querySelector('#donor-name');
+const donorAmountInput = document.querySelector('#donor-amount');
+const addDonorRowButton = document.querySelector('#add-donor-row');
 const textPanelWidthCmInput = document.querySelector('#text-panel-width-cm');
 const textPanelHeightCmInput = document.querySelector('#text-panel-height-cm');
 const textPanelFontSizeInput = document.querySelector('#text-panel-font-size');
@@ -2565,6 +2569,10 @@ function getTextPanelKind(kind) {
   return kind === 'donors' ? 'donors' : 'plain';
 }
 
+function isDonorBoardPlaceholder(text) {
+  return /^tady bude tabule d[áa]rc[ůu]?$/i.test(String(text || '').trim());
+}
+
 function getDefaultDonorBoardText() {
   return [
     'Tady bude tabule dárců',
@@ -2578,7 +2586,7 @@ function parseDonorBoardRows(text) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((line) => !/^tady bude tabule d[áa]rc[ůu]?$/i.test(line))
+    .filter((line) => !isDonorBoardPlaceholder(line))
     .map((line) => {
       const parts = line.split(/\s*[|;]\s*/);
       if (parts.length >= 2) {
@@ -4130,18 +4138,26 @@ function getTextPanelSizeFromInputs() {
 
 function syncTextPanelPanel() {
   textPanelTitle.textContent = selectedTextPanel ? 'Vybraná tabulka' : 'Nová tabulka';
+  const selectedKind = getTextPanelKind(selectedTextPanel?.kind ?? textPanelKindInput.value);
+  textPanelDonorTools.classList.toggle('visible', selectedKind === 'donors');
+  textPanelTextInput.placeholder = selectedKind === 'donors'
+    ? 'Každý řádek: Jméno | 500 Kč'
+    : 'Napiš text na tabulku';
   textPanelStatus.textContent = movingSelectedTextPanel
     ? 'Pohybuj tabulkou kurzorem myši po stěně a klikni pro uchycení.'
       : selectedTextPanel
-        ? 'Tabulka je vybraná. Můžeš změnit text, barvy, velikost, přesunout ji, kolečkem otočit, nebo smazat.'
+        ? selectedKind === 'donors'
+          ? 'Tabule dárců je vybraná. Přidej jméno a částku, nebo uprav seznam řádků ve formátu Jméno | částka.'
+          : 'Tabulka je vybraná. Můžeš změnit text, barvy, velikost, přesunout ji, kolečkem otočit, nebo smazat.'
         : 'Namiř tečku na stěnu a přidej textovou tabulku.';
   moveTextPanelButton.disabled = !selectedTextPanel;
   removeTextPanelButton.disabled = !selectedTextPanel;
   moveTextPanelButton.textContent = movingSelectedTextPanel ? 'Zrušit přesun' : 'Přesunout vybranou';
   addTextPanelButton.textContent = movingSelectedTextPanel ? 'Uchytit na stěnu' : 'Přidat na stěnu';
   if (!selectedTextPanel) return;
-  textPanelKindInput.value = getTextPanelKind(selectedTextPanel.kind);
-  textPanelTextInput.value = selectedTextPanel.text ?? '';
+  textPanelKindInput.value = selectedKind;
+  const panelText = selectedTextPanel.text ?? '';
+  textPanelTextInput.value = selectedKind === 'donors' && isDonorBoardPlaceholder(panelText) ? '' : panelText;
   textPanelWidthCmInput.value = String(Math.round(selectedTextPanel.width * centimetersPerMeter));
   textPanelHeightCmInput.value = String(Math.round(selectedTextPanel.height * centimetersPerMeter));
   textPanelFontSizeInput.value = String(Math.round(selectedTextPanel.fontSize ?? 58));
@@ -4222,15 +4238,38 @@ function updateSelectedTextPanel() {
   const { width, height } = getTextPanelSizeFromInputs();
   selectedTextPanel.width = width;
   selectedTextPanel.height = height;
-  selectedTextPanel.text = textPanelTextInput.value;
+  selectedTextPanel.text = getTextPanelKind(textPanelKindInput.value) === 'donors' && isDonorBoardPlaceholder(textPanelTextInput.value)
+    ? ''
+    : textPanelTextInput.value;
   selectedTextPanel.bgColor = textPanelBgColorInput.value;
   selectedTextPanel.textColor = textPanelTextColorInput.value;
   selectedTextPanel.kind = getTextPanelKind(textPanelKindInput.value);
   selectedTextPanel.fontSize = Number(textPanelFontSizeInput.value);
   selectedTextPanel.fontWeight = Number(textPanelFontWeightInput.value);
   selectedTextPanel.textAlign = textPanelAlignInput.value;
+  syncTextPanelPanel();
   updateTextPanelGeometry(selectedTextPanel);
   redrawTextPanel(selectedTextPanel);
+}
+
+function appendDonorRow() {
+  const name = donorNameInput.value.trim();
+  const amount = donorAmountInput.value.trim();
+  if (!name || !amount) {
+    textPanelTitle.textContent = 'Chybí údaj';
+    textPanelStatus.textContent = 'Vyplň jméno i částku, třeba: Jan Novák a 500 Kč.';
+    return false;
+  }
+
+  const current = textPanelTextInput.value.trim();
+  textPanelTextInput.value = current ? `${current}\n${name} | ${amount}` : `${name} | ${amount}`;
+  donorNameInput.value = '';
+  donorAmountInput.value = '';
+
+  if (selectedTextPanel) {
+    updateSelectedTextPanel();
+  }
+  return true;
 }
 
 function rotateSelectedTextPanel(direction) {
@@ -5023,6 +5062,20 @@ moveTextPanelButton.addEventListener('click', () => {
   syncTextPanelPanel();
 });
 removeTextPanelButton.addEventListener('click', removeSelectedTextPanel);
+addDonorRowButton.addEventListener('click', appendDonorRow);
+[donorNameInput, donorAmountInput].forEach((input) => {
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    appendDonorRow();
+  });
+});
+textPanelKindInput.addEventListener('change', () => {
+  if (getTextPanelKind(textPanelKindInput.value) === 'donors') {
+    textPanelTextInput.placeholder = 'Každý řádek: Jméno | 500 Kč';
+  }
+  if (!selectedTextPanel) syncTextPanelPanel();
+});
 [
   textPanelKindInput,
   textPanelTextInput,
