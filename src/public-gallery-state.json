@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-05-30T06:49:02.888Z",
+  "exportedAt": "2026-05-30T08:01:53.979Z",
   "gallery": {
     "version": 1,
     "audio": {
@@ -607,7 +607,8 @@
           "scale": 1.05,
           "offsetX": 0,
           "offsetZ": 0,
-          "rotationY": 0.12
+          "rotationY": 0.12,
+          "stickers": []
         }
       }
     ],
@@ -674,11 +675,12 @@
   "lighting": {
     "roomLight": {
       "enabled": true,
-      "power": 20
+      "power": 12
     },
     "selectedLightIndex": 24,
     "ceilingLights": [
       {
+        "kind": "painting",
         "trackId": "back",
         "trackPosition": 0.0779,
         "yaw": 180,
@@ -689,6 +691,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "right",
         "trackPosition": 0.226,
         "yaw": 90,
@@ -699,6 +702,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "back",
         "trackPosition": 0.173,
         "yaw": 180,
@@ -709,6 +713,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "right",
         "trackPosition": 0.6652,
         "yaw": 90,
@@ -719,6 +724,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "left",
         "trackPosition": 0.0388,
         "yaw": -90,
@@ -729,6 +735,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "right",
         "trackPosition": 0.9072,
         "yaw": 90,
@@ -739,6 +746,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "back",
         "trackPosition": 0.808,
         "yaw": -180,
@@ -749,6 +757,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "left",
         "trackPosition": 0.1893,
         "yaw": -90,
@@ -759,6 +768,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "left",
         "trackPosition": 0.4446,
         "yaw": -90,
@@ -769,6 +779,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "right",
         "trackPosition": 0.8462,
         "yaw": 90,
@@ -779,6 +790,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "right",
         "trackPosition": 0.5715,
         "yaw": 90,
@@ -789,6 +801,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "right",
         "trackPosition": 0.326,
         "yaw": 90,
@@ -799,6 +812,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "right",
         "trackPosition": 0.4672,
         "yaw": 90,
@@ -809,6 +823,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "left",
         "trackPosition": 0.7781,
         "yaw": -90,
@@ -819,6 +834,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "front",
         "trackPosition": 0.1693,
         "yaw": 0,
@@ -829,6 +845,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "left",
         "trackPosition": 0.7452,
         "yaw": -90,
@@ -839,6 +856,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "back",
         "trackPosition": 0.9221,
         "yaw": 180,
@@ -849,6 +867,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "back",
         "trackPosition": 0.4778,
         "yaw": -180,
@@ -859,6 +878,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "right",
         "trackPosition": 0.1271,
         "yaw": 90,
@@ -869,6 +889,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "front",
         "trackPosition": 0.8219,
         "yaw": 0,
@@ -879,6 +900,7 @@
         "roomIndex": 0
       },
       {
+        "kind": "painting",
         "trackId": "front",
         "trackPosition": 0.4827,
         "yaw": 0,
@@ -889,6 +911,7 @@
         "roomIndex": 2
       },
       {
+        "kind": "painting",
         "trackId": "left",
         "trackPosition": 0.318,
         "yaw": -90,
@@ -899,6 +922,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "front",
         "trackPosition": 0.1822,
         "yaw": 0,
@@ -909,6 +933,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "front",
         "trackPosition": 0.833,
         "yaw": 0,
@@ -919,6 +944,7 @@
         "roomIndex": 1
       },
       {
+        "kind": "painting",
         "trackId": "front",
         "trackPosition": 0.6581,
         "yaw": 0,

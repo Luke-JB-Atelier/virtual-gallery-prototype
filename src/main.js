@@ -1498,9 +1498,9 @@ const roomLightState = {
   enabled: true,
   power: 12,
 };
-const savedLighting = useLocalSavedState
+const savedLighting = normalizeLoadedLightingState(useLocalSavedState
   ? loadLightingState() ?? exportedGalleryState?.lighting ?? null
-  : exportedGalleryState?.lighting ?? null;
+  : exportedGalleryState?.lighting ?? null);
 roomLightEnabledInput.checked = roomLightState.enabled;
 roomLightPowerInput.value = String(roomLightState.power);
 roomLightPublicPowerInput.value = String(roomLightState.power);
@@ -1904,6 +1904,17 @@ function getLightKindLabel(kind) {
   return kind === 'display' ? 'Vnitřní bodovka' : 'Světlo obrazu';
 }
 
+function getLightPitchRange(kind) {
+  return kind === 'display'
+    ? { min: -88, max: -4 }
+    : { min: -86, max: -18 };
+}
+
+function clampLightPitch(kind, pitchValue) {
+  const range = getLightPitchRange(kind);
+  return THREE.MathUtils.clamp(pitchValue, range.min, range.max);
+}
+
 function getLightKindOrdinal(lightData) {
   const kind = getLightKind(lightData);
   const sameKindLights = ceilingLights.filter((otherLight) => getLightKind(otherLight) === kind);
@@ -1997,7 +2008,49 @@ function createFixture() {
   return fixture;
 }
 
+function createDisplayFixture() {
+  const fixture = new THREE.Group();
+
+  const ceilingPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.026, 28), fixtureTrimMaterial);
+  ceilingPlate.position.y = 0.01;
+
+  const firstJoint = new THREE.Mesh(new THREE.SphereGeometry(0.045, 18, 10), fixtureTrimMaterial);
+  firstJoint.position.y = -0.04;
+
+  const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.18, 14), fixtureTrimMaterial);
+  upperArm.position.y = -0.13;
+
+  const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.04, 18, 10), fixtureTrimMaterial);
+  elbow.position.set(0.055, -0.22, 0);
+
+  const lowerArm = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.18, 14), fixtureTrimMaterial);
+  lowerArm.position.set(0.09, -0.3, 0);
+  lowerArm.rotation.z = -0.42;
+
+  const headJoint = new THREE.Mesh(new THREE.SphereGeometry(0.04, 18, 10), fixtureTrimMaterial);
+  headJoint.position.set(0.125, -0.39, 0);
+
+  const bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.098, 0.2, 28), fixtureMaterial);
+  bodyMesh.position.set(0.13, -0.51, 0);
+
+  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.074, 0.074, 0.012, 28), lensMaterial);
+  lens.position.set(0.13, -0.62, 0);
+
+  const selectionRing = new THREE.Mesh(new THREE.TorusGeometry(0.092, 0.006, 8, 32), selectedRingMaterial);
+  selectionRing.rotation.x = Math.PI / 2;
+  selectionRing.position.set(0.13, -0.628, 0);
+  selectionRing.userData.selectionRing = true;
+
+  const numberLabel = createLightNumberLabel();
+  numberLabel.position.set(0.22, -0.2, 0);
+  fixture.userData.numberLabel = numberLabel;
+
+  fixture.add(ceilingPlate, firstJoint, upperArm, elbow, lowerArm, headJoint, bodyMesh, lens, selectionRing, numberLabel);
+  return fixture;
+}
+
 function addCeilingLight({ position, targetPoint, trackId = 'back', trackPosition, yaw = 180, pitch = -38, power = 100, color = '#fff4e8', angle = 30, roomIndex, kind = 'painting', select = true }) {
+  const resolvedKind = kind === 'display' ? 'display' : 'painting';
   const roomPoint = targetPoint ?? position ?? new THREE.Vector3();
   const resolvedRoomIndex = roomIndex ?? getRoomIndexForPosition(roomPoint.x ?? 0, roomPoint.z ?? 0);
   const resolvedTrackPosition = trackPosition ?? (position ? getTrackPositionRatio(trackId, position, resolvedRoomIndex) : 0.5);
@@ -2011,17 +2064,17 @@ function addCeilingLight({ position, targetPoint, trackId = 'back', trackPositio
   spot.shadow.camera.far = 9;
   spot.shadow.bias = -0.00008;
   const target = new THREE.Object3D();
-  const fixture = createFixture();
+  const fixture = resolvedKind === 'display' ? createDisplayFixture() : createFixture();
   const lightData = {
     position: resolvedPosition,
     trackId,
     trackPosition: resolvedTrackPosition,
     yaw: THREE.MathUtils.clamp(angles.yaw, -180, 180),
-    pitch: THREE.MathUtils.clamp(angles.pitch, -86, -18),
+    pitch: clampLightPitch(resolvedKind, angles.pitch),
     power,
     color,
     angle,
-    kind: kind === 'display' ? 'display' : 'painting',
+    kind: resolvedKind,
     roomIndex: resolvedRoomIndex,
     spot,
     target,
@@ -2087,9 +2140,11 @@ function syncLightPanel() {
   const kind = getLightKind(current);
   const { index, total } = getLightKindOrdinal(current);
   lightTitle.textContent = `${getLightKindLabel(kind)} ${index}/${total}`;
-  lightKindInput.value = kind;
   moveLightButton.textContent = movingSelectedLight ? 'Uchytit pozici' : 'Přesunout světlo';
   aimLightButton.textContent = aimingSelectedLight ? 'Uchytit směr' : 'Nastavit směr';
+  const pitchRange = getLightPitchRange(kind);
+  lightPitchInput.min = String(pitchRange.min);
+  lightPitchInput.max = String(pitchRange.max);
   lightTrackPositionInput.value = String(current.trackPosition);
   lightYawInput.value = String(Math.round(current.yaw));
   lightPitchInput.value = String(Math.round(current.pitch));
@@ -2139,6 +2194,33 @@ function loadLightingState() {
   } catch {
     return null;
   }
+}
+
+function normalizeLoadedLightingState(lighting) {
+  if (!lighting || !Array.isArray(lighting.ceilingLights)) return lighting ?? null;
+  const normalized = {
+    ...lighting,
+    ceilingLights: lighting.ceilingLights.map((lightData) => ({
+      ...lightData,
+      kind: lightData.kind === 'display' ? 'display' : 'painting',
+    })),
+  };
+  normalized.ceilingLights = normalized.ceilingLights.filter((lightData, index, allLights) => {
+    if (lightData.kind !== 'display') return true;
+    return !allLights.some((otherLight, otherIndex) => (
+      otherIndex !== index
+      && otherLight.kind === 'painting'
+      && otherLight.roomIndex === lightData.roomIndex
+      && otherLight.trackId === lightData.trackId
+      && Math.abs((otherLight.trackPosition ?? 0) - (lightData.trackPosition ?? 0)) < 0.012
+      && Math.abs((otherLight.yaw ?? 0) - (lightData.yaw ?? 0)) < 2
+      && Math.abs((otherLight.pitch ?? 0) - (lightData.pitch ?? 0)) < 2
+    ));
+  });
+  normalized.selectedLightIndex = Number.isInteger(normalized.selectedLightIndex)
+    ? Math.min(normalized.selectedLightIndex, Math.max(0, normalized.ceilingLights.length - 1))
+    : 0;
+  return normalized;
 }
 
 function serializeGalleryState() {
@@ -3262,7 +3344,7 @@ function moveSpotToPainting(paintingData, lightData) {
   lightData.trackPosition = placement.trackPosition;
   lightData.roomIndex = placement.roomIndex;
   lightData.yaw = THREE.MathUtils.clamp(angles.yaw, -180, 180);
-  lightData.pitch = THREE.MathUtils.clamp(angles.pitch, -86, -18);
+  lightData.pitch = clampLightPitch('painting', angles.pitch);
   if (!Number.isFinite(lightData.power)) lightData.power = 105;
   updateCeilingLight(lightData);
   return lightData;
@@ -4378,14 +4460,6 @@ function finishAimSelectedLight({ commit = true } = {}) {
   }
 }
 
-function detachLightFromPaintings(lightData) {
-  editablePaintings.forEach((paintingData) => {
-    if (paintingData.artSpot === lightData) {
-      paintingData.artSpot = null;
-    }
-  });
-}
-
 function updateAimingSelectedLight() {
   if (!aimingSelectedLight) return;
   const lightData = getSelectedLight();
@@ -4401,7 +4475,7 @@ function updateAimingSelectedLight() {
   camera.getWorldDirection(direction);
   const angles = anglesFromDirection(direction);
   lightData.yaw = THREE.MathUtils.clamp(angles.yaw, -180, 180);
-  lightData.pitch = THREE.MathUtils.clamp(angles.pitch, -86, -18);
+  lightData.pitch = clampLightPitch(getLightKind(lightData), angles.pitch);
   updateCeilingLight(lightData);
   lightYawInput.value = String(Math.round(lightData.yaw));
   lightPitchInput.value = String(Math.round(lightData.pitch));
@@ -4496,7 +4570,7 @@ lightYawInput.addEventListener('input', () => {
 lightPitchInput.addEventListener('input', () => {
   const current = ceilingLights[selectedLightIndex];
   if (!current) return;
-  current.pitch = Number(lightPitchInput.value);
+  current.pitch = clampLightPitch(getLightKind(current), Number(lightPitchInput.value));
   updateCeilingLight(current);
   saveLightingState();
 });
@@ -4526,23 +4600,9 @@ lightAngleInput.addEventListener('input', () => {
 });
 
 lightKindInput.addEventListener('change', () => {
-  const current = ceilingLights[selectedLightIndex];
-  if (!current) return;
-  current.kind = lightKindInput.value === 'painting' ? 'painting' : 'display';
-  if (current.kind === 'display') {
-    detachLightFromPaintings(current);
-  }
-  if (current.kind === 'display' && !trackSpecs[current.trackId]?.custom) {
-    current.trackId = chooseCustomTrackForTarget(current.target.position);
-    current.trackPosition = getTrackPositionRatio(current.trackId, current.position, current.roomIndex ?? 0);
-  }
-  if (current.kind === 'painting' && trackSpecs[current.trackId]?.custom) {
-    current.trackId = chooseTrackForTarget(current.target.position);
-    current.trackPosition = getTrackPositionRatio(current.trackId, current.position, current.roomIndex ?? 0);
-  }
-  updateCeilingLight(current);
-  syncLightPanel();
-  saveLightingState();
+  status.textContent = lightKindInput.value === 'display'
+    ? 'Nově přidané světlo bude vnitřní bodovka.'
+    : 'Nově přidané světlo bude světlo obrazu.';
 });
 
 toggleArtEditor.addEventListener('click', () => {
