@@ -2471,26 +2471,73 @@ function updateArtworkLabel(paintingData) {
   );
 }
 
+function getTextPanelCanvasSize(width, height) {
+  const panelRatio = THREE.MathUtils.clamp(width / Math.max(height, 0.01), 0.25, 4);
+  const longSide = 1280;
+  const minShortSide = 360;
+  let canvasWidth;
+  let canvasHeight;
+
+  if (panelRatio >= 1) {
+    canvasWidth = longSide;
+    canvasHeight = Math.round(canvasWidth / panelRatio);
+    if (canvasHeight < minShortSide) {
+      canvasHeight = minShortSide;
+      canvasWidth = Math.round(canvasHeight * panelRatio);
+    }
+  } else {
+    canvasHeight = longSide;
+    canvasWidth = Math.round(canvasHeight * panelRatio);
+    if (canvasWidth < minShortSide) {
+      canvasWidth = minShortSide;
+      canvasHeight = Math.round(canvasWidth / panelRatio);
+    }
+  }
+
+  return {
+    width: canvasWidth,
+    height: canvasHeight,
+  };
+}
+
+function syncTextPanelCanvasSize(textPanelData, labelCanvas) {
+  const { width, height } = getTextPanelCanvasSize(textPanelData.width, textPanelData.height);
+  if (labelCanvas.width === width && labelCanvas.height === height) return;
+  labelCanvas.width = width;
+  labelCanvas.height = height;
+}
+
 function wrapCanvasText(ctx, text, maxWidth) {
   const wrapped = [];
   const paragraphs = String(text || '').split(/\r?\n/);
   paragraphs.forEach((paragraph) => {
-    const words = paragraph.trim().split(/\s+/).filter(Boolean);
-    if (!words.length) {
+    if (paragraph.length === 0) {
       wrapped.push('');
       return;
     }
+
+    const tokens = paragraph.replace(/\t/g, '    ').match(/[^ \t]+|[ \t]+/g) ?? [];
     let line = '';
-    words.forEach((word) => {
-      const candidate = line ? `${line} ${word}` : word;
-      if (ctx.measureText(candidate).width <= maxWidth || !line) {
+
+    tokens.forEach((token) => {
+      const candidate = `${line}${token}`;
+      const isWhitespace = /^[ \t]+$/.test(token);
+      if (ctx.measureText(candidate).width <= maxWidth || line.length === 0) {
         line = candidate;
-      } else {
-        wrapped.push(line);
-        line = word;
+        return;
       }
+
+      if (isWhitespace) {
+        wrapped.push(line.replace(/[ \t]+$/g, ''));
+        line = '';
+        return;
+      }
+
+      wrapped.push(line.replace(/[ \t]+$/g, ''));
+      line = token.replace(/^[ \t]+/g, '');
     });
-    if (line) wrapped.push(line);
+
+    wrapped.push(line.replace(/[ \t]+$/g, ''));
   });
   return wrapped;
 }
@@ -2498,15 +2545,17 @@ function wrapCanvasText(ctx, text, maxWidth) {
 function redrawTextPanel(textPanelData) {
   if (!textPanelData?.panel) return;
   const { canvas: labelCanvas, texture } = textPanelData.panel.userData;
+  syncTextPanelCanvasSize(textPanelData, labelCanvas);
   const ctx = labelCanvas.getContext('2d');
-  const text = textPanelData.text?.trim() || 'Textová tabulka';
+  const rawText = String(textPanelData.text ?? '');
+  const text = rawText.trim().length ? rawText : 'Textová tabulka';
   const bgColor = textPanelData.bgColor || '#f7f4ea';
   const textColor = textPanelData.textColor || '#111315';
   const fontSize = THREE.MathUtils.clamp(Number(textPanelData.fontSize ?? 58), 24, 136);
   const fontWeight = THREE.MathUtils.clamp(Number(textPanelData.fontWeight ?? 850), 500, 1000);
   const textAlign = ['left', 'center', 'right'].includes(textPanelData.textAlign) ? textPanelData.textAlign : 'center';
-  const paddingX = 56;
-  const paddingY = 44;
+  const paddingX = Math.max(34, labelCanvas.width * 0.055);
+  const paddingY = Math.max(34, labelCanvas.height * 0.085);
   const maxTextWidth = labelCanvas.width - paddingX * 2;
   const maxTextHeight = labelCanvas.height - paddingY * 2;
   let resolvedFontSize = fontSize;
@@ -2515,9 +2564,12 @@ function redrawTextPanel(textPanelData) {
   do {
     ctx.font = `${fontWeight} ${resolvedFontSize}px Arial, Helvetica, sans-serif`;
     lines = wrapCanvasText(ctx, text, maxTextWidth);
-    if (lines.length * resolvedFontSize * 1.28 <= maxTextHeight || resolvedFontSize <= 24) break;
+    const lineHeight = resolvedFontSize * 1.28;
+    const textHeight = lines.length * lineHeight;
+    const widestLine = lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
+    if ((textHeight <= maxTextHeight && widestLine <= maxTextWidth) || resolvedFontSize <= 14) break;
     resolvedFontSize -= 2;
-  } while (resolvedFontSize >= 24);
+  } while (resolvedFontSize >= 14);
 
   ctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
   ctx.fillStyle = bgColor;
@@ -2584,8 +2636,9 @@ function createTextPanel({
   wallNormal = null,
 } = {}) {
   const labelCanvas = document.createElement('canvas');
-  labelCanvas.width = 1024;
-  labelCanvas.height = 420;
+  const canvasSize = getTextPanelCanvasSize(width, height);
+  labelCanvas.width = canvasSize.width;
+  labelCanvas.height = canvasSize.height;
   const texture = new THREE.CanvasTexture(labelCanvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.minFilter = THREE.LinearFilter;
@@ -3902,7 +3955,7 @@ function addTextPanelFromWall() {
     ry: placement.ry,
     width: placement.width,
     height: placement.height,
-    text: textPanelTextInput.value.trim() || 'Textová tabulka',
+    text: textPanelTextInput.value.trim().length ? textPanelTextInput.value : 'Textová tabulka',
     bgColor: textPanelBgColorInput.value,
     textColor: textPanelTextColorInput.value,
     fontSize: Number(textPanelFontSizeInput.value),
@@ -3947,7 +4000,7 @@ function updateSelectedTextPanel() {
   const { width, height } = getTextPanelSizeFromInputs();
   selectedTextPanel.width = width;
   selectedTextPanel.height = height;
-  selectedTextPanel.text = textPanelTextInput.value.trim();
+  selectedTextPanel.text = textPanelTextInput.value;
   selectedTextPanel.bgColor = textPanelBgColorInput.value;
   selectedTextPanel.textColor = textPanelTextColorInput.value;
   selectedTextPanel.fontSize = Number(textPanelFontSizeInput.value);
@@ -5525,6 +5578,15 @@ window.__galleryDebug = () => ({
   },
   displayPedestals: displayPedestals.length,
   displayTextPanels: displayTextPanels.length,
+  textPanelDetails: displayTextPanels.map((textPanelData) => ({
+    width: Number(textPanelData.width.toFixed(3)),
+    height: Number(textPanelData.height.toFixed(3)),
+    canvas: [
+      textPanelData.panel.userData.canvas.width,
+      textPanelData.panel.userData.canvas.height,
+    ],
+    text: String(textPanelData.text ?? '').slice(0, 80),
+  })),
   audio: {
     tracks: jazzPlaylist.length,
     speakers: audioSpeakers.length,
