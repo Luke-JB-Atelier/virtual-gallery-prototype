@@ -1347,7 +1347,7 @@ const barrierRopeMaterial = new THREE.MeshStandardMaterial({
 
 function addFutureWingBarrier() {
   const group = new THREE.Group();
-  group.position.set(x0 - 0.16, 0, roomStep);
+  group.position.set(-sideRoomStep - roomWidth / 2 - 0.16, 0, roomStep);
 
   const postPositions = [-0.58, 0, 0.58];
   postPositions.forEach((z) => {
@@ -1431,7 +1431,7 @@ function addFutureWingBarrier() {
   room.add(group);
 }
 
-// Three main rooms plus a closed future wing connected from the middle room.
+// Three main rooms plus a side digital-art wing. The second side room stays closed to visitors.
 addRectangularRoomWalls(galleryRooms[0]);
 addCorridorWalls(roomDepth / 2, roomStep - roomDepth / 2);
 addRectangularRoomWalls(galleryRooms[1]);
@@ -1450,9 +1450,9 @@ const navigationSpaces = [
   { minX: x0, maxX: x1, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
   { minX: doorLeftX, maxX: doorRightX, minZ: roomStep + roomDepth / 2, maxZ: roomStep * 2 - roomDepth / 2, isConnector: true },
   { minX: x0, maxX: x1, minZ: roomStep * 2 - roomDepth / 2, maxZ: galleryMaxZ, padZMin: 0, padZMax: 1 },
+  { minX: -sideRoomStep + roomWidth / 2 - 1, maxX: x0 + 1, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
+  { minX: -sideRoomStep - roomWidth / 2, maxX: -sideRoomStep + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
   ...(editorMode ? [
-    { minX: -sideRoomStep + roomWidth / 2 - 1, maxX: x0 + 1, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
-    { minX: -sideRoomStep - roomWidth / 2, maxX: -sideRoomStep + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
     { minX: -sideRoomStep * 2 + roomWidth / 2 - 1, maxX: -sideRoomStep - roomWidth / 2 + 1, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
     { minX: -sideRoomStep * 2 - roomWidth / 2, maxX: -sideRoomStep * 2 + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
   ] : []),
@@ -1460,7 +1460,7 @@ const navigationSpaces = [
 
 const closedFutureWingBounds = {
   minX: -sideRoomStep * 2 - roomWidth / 2 - 0.5,
-  maxX: x0 - 0.12,
+  maxX: -sideRoomStep - roomWidth / 2 + 0.12,
   minZ: roomStep - roomDepth / 2 - corridorLength - 0.5,
   maxZ: roomStep + roomDepth / 2 + corridorLength + 0.5,
 };
@@ -5344,11 +5344,11 @@ function selectLightFromPointer(event) {
 const keys = new Set();
 let draggingLook = false;
 let pointerLocked = false;
-let lookEnabled = !isTouchDevice;
+let lookEnabled = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 let hasCanvasPointer = false;
-let passiveMouseLook = !isTouchDevice;
+let passiveMouseLook = false;
 let passiveLookInitialized = false;
 let fallbackTurning = false;
 let fallbackOriginX = 0;
@@ -5429,8 +5429,6 @@ function updateStatus() {
     status.textContent = 'FPS pohled zapnutý';
   } else if (fallbackTurning) {
     status.textContent = 'plynulé otáčení myší';
-  } else if (passiveMouseLook && lookEnabled) {
-    status.textContent = 'pohled myší zapnutý';
   } else if (lookEnabled) {
     status.textContent = 'pohled zapnutý bez zamknutí myši';
   } else {
@@ -5670,7 +5668,7 @@ document.addEventListener('visibilitychange', () => {
 
 window.addEventListener('mousemove', (event) => {
   if (isTouchDevice) return;
-  if (!pointerLocked && !(lookEnabled && passiveMouseLook)) {
+  if (!pointerLocked) {
     rememberCanvasPointer(event);
   }
 
