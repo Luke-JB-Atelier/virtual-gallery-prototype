@@ -82,8 +82,7 @@ const removeTextPanelButton = document.querySelector('#remove-text-panel');
 const textPanelKindInput = document.querySelector('#text-panel-kind');
 const textPanelTextInput = document.querySelector('#text-panel-text');
 const textPanelDonorTools = document.querySelector('#text-panel-donor-tools');
-const donorNameInput = document.querySelector('#donor-name');
-const donorAmountInput = document.querySelector('#donor-amount');
+const donorRowList = document.querySelector('#donor-row-list');
 const addDonorRowButton = document.querySelector('#add-donor-row');
 const textPanelWidthCmInput = document.querySelector('#text-panel-width-cm');
 const textPanelHeightCmInput = document.querySelector('#text-panel-height-cm');
@@ -95,6 +94,12 @@ const textPanelTextColorInput = document.querySelector('#text-panel-text-color')
 const toggleAudioEditor = document.querySelector('#toggle-audio-editor');
 const audioPanel = document.querySelector('#audio-panel');
 const audioVolumeInput = document.querySelector('#audio-volume');
+
+const donorContextMenu = document.createElement('div');
+donorContextMenu.id = 'donor-context-menu';
+donorContextMenu.innerHTML = '<button type="button" data-action="delete">Smazat řádek</button>';
+document.body.append(donorContextMenu);
+let donorContextRowIndex = null;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070a);
@@ -4136,10 +4141,106 @@ function getTextPanelSizeFromInputs() {
   };
 }
 
+function getDonorRowsFromEditor() {
+  return [...donorRowList.querySelectorAll('.donor-row')]
+    .map((row) => ({
+      name: row.querySelector('.donor-name-cell')?.value.trim() ?? '',
+      amount: row.querySelector('.donor-amount-cell')?.value.trim() ?? '',
+    }))
+    .filter((row) => row.name || row.amount);
+}
+
+function serializeDonorRows(rows) {
+  return rows
+    .filter((row) => row.name && row.amount)
+    .map((row) => `${row.name} | ${row.amount}`)
+    .join('\n');
+}
+
+function syncDonorTextFromGrid() {
+  textPanelTextInput.value = serializeDonorRows(getDonorRowsFromEditor());
+  if (!selectedTextPanel) return;
+  selectedTextPanel.text = textPanelTextInput.value;
+  selectedTextPanel.kind = 'donors';
+  redrawTextPanel(selectedTextPanel);
+}
+
+function hideDonorContextMenu() {
+  donorContextRowIndex = null;
+  donorContextMenu.classList.remove('visible');
+}
+
+function showDonorContextMenu(event, index) {
+  const rows = getDonorRowsFromEditor();
+  if (!rows[index]) return;
+  event.preventDefault();
+  event.stopPropagation();
+  donorContextRowIndex = index;
+  const menuWidth = 150;
+  const menuHeight = 38;
+  donorContextMenu.style.left = `${Math.min(event.clientX, window.innerWidth - menuWidth - 8)}px`;
+  donorContextMenu.style.top = `${Math.min(event.clientY, window.innerHeight - menuHeight - 8)}px`;
+  donorContextMenu.classList.add('visible');
+}
+
+function removeDonorRow(index) {
+  const rows = getDonorRowsFromEditor();
+  if (!rows[index]) return;
+  const label = [rows[index].name, rows[index].amount].filter(Boolean).join(' - ');
+  if (!window.confirm(`Opravdu smazat řádek "${label}"?`)) return;
+  rows.splice(index, 1);
+  textPanelTextInput.value = serializeDonorRows(rows);
+  if (selectedTextPanel) {
+    selectedTextPanel.text = textPanelTextInput.value;
+    selectedTextPanel.kind = 'donors';
+    redrawTextPanel(selectedTextPanel);
+  }
+  renderDonorEditorRows();
+}
+
+function renderDonorEditorRows() {
+  const rows = parseDonorBoardRows(textPanelTextInput.value);
+  rows.push({ name: '', amount: '' });
+  donorRowList.replaceChildren();
+
+  rows.forEach((row, index) => {
+    const rowElement = document.createElement('div');
+    rowElement.className = 'donor-row';
+    rowElement.dataset.index = String(index);
+
+    const nameInput = document.createElement('input');
+    nameInput.className = 'donor-name-cell';
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Jméno';
+    nameInput.value = row.name ?? '';
+
+    const amountInput = document.createElement('input');
+    amountInput.className = 'donor-amount-cell';
+    amountInput.type = 'text';
+    amountInput.placeholder = '500 Kč';
+    amountInput.value = row.amount ?? '';
+
+    const syncFromInput = () => {
+      hideDonorContextMenu();
+      syncDonorTextFromGrid();
+    };
+
+    nameInput.addEventListener('input', syncFromInput);
+    amountInput.addEventListener('input', syncFromInput);
+    rowElement.addEventListener('contextmenu', (event) => {
+      showDonorContextMenu(event, index);
+    });
+
+    rowElement.append(nameInput, amountInput);
+    donorRowList.append(rowElement);
+  });
+}
+
 function syncTextPanelPanel() {
   textPanelTitle.textContent = selectedTextPanel ? 'Vybraná tabulka' : 'Nová tabulka';
   const selectedKind = getTextPanelKind(selectedTextPanel?.kind ?? textPanelKindInput.value);
   textPanelDonorTools.classList.toggle('visible', selectedKind === 'donors');
+  textPanelTextInput.closest('label').style.display = selectedKind === 'donors' ? 'none' : 'grid';
   textPanelTextInput.placeholder = selectedKind === 'donors'
     ? 'Každý řádek: Jméno | 500 Kč'
     : 'Napiš text na tabulku';
@@ -4158,6 +4259,7 @@ function syncTextPanelPanel() {
   textPanelKindInput.value = selectedKind;
   const panelText = selectedTextPanel.text ?? '';
   textPanelTextInput.value = selectedKind === 'donors' && isDonorBoardPlaceholder(panelText) ? '' : panelText;
+  if (selectedKind === 'donors') renderDonorEditorRows();
   textPanelWidthCmInput.value = String(Math.round(selectedTextPanel.width * centimetersPerMeter));
   textPanelHeightCmInput.value = String(Math.round(selectedTextPanel.height * centimetersPerMeter));
   textPanelFontSizeInput.value = String(Math.round(selectedTextPanel.fontSize ?? 58));
@@ -4191,7 +4293,7 @@ function addTextPanelFromWall() {
     text: textPanelTextInput.value.trim().length
       ? textPanelTextInput.value
       : getTextPanelKind(textPanelKindInput.value) === 'donors'
-        ? getDefaultDonorBoardText()
+        ? ''
         : 'Textová tabulka',
     bgColor: textPanelBgColorInput.value,
     textColor: textPanelTextColorInput.value,
@@ -4253,22 +4355,11 @@ function updateSelectedTextPanel() {
 }
 
 function appendDonorRow() {
-  const name = donorNameInput.value.trim();
-  const amount = donorAmountInput.value.trim();
-  if (!name || !amount) {
-    textPanelTitle.textContent = 'Chybí údaj';
-    textPanelStatus.textContent = 'Vyplň jméno i částku, třeba: Jan Novák a 500 Kč.';
-    return false;
-  }
-
-  const current = textPanelTextInput.value.trim();
-  textPanelTextInput.value = current ? `${current}\n${name} | ${amount}` : `${name} | ${amount}`;
-  donorNameInput.value = '';
-  donorAmountInput.value = '';
-
-  if (selectedTextPanel) {
-    updateSelectedTextPanel();
-  }
+  const rows = getDonorRowsFromEditor();
+  rows.push({ name: '', amount: '' });
+  textPanelTextInput.value = serializeDonorRows(rows);
+  renderDonorEditorRows();
+  donorRowList.lastElementChild?.querySelector('.donor-name-cell')?.focus();
   return true;
 }
 
@@ -5063,12 +5154,14 @@ moveTextPanelButton.addEventListener('click', () => {
 });
 removeTextPanelButton.addEventListener('click', removeSelectedTextPanel);
 addDonorRowButton.addEventListener('click', appendDonorRow);
-[donorNameInput, donorAmountInput].forEach((input) => {
-  input.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter') return;
-    event.preventDefault();
-    appendDonorRow();
-  });
+donorContextMenu.addEventListener('click', (event) => {
+  const deleteButton = event.target.closest('button[data-action="delete"]');
+  if (!deleteButton) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const index = donorContextRowIndex;
+  hideDonorContextMenu();
+  if (index !== null) removeDonorRow(index);
 });
 textPanelKindInput.addEventListener('change', () => {
   if (getTextPanelKind(textPanelKindInput.value) === 'donors') {
@@ -5486,6 +5579,16 @@ document.addEventListener('contextmenu', (event) => {
     event.preventDefault();
   }
 });
+
+document.addEventListener('click', (event) => {
+  if (!donorContextMenu.contains(event.target)) hideDonorContextMenu();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') hideDonorContextMenu();
+});
+
+window.addEventListener('blur', hideDonorContextMenu);
 
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = document.pointerLockElement === canvas;
