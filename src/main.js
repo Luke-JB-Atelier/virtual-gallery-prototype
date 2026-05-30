@@ -26,6 +26,8 @@ const lightColorInput = document.querySelector('#light-color');
 const lightAngleInput = document.querySelector('#light-angle');
 const lightTrackPositionInput = document.querySelector('#light-track-position');
 const lightKindInput = document.querySelector('#light-kind');
+const moveLightButton = document.querySelector('#move-light');
+const aimLightButton = document.querySelector('#aim-light');
 const roomLightEnabledInput = document.querySelector('#room-light-enabled');
 const roomLightPowerInput = document.querySelector('#room-light-power');
 const toggleArtEditor = document.querySelector('#toggle-art-editor');
@@ -1884,9 +1886,18 @@ const ceilingLights = [];
 let selectedLightIndex = 0;
 let spotShadowSetupDirty = true;
 let spotShadowRoomIndex = null;
+let movingSelectedLight = false;
+let aimingSelectedLight = false;
+let aimingLightStartPosition = null;
+let aimingLightOriginalDirection = null;
+const maxLightAimDistance = 3;
 
 function getLightKind(lightData) {
   return lightData?.kind === 'display' ? 'display' : 'painting';
+}
+
+function getSelectedLight() {
+  return ceilingLights[selectedLightIndex] ?? null;
 }
 
 function getLightKindLabel(kind) {
@@ -2066,6 +2077,8 @@ function syncLightPanel() {
   if (!ceilingLights.length) {
     lightTitle.textContent = 'Žádné stropní světlo';
     removeLightButton.disabled = true;
+    moveLightButton.disabled = true;
+    aimLightButton.disabled = true;
     return;
   }
 
@@ -2075,6 +2088,8 @@ function syncLightPanel() {
   const { index, total } = getLightKindOrdinal(current);
   lightTitle.textContent = `${getLightKindLabel(kind)} ${index}/${total}`;
   lightKindInput.value = kind;
+  moveLightButton.textContent = movingSelectedLight ? 'Uchytit pozici' : 'Přesunout světlo';
+  aimLightButton.textContent = aimingSelectedLight ? 'Uchytit směr' : 'Nastavit směr';
   lightTrackPositionInput.value = String(current.trackPosition);
   lightYawInput.value = String(Math.round(current.yaw));
   lightPitchInput.value = String(Math.round(current.pitch));
@@ -2082,6 +2097,8 @@ function syncLightPanel() {
   lightColorInput.value = current.color ?? '#fff4e8';
   lightAngleInput.value = String(Math.round(current.angle ?? 30));
   removeLightButton.disabled = ceilingLights.length <= 1;
+  moveLightButton.disabled = false;
+  aimLightButton.disabled = false;
   ceilingLights.forEach(updateCeilingLight);
   updateLightLabels();
 }
@@ -3235,6 +3252,7 @@ function getSpotPlacementForPainting(paintingData) {
 }
 
 function moveSpotToPainting(paintingData, lightData) {
+  lightData.kind = 'painting';
   const placement = getSpotPlacementForPainting(paintingData);
   const resolvedPosition = getTrackPosition(placement.trackId, placement.trackPosition, placement.roomIndex);
   const direction = placement.targetPoint.clone().sub(resolvedPosition);
@@ -3251,7 +3269,7 @@ function moveSpotToPainting(paintingData, lightData) {
 }
 
 function addSpotForPainting(paintingData, { select = true, openPanel = true, persist = true, sync = true } = {}) {
-  if (paintingData.artSpot && ceilingLights.includes(paintingData.artSpot)) {
+  if (paintingData.artSpot && ceilingLights.includes(paintingData.artSpot) && getLightKind(paintingData.artSpot) === 'painting') {
     moveSpotToPainting(paintingData, paintingData.artSpot);
     if (select) {
       selectedLightIndex = ceilingLights.indexOf(paintingData.artSpot);
@@ -3267,6 +3285,7 @@ function addSpotForPainting(paintingData, { select = true, openPanel = true, per
     }
     return paintingData.artSpot;
   }
+  paintingData.artSpot = null;
 
   const placement = getSpotPlacementForPainting(paintingData);
   const lightData = addCeilingLight({
@@ -3328,6 +3347,10 @@ function removeOrphanPaintingLights({ persist = true, sync = true } = {}) {
 
   editablePaintings.forEach((paintingData) => {
     if (!paintingData.artSpot || !ceilingLights.includes(paintingData.artSpot)) {
+      paintingData.artSpot = null;
+      return;
+    }
+    if (getLightKind(paintingData.artSpot) !== 'painting') {
       paintingData.artSpot = null;
       return;
     }
@@ -4266,6 +4289,124 @@ function addLightFromView() {
   saveLightingState();
 }
 
+function getLightTrackPlacementFromPointer(lightData) {
+  const placementRaycaster = getPointerRaycaster() || getCenterRaycaster();
+  const point = new THREE.Vector3();
+  const hit = placementRaycaster.ray.intersectPlane(galleryFloorPlane, point);
+  if (!hit) return null;
+  constrainToGallery(point, 0.42, body.position.clone());
+  const kind = getLightKind(lightData);
+  const roomIndex = getRoomIndexForPosition(point.x, point.z);
+  const trackId = kind === 'display' ? chooseCustomTrackForTarget(point) : chooseTrackForTarget(point);
+  const trackPosition = getTrackPositionRatio(trackId, point, roomIndex);
+  return { trackId, trackPosition, roomIndex };
+}
+
+function applyLightTrackPlacement(lightData, placement) {
+  if (!lightData || !placement) return false;
+  lightData.trackId = placement.trackId;
+  lightData.trackPosition = placement.trackPosition;
+  lightData.roomIndex = placement.roomIndex;
+  updateCeilingLight(lightData);
+  lightTrackPositionInput.value = String(lightData.trackPosition);
+  return true;
+}
+
+function updateMovingSelectedLight() {
+  if (!movingSelectedLight) return;
+  const lightData = getSelectedLight();
+  const placement = getLightTrackPlacementFromPointer(lightData);
+  applyLightTrackPlacement(lightData, placement);
+}
+
+function beginMoveSelectedLight() {
+  const lightData = getSelectedLight();
+  if (!lightData) return;
+  aimingSelectedLight = false;
+  movingSelectedLight = true;
+  releaseLook();
+  syncLightPanel();
+  lightTitle.textContent = 'Přesun světla';
+  status.textContent = 'Pohybuj myší po scéně a klikni pro uchycení světla na lištu.';
+}
+
+function finishMoveSelectedLight() {
+  if (!movingSelectedLight) return;
+  updateMovingSelectedLight();
+  movingSelectedLight = false;
+  syncLightPanel();
+  saveLightingState();
+}
+
+function beginAimSelectedLight() {
+  const lightData = getSelectedLight();
+  if (!lightData) return;
+  movingSelectedLight = false;
+  aimingSelectedLight = true;
+  aimingLightStartPosition = body.position.clone();
+  aimingLightOriginalDirection = {
+    yaw: lightData.yaw,
+    pitch: lightData.pitch,
+  };
+  canvas.focus();
+  lookEnabled = true;
+  if (!pointerLocked && canvas.requestPointerLock) {
+    canvas.requestPointerLock();
+  }
+  syncLightPanel();
+  lightTitle.textContent = 'Nastavení směru';
+  status.textContent = 'Dívej se tam, kam má světlo svítit. Levým klikem směr uchytíš.';
+}
+
+function finishAimSelectedLight({ commit = true } = {}) {
+  const lightData = getSelectedLight();
+  if (!aimingSelectedLight || !lightData) return;
+  if (!commit && aimingLightOriginalDirection) {
+    lightData.yaw = aimingLightOriginalDirection.yaw;
+    lightData.pitch = aimingLightOriginalDirection.pitch;
+    updateCeilingLight(lightData);
+  }
+  aimingSelectedLight = false;
+  aimingLightStartPosition = null;
+  aimingLightOriginalDirection = null;
+  syncLightPanel();
+  if (commit) {
+    saveLightingState();
+    status.textContent = 'Směr světla uchycený';
+  } else {
+    status.textContent = 'Nastavení směru zrušené, odešel jsi moc daleko od světla.';
+  }
+}
+
+function detachLightFromPaintings(lightData) {
+  editablePaintings.forEach((paintingData) => {
+    if (paintingData.artSpot === lightData) {
+      paintingData.artSpot = null;
+    }
+  });
+}
+
+function updateAimingSelectedLight() {
+  if (!aimingSelectedLight) return;
+  const lightData = getSelectedLight();
+  if (!lightData) {
+    finishAimSelectedLight({ commit: false });
+    return;
+  }
+  if (aimingLightStartPosition && body.position.distanceTo(aimingLightStartPosition) > maxLightAimDistance) {
+    finishAimSelectedLight({ commit: false });
+    return;
+  }
+  const direction = new THREE.Vector3();
+  camera.getWorldDirection(direction);
+  const angles = anglesFromDirection(direction);
+  lightData.yaw = THREE.MathUtils.clamp(angles.yaw, -180, 180);
+  lightData.pitch = THREE.MathUtils.clamp(angles.pitch, -86, -18);
+  updateCeilingLight(lightData);
+  lightYawInput.value = String(Math.round(lightData.yaw));
+  lightPitchInput.value = String(Math.round(lightData.pitch));
+}
+
 roomLightEnabledInput.addEventListener('change', () => {
   roomLightState.enabled = roomLightEnabledInput.checked;
   if (roomLightState.enabled && roomLightState.power <= 0) {
@@ -4298,8 +4439,28 @@ toggleLightEditor.addEventListener('click', () => {
 
 addLightButton.addEventListener('click', addLightFromView);
 
+moveLightButton.addEventListener('click', () => {
+  if (!getSelectedLight()) return;
+  if (movingSelectedLight) {
+    finishMoveSelectedLight();
+  } else {
+    beginMoveSelectedLight();
+  }
+});
+
+aimLightButton.addEventListener('click', () => {
+  if (!getSelectedLight()) return;
+  if (aimingSelectedLight) {
+    finishAimSelectedLight({ commit: true });
+  } else {
+    beginAimSelectedLight();
+  }
+});
+
 nextLightButton.addEventListener('click', () => {
   if (!ceilingLights.length) return;
+  movingSelectedLight = false;
+  if (aimingSelectedLight) finishAimSelectedLight({ commit: false });
   selectedLightIndex = (selectedLightIndex + 1) % ceilingLights.length;
   syncLightPanel();
   saveLightingState();
@@ -4307,6 +4468,8 @@ nextLightButton.addEventListener('click', () => {
 
 removeLightButton.addEventListener('click', () => {
   if (ceilingLights.length <= 1) return;
+  movingSelectedLight = false;
+  if (aimingSelectedLight) finishAimSelectedLight({ commit: false });
   removeCeilingLight(ceilingLights[selectedLightIndex], { persist: false, sync: false });
   selectedLightIndex %= ceilingLights.length;
   ensurePaintingLights();
@@ -4366,6 +4529,9 @@ lightKindInput.addEventListener('change', () => {
   const current = ceilingLights[selectedLightIndex];
   if (!current) return;
   current.kind = lightKindInput.value === 'painting' ? 'painting' : 'display';
+  if (current.kind === 'display') {
+    detachLightFromPaintings(current);
+  }
   if (current.kind === 'display' && !trackSpecs[current.trackId]?.custom) {
     current.trackId = chooseCustomTrackForTarget(current.target.position);
     current.trackPosition = getTrackPositionRatio(current.trackId, current.position, current.roomIndex ?? 0);
@@ -4813,6 +4979,16 @@ canvas.addEventListener('mousedown', (event) => {
 
   if (event.button !== 0 || isTouchDevice) return;
   rememberCanvasPointer(event);
+  if (aimingSelectedLight) {
+    event.preventDefault();
+    finishAimSelectedLight({ commit: true });
+    return;
+  }
+  if (movingSelectedLight) {
+    event.preventDefault();
+    finishMoveSelectedLight();
+    return;
+  }
   if (movingSelectedPainting) {
     event.preventDefault();
     moveSelectedPaintingToPreview();
@@ -5101,7 +5277,7 @@ function updateArtworkBrightness(delta) {
     const lightRoomIndex = lightData?.roomIndex ?? getRoomIndexForPosition(paintingData.group.position.x, paintingData.group.position.z);
     const paintingRoomIndex = getRoomIndexForPosition(paintingData.group.position.x, paintingData.group.position.z);
     const lightIsInCurrentRoom = lightRoomIndex === currentRoomIndex && paintingRoomIndex === currentRoomIndex;
-    const lightIsOn = Boolean(lightData && lightIsInCurrentRoom && (lightData.power ?? 0) > 0.5);
+    const lightIsOn = Boolean(lightData && getLightKind(lightData) === 'painting' && lightIsInCurrentRoom && (lightData.power ?? 0) > 0.5);
     const targetBrightness = lightIsOn
       ? 1
       : 0.018;
@@ -5138,6 +5314,8 @@ function updateCrosshairAndEditors() {
       selectedTextPanel.wallNormal = placement.normal.clone();
     }
   }
+  updateMovingSelectedLight();
+  updateAimingSelectedLight();
   updatePedestalSelection();
   updateTextPanelSelection();
   syncArtPreview();
@@ -5188,6 +5366,11 @@ window.__galleryDebug = () => ({
     intensity: Number(fixture.light.intensity.toFixed(3)),
   })),
   visibleSpotLights: ceilingLights.filter((lightData) => lightData.spot.visible).length,
+  lightAssignments: {
+    paintingLights: ceilingLights.filter((lightData) => getLightKind(lightData) === 'painting').length,
+    displayLights: ceilingLights.filter((lightData) => getLightKind(lightData) === 'display').length,
+    displayLightsAssignedToPaintings: editablePaintings.filter((paintingData) => getLightKind(paintingData.artSpot) === 'display').length,
+  },
   displayPedestals: displayPedestals.length,
   displayTextPanels: displayTextPanels.length,
   audio: {
