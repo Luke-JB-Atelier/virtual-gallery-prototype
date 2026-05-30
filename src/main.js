@@ -140,7 +140,8 @@ const lightingStorageKey = 'virtual-gallery-lighting-oil-v3';
 const galleryStorageKey = 'virtual-gallery-art-oil-v1';
 const urlParams = new URLSearchParams(window.location.search);
 const editorMode = urlParams.has('edit');
-const useLocalSavedState = editorMode || urlParams.has('local');
+const forceGitHubState = urlParams.has('github') || urlParams.has('fresh');
+const useLocalSavedState = (editorMode || urlParams.has('local')) && !forceGitHubState;
 const exportedGalleryState = publicGalleryState?.version === 1 ? publicGalleryState : null;
 const savedGallery = useLocalSavedState
   ? loadGalleryState() ?? exportedGalleryState?.gallery ?? null
@@ -4121,7 +4122,7 @@ function resetLocalGalleryFromEditor() {
   artTitle.textContent = 'Lokální úpravy smazané';
   artStatus.textContent = 'Po znovunačtení se otevře čistá verze z GitHubu.';
   window.setTimeout(() => {
-    window.location.href = `${window.location.origin}${window.location.pathname}?edit=1`;
+    window.location.href = `${window.location.origin}${window.location.pathname}?edit=1&github=1`;
   }, 450);
 }
 
