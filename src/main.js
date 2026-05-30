@@ -25,6 +25,7 @@ const lightPowerInput = document.querySelector('#light-power');
 const lightColorInput = document.querySelector('#light-color');
 const lightAngleInput = document.querySelector('#light-angle');
 const lightTrackPositionInput = document.querySelector('#light-track-position');
+const lightKindInput = document.querySelector('#light-kind');
 const roomLightEnabledInput = document.querySelector('#room-light-enabled');
 const roomLightPowerInput = document.querySelector('#room-light-power');
 const toggleArtEditor = document.querySelector('#toggle-art-editor');
@@ -63,6 +64,13 @@ const pedestalTypeInput = document.querySelector('#pedestal-type');
 const pedestalWidthCmInput = document.querySelector('#pedestal-width-cm');
 const pedestalDepthCmInput = document.querySelector('#pedestal-depth-cm');
 const pedestalHeightCmInput = document.querySelector('#pedestal-height-cm');
+const pedestalStickerFileInput = document.querySelector('#pedestal-sticker-file');
+const loadPedestalStickerButton = document.querySelector('#load-pedestal-sticker');
+const removePedestalStickerButton = document.querySelector('#remove-pedestal-sticker');
+const pedestalStickerWidthCmInput = document.querySelector('#pedestal-sticker-width-cm');
+const pedestalStickerHeightCmInput = document.querySelector('#pedestal-sticker-height-cm');
+const pedestalStickerOffsetXCmInput = document.querySelector('#pedestal-sticker-offset-x-cm');
+const pedestalStickerOffsetYCmInput = document.querySelector('#pedestal-sticker-offset-y-cm');
 const toggleTextPanelEditor = document.querySelector('#toggle-text-panel-editor');
 const textPanelPanel = document.querySelector('#text-panel-panel');
 const textPanelTitle = document.querySelector('#text-panel-title');
@@ -1028,6 +1036,59 @@ function createPedestalCoinsContent(pedestalWidth, pedestalDepth, pedestalHeight
   return coins;
 }
 
+function normalizePedestalStickers(stickers) {
+  if (!Array.isArray(stickers)) return [];
+  return stickers
+    .filter((sticker) => sticker && typeof sticker.imageSrc === 'string' && sticker.imageSrc)
+    .map((sticker) => ({
+      imageSrc: sticker.imageSrc,
+      face: ['front', 'back', 'left', 'right'].includes(sticker.face) ? sticker.face : 'front',
+      width: THREE.MathUtils.clamp(Number(sticker.width) || 0.42, 0.08, 1.8),
+      height: THREE.MathUtils.clamp(Number(sticker.height) || 0.42, 0.08, 1.8),
+      offsetX: Number.isFinite(sticker.offsetX) ? sticker.offsetX : 0,
+      offsetY: Number.isFinite(sticker.offsetY) ? sticker.offsetY : 0.55,
+    }));
+}
+
+function createPedestalStickerContent(pedestalWidth, pedestalDepth, pedestalHeight, pedestalType, sticker) {
+  if (!sticker?.imageSrc) return null;
+  const stickerWidth = THREE.MathUtils.clamp(Number(sticker.width) || 0.42, 0.08, Math.max(0.08, pedestalWidth * 0.96));
+  const stickerHeight = THREE.MathUtils.clamp(Number(sticker.height) || 0.42, 0.08, Math.max(0.08, pedestalHeight * 0.9));
+  const material = createMaterialFromImageUrl(sticker.imageSrc);
+  material.transparent = true;
+  material.depthWrite = false;
+
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(stickerWidth, stickerHeight), material);
+  const usableWidth = pedestalType === 'pillar' ? pedestalWidth * 0.82 : pedestalWidth;
+  const usableDepth = pedestalType === 'pillar' ? pedestalDepth * 0.82 : pedestalDepth;
+  const maxOffsetX = Math.max(0, usableWidth / 2 - stickerWidth / 2 - 0.01);
+  const offsetX = THREE.MathUtils.clamp(Number(sticker.offsetX) || 0, -maxOffsetX, maxOffsetX);
+  const offsetY = THREE.MathUtils.clamp(
+    Number(sticker.offsetY) || pedestalHeight * 0.52,
+    stickerHeight / 2 + 0.03,
+    Math.max(stickerHeight / 2 + 0.03, pedestalHeight - stickerHeight / 2 - 0.03),
+  );
+  const faceOffset = 0.014;
+  const face = ['front', 'back', 'left', 'right'].includes(sticker.face) ? sticker.face : 'front';
+
+  if (face === 'back') {
+    mesh.position.set(offsetX, offsetY, -usableDepth / 2 - faceOffset);
+    mesh.rotation.y = Math.PI;
+  } else if (face === 'left') {
+    mesh.position.set(-usableWidth / 2 - faceOffset, offsetY, offsetX);
+    mesh.rotation.y = -Math.PI / 2;
+  } else if (face === 'right') {
+    mesh.position.set(usableWidth / 2 + faceOffset, offsetY, offsetX);
+    mesh.rotation.y = Math.PI / 2;
+  } else {
+    mesh.position.set(offsetX, offsetY, usableDepth / 2 + faceOffset);
+  }
+
+  mesh.renderOrder = 18;
+  mesh.userData.isPedestalSticker = true;
+  return mesh;
+}
+
 function createFlatCapContent(pedestalWidth, pedestalDepth, pedestalHeight, content = {}) {
   const cap = new THREE.Group();
   const scale = THREE.MathUtils.clamp(Number(content.scale) || 1, 0.55, 1.4);
@@ -1098,14 +1159,19 @@ function createFlatCapContent(pedestalWidth, pedestalDepth, pedestalHeight, cont
 
 function normalizePedestalContent(content) {
   if (!content) return null;
+  const stickers = normalizePedestalStickers(content.stickers);
   if (['bowler-hat', 'flat-cap', 'coins'].includes(content.type)) {
     return {
       ...content,
       type: 'coins',
       scale: Number.isFinite(content.scale) ? content.scale : 1.18,
+      stickers,
     };
   }
-  return content;
+  return {
+    ...content,
+    stickers,
+  };
 }
 
 function createDisplayPedestal({
@@ -1166,6 +1232,10 @@ function createDisplayPedestal({
   if (resolvedContent?.type === 'coins') {
     group.add(createPedestalCoinsContent(width, depth, height, resolvedContent));
   }
+  normalizePedestalStickers(resolvedContent?.stickers).forEach((sticker) => {
+    const stickerMesh = createPedestalStickerContent(width, depth, height, type, sticker);
+    if (stickerMesh) group.add(stickerMesh);
+  });
 
   const selection = new THREE.Mesh(
     new THREE.BoxGeometry(width * 1.18, height + 0.04, depth * 1.18),
@@ -1708,6 +1778,14 @@ const trackSpecs = {
   front: { id: 'front', axis: 'x', fixedAxis: 'z', fixed: roomDepth / 2 - 1.05, min: -roomWidth / 2 + 0.65, max: roomWidth / 2 - 0.65 },
   left: { id: 'left', axis: 'z', fixedAxis: 'x', fixed: -roomWidth / 2 + 0.85, min: -roomDepth / 2 + 0.8, max: roomDepth / 2 - 0.8 },
   right: { id: 'right', axis: 'z', fixedAxis: 'x', fixed: roomWidth / 2 - 0.85, min: -roomDepth / 2 + 0.8, max: roomDepth / 2 - 0.8 },
+  'inner-a-back': { id: 'inner-a-back', axis: 'x', fixedAxis: 'z', fixed: -roomDepth / 2 + 2.45, min: -roomWidth / 2 + 1.2, max: roomWidth / 2 - 1.2, custom: true },
+  'inner-a-front': { id: 'inner-a-front', axis: 'x', fixedAxis: 'z', fixed: roomDepth / 2 - 2.45, min: -roomWidth / 2 + 1.2, max: roomWidth / 2 - 1.2, custom: true },
+  'inner-a-left': { id: 'inner-a-left', axis: 'z', fixedAxis: 'x', fixed: -roomWidth / 2 + 1.55, min: -roomDepth / 2 + 1.7, max: roomDepth / 2 - 1.7, custom: true },
+  'inner-a-right': { id: 'inner-a-right', axis: 'z', fixedAxis: 'x', fixed: roomWidth / 2 - 1.55, min: -roomDepth / 2 + 1.7, max: roomDepth / 2 - 1.7, custom: true },
+  'inner-b-back': { id: 'inner-b-back', axis: 'x', fixedAxis: 'z', fixed: -roomDepth / 2 + 3.55, min: -roomWidth / 2 + 2.0, max: roomWidth / 2 - 2.0, custom: true },
+  'inner-b-front': { id: 'inner-b-front', axis: 'x', fixedAxis: 'z', fixed: roomDepth / 2 - 3.55, min: -roomWidth / 2 + 2.0, max: roomWidth / 2 - 2.0, custom: true },
+  'inner-b-left': { id: 'inner-b-left', axis: 'z', fixedAxis: 'x', fixed: -roomWidth / 2 + 2.45, min: -roomDepth / 2 + 2.85, max: roomDepth / 2 - 2.85, custom: true },
+  'inner-b-right': { id: 'inner-b-right', axis: 'z', fixedAxis: 'x', fixed: roomWidth / 2 - 2.45, min: -roomDepth / 2 + 2.85, max: roomDepth / 2 - 2.85, custom: true },
 };
 
 function getTrackPosition(trackId, trackPosition, roomIndex = 0) {
@@ -1743,6 +1821,27 @@ function chooseTrackForTarget(targetPoint) {
   ];
   distances.sort((a, b) => a.distance - b.distance);
   return distances[0].id;
+}
+
+function scoreTrackForTarget(spec, targetPoint, centerX, centerZ) {
+  const along = spec.axis === 'x' ? targetPoint.x - centerX : targetPoint.z - centerZ;
+  const fixedDistance = spec.axis === 'x'
+    ? Math.abs(targetPoint.z - (centerZ + spec.fixed))
+    : Math.abs(targetPoint.x - (centerX + spec.fixed));
+  const alongDistance = Math.abs(along - THREE.MathUtils.clamp(along, spec.min, spec.max));
+  return fixedDistance ** 2 + alongDistance ** 2;
+}
+
+function chooseCustomTrackForTarget(targetPoint) {
+  const roomIndex = getRoomIndexForPosition(targetPoint.x, targetPoint.z);
+  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
+  const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
+  const customTracks = Object.values(trackSpecs).filter((spec) => spec.custom);
+  customTracks.sort((first, second) => (
+    scoreTrackForTarget(first, targetPoint, centerX, centerZ)
+    - scoreTrackForTarget(second, targetPoint, centerX, centerZ)
+  ));
+  return customTracks[0]?.id ?? chooseTrackForTarget(targetPoint);
 }
 
 function getRoomIndexForPosition(x, z) {
@@ -1786,6 +1885,23 @@ let selectedLightIndex = 0;
 let spotShadowSetupDirty = true;
 let spotShadowRoomIndex = null;
 
+function getLightKind(lightData) {
+  return lightData?.kind === 'display' ? 'display' : 'painting';
+}
+
+function getLightKindLabel(kind) {
+  return kind === 'display' ? 'Vnitřní bodovka' : 'Světlo obrazu';
+}
+
+function getLightKindOrdinal(lightData) {
+  const kind = getLightKind(lightData);
+  const sameKindLights = ceilingLights.filter((otherLight) => getLightKind(otherLight) === kind);
+  return {
+    index: sameKindLights.indexOf(lightData) + 1,
+    total: sameKindLights.length,
+  };
+}
+
 function directionFromAngles(yawDeg, pitchDeg) {
   const yaw = THREE.MathUtils.degToRad(yawDeg);
   const pitch = THREE.MathUtils.degToRad(pitchDeg);
@@ -1812,6 +1928,7 @@ function updateCeilingLight(lightData) {
   lightData.spot.angle = THREE.MathUtils.degToRad(lightData.angle ?? 30);
   lightData.fixture.position.copy(lightData.position);
   lightData.fixture.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), directionFromAngles(lightData.yaw, lightData.pitch));
+  lightData.fixture.scale.setScalar(getLightKind(lightData) === 'display' ? 0.78 : 1);
   lightData.fixture.traverse((child) => {
     if (child.userData.selectionRing) {
       child.visible = lightData === ceilingLights[selectedLightIndex];
@@ -1823,11 +1940,13 @@ function updateCeilingLight(lightData) {
 
 function updateLightLabels() {
   const labelsVisible = lightPanel.classList.contains('visible');
-  ceilingLights.forEach((lightData, index) => {
+  ceilingLights.forEach((lightData) => {
     const label = lightData.fixture.userData.numberLabel;
     if (!label) return;
+    const kind = getLightKind(lightData);
+    const { index } = getLightKindOrdinal(lightData);
     label.visible = labelsVisible;
-    updateLightNumberLabel(label, String(index + 1), index === selectedLightIndex);
+    updateLightNumberLabel(label, `${kind === 'display' ? 'V' : 'O'}${index}`, lightData === ceilingLights[selectedLightIndex]);
   });
 }
 
@@ -1867,7 +1986,7 @@ function createFixture() {
   return fixture;
 }
 
-function addCeilingLight({ position, targetPoint, trackId = 'back', trackPosition, yaw = 180, pitch = -38, power = 100, color = '#fff4e8', angle = 30, roomIndex, select = true }) {
+function addCeilingLight({ position, targetPoint, trackId = 'back', trackPosition, yaw = 180, pitch = -38, power = 100, color = '#fff4e8', angle = 30, roomIndex, kind = 'painting', select = true }) {
   const roomPoint = targetPoint ?? position ?? new THREE.Vector3();
   const resolvedRoomIndex = roomIndex ?? getRoomIndexForPosition(roomPoint.x ?? 0, roomPoint.z ?? 0);
   const resolvedTrackPosition = trackPosition ?? (position ? getTrackPositionRatio(trackId, position, resolvedRoomIndex) : 0.5);
@@ -1891,6 +2010,7 @@ function addCeilingLight({ position, targetPoint, trackId = 'back', trackPositio
     power,
     color,
     angle,
+    kind: kind === 'display' ? 'display' : 'painting',
     roomIndex: resolvedRoomIndex,
     spot,
     target,
@@ -1951,7 +2071,10 @@ function syncLightPanel() {
 
   selectedLightIndex = THREE.MathUtils.clamp(selectedLightIndex, 0, ceilingLights.length - 1);
   const current = ceilingLights[selectedLightIndex];
-  lightTitle.textContent = `Stropní světlo ${selectedLightIndex + 1}/${ceilingLights.length}`;
+  const kind = getLightKind(current);
+  const { index, total } = getLightKindOrdinal(current);
+  lightTitle.textContent = `${getLightKindLabel(kind)} ${index}/${total}`;
+  lightKindInput.value = kind;
   lightTrackPositionInput.value = String(current.trackPosition);
   lightYawInput.value = String(Math.round(current.yaw));
   lightPitchInput.value = String(Math.round(current.pitch));
@@ -1971,6 +2094,7 @@ function serializeLightingState() {
     },
     selectedLightIndex,
     ceilingLights: ceilingLights.map((lightData) => ({
+      kind: getLightKind(lightData),
       trackId: lightData.trackId,
       trackPosition: Number(lightData.trackPosition.toFixed(4)),
       yaw: Number(lightData.yaw.toFixed(2)),
@@ -2635,6 +2759,7 @@ function attachSavedLightsToPaintings() {
     let bestDistance = Infinity;
     const expectedPlacement = getSpotPlacementForPainting(paintingData);
     unusedLights.forEach((lightData) => {
+      if (getLightKind(lightData) !== 'painting') return;
       const lightRoomIndex = lightData.roomIndex ?? getRoomIndexForZ(lightData.position.z);
       if (lightRoomIndex !== expectedPlacement.roomIndex) return;
       const distance = lightData.position.distanceToSquared(expectedPlacement.position);
@@ -3150,6 +3275,7 @@ function addSpotForPainting(paintingData, { select = true, openPanel = true, per
     trackId: placement.trackId,
     trackPosition: placement.trackPosition,
     power: 105,
+    kind: 'painting',
     roomIndex: placement.roomIndex,
     select,
   });
@@ -3213,7 +3339,7 @@ function removeOrphanPaintingLights({ persist = true, sync = true } = {}) {
   });
 
   ceilingLights
-    .filter((lightData) => !assignedLights.has(lightData))
+    .filter((lightData) => getLightKind(lightData) === 'painting' && !assignedLights.has(lightData))
     .forEach((lightData) => removeCeilingLight(lightData, { persist: false, sync: false }));
 
   if (sync) {
@@ -3423,17 +3549,31 @@ function syncPedestalPanel() {
   pedestalStatus.textContent = movingSelectedPedestal
     ? 'Namiř tečku na podlahu a klikni Přidat na podlahu.'
       : selectedPedestal
-        ? 'Objekt je vybraný. Můžeš ho přesunout, kolečkem otočit, změnit typ a rozměr, nebo smazat.'
+        ? 'Objekt je vybraný. Můžeš ho přesunout, kolečkem otočit, změnit typ, rozměr, nebo nalepit obrázek na čelo.'
         : 'Namiř tečku na podlahu a přidej nový podstavec.';
   movePedestalButton.disabled = !selectedPedestal;
   removePedestalButton.disabled = !selectedPedestal;
   movePedestalButton.textContent = movingSelectedPedestal ? 'Zrušit přesun' : 'Přesunout vybraný';
   addPedestalButton.textContent = movingSelectedPedestal ? 'Uchytit na podlahu' : 'Přidat na podlahu';
-  if (!selectedPedestal) return;
+  const selectedSticker = selectedPedestal?.content?.stickers?.[0] ?? null;
+  loadPedestalStickerButton.disabled = !selectedPedestal;
+  removePedestalStickerButton.disabled = !selectedSticker;
+  if (!selectedPedestal) {
+    pedestalStickerWidthCmInput.value = '42';
+    pedestalStickerHeightCmInput.value = '42';
+    pedestalStickerOffsetXCmInput.value = '0';
+    pedestalStickerOffsetYCmInput.value = '55';
+    return;
+  }
   pedestalTypeInput.value = selectedPedestal.type ?? 'pillar';
   pedestalWidthCmInput.value = String(Math.round(selectedPedestal.width * centimetersPerMeter));
   pedestalDepthCmInput.value = String(Math.round(selectedPedestal.depth * centimetersPerMeter));
   pedestalHeightCmInput.value = String(Math.round(selectedPedestal.height * centimetersPerMeter));
+  const defaultStickerSize = Math.min(selectedPedestal.width, selectedPedestal.height * 0.55, 0.5);
+  pedestalStickerWidthCmInput.value = String(Math.round((selectedSticker?.width ?? defaultStickerSize) * centimetersPerMeter));
+  pedestalStickerHeightCmInput.value = String(Math.round((selectedSticker?.height ?? defaultStickerSize) * centimetersPerMeter));
+  pedestalStickerOffsetXCmInput.value = String(Math.round((selectedSticker?.offsetX ?? 0) * centimetersPerMeter));
+  pedestalStickerOffsetYCmInput.value = String(Math.round((selectedSticker?.offsetY ?? selectedPedestal.height * 0.52) * centimetersPerMeter));
 }
 
 function updatePedestalSelection() {
@@ -3508,6 +3648,77 @@ function updateSelectedPedestalSize() {
     ...size,
   });
   updatePedestalSelection();
+}
+
+function replaceSelectedPedestalContent(content) {
+  if (!selectedPedestal) return;
+  const position = selectedPedestal.group.position.clone();
+  const ry = selectedPedestal.group.rotation.y;
+  const { width, depth, height, type } = selectedPedestal;
+  room.remove(selectedPedestal.group);
+  const index = displayPedestals.indexOf(selectedPedestal);
+  if (index >= 0) displayPedestals.splice(index, 1);
+  selectedPedestal = createDisplayPedestal({
+    x: position.x,
+    z: position.z,
+    ry,
+    width,
+    depth,
+    height,
+    type,
+    content,
+  });
+  updatePedestalSelection();
+  syncPedestalPanel();
+}
+
+function readPedestalStickerFromInputs(imageSrc = selectedPedestal?.content?.stickers?.[0]?.imageSrc ?? '') {
+  if (!selectedPedestal || !imageSrc) return null;
+  const width = THREE.MathUtils.clamp(
+    Number(pedestalStickerWidthCmInput.value) / centimetersPerMeter || Math.min(selectedPedestal.width * 0.62, 0.48),
+    0.08,
+    Math.max(0.08, selectedPedestal.width * 0.96),
+  );
+  const height = THREE.MathUtils.clamp(
+    Number(pedestalStickerHeightCmInput.value) / centimetersPerMeter || width,
+    0.08,
+    Math.max(0.08, selectedPedestal.height * 0.9),
+  );
+  const offsetX = THREE.MathUtils.clamp(
+    Number(pedestalStickerOffsetXCmInput.value) / centimetersPerMeter || 0,
+    -selectedPedestal.width / 2,
+    selectedPedestal.width / 2,
+  );
+  const offsetY = THREE.MathUtils.clamp(
+    Number(pedestalStickerOffsetYCmInput.value) / centimetersPerMeter || selectedPedestal.height * 0.52,
+    height / 2 + 0.03,
+    Math.max(height / 2 + 0.03, selectedPedestal.height - height / 2 - 0.03),
+  );
+  return {
+    imageSrc,
+    face: 'front',
+    width,
+    height,
+    offsetX,
+    offsetY,
+  };
+}
+
+function updateSelectedPedestalSticker() {
+  if (!selectedPedestal?.content?.stickers?.[0]) return;
+  const nextSticker = readPedestalStickerFromInputs();
+  if (!nextSticker) return;
+  replaceSelectedPedestalContent({
+    ...(selectedPedestal.content ?? {}),
+    stickers: [nextSticker],
+  });
+}
+
+function removeSelectedPedestalSticker() {
+  if (!selectedPedestal?.content?.stickers?.length) return;
+  const nextContent = { ...(selectedPedestal.content ?? {}) };
+  delete nextContent.stickers;
+  replaceSelectedPedestalContent(Object.keys(nextContent).length ? nextContent : null);
 }
 
 function rotateSelectedPedestal(direction) {
@@ -4041,8 +4252,17 @@ function addLightFromView() {
     roomHeight - 0.14,
     centerZ + THREE.MathUtils.clamp((targetPoint.z - centerZ) * 0.58, -roomDepth / 2 + 0.75, roomDepth / 2 - 0.75),
   );
-  const trackId = chooseTrackForTarget(targetPoint);
-  addCeilingLight({ position, targetPoint, trackId, power: 105, roomIndex });
+  const kind = lightKindInput.value === 'painting' ? 'painting' : 'display';
+  const trackId = kind === 'display' ? chooseCustomTrackForTarget(targetPoint) : chooseTrackForTarget(targetPoint);
+  addCeilingLight({
+    position,
+    targetPoint,
+    trackId,
+    power: kind === 'display' ? 72 : 105,
+    angle: kind === 'display' ? 34 : 30,
+    kind,
+    roomIndex,
+  });
   saveLightingState();
 }
 
@@ -4142,6 +4362,23 @@ lightAngleInput.addEventListener('input', () => {
   saveLightingState();
 });
 
+lightKindInput.addEventListener('change', () => {
+  const current = ceilingLights[selectedLightIndex];
+  if (!current) return;
+  current.kind = lightKindInput.value === 'painting' ? 'painting' : 'display';
+  if (current.kind === 'display' && !trackSpecs[current.trackId]?.custom) {
+    current.trackId = chooseCustomTrackForTarget(current.target.position);
+    current.trackPosition = getTrackPositionRatio(current.trackId, current.position, current.roomIndex ?? 0);
+  }
+  if (current.kind === 'painting' && trackSpecs[current.trackId]?.custom) {
+    current.trackId = chooseTrackForTarget(current.target.position);
+    current.trackPosition = getTrackPositionRatio(current.trackId, current.position, current.roomIndex ?? 0);
+  }
+  updateCeilingLight(current);
+  syncLightPanel();
+  saveLightingState();
+});
+
 toggleArtEditor.addEventListener('click', () => {
   artPanel.classList.toggle('visible');
   if (artPanel.classList.contains('visible')) {
@@ -4212,6 +4449,42 @@ removePedestalButton.addEventListener('click', removeSelectedPedestal);
 [pedestalTypeInput, pedestalWidthCmInput, pedestalDepthCmInput, pedestalHeightCmInput].forEach((input) => {
   input.addEventListener('input', updateSelectedPedestalSize);
   input.addEventListener('change', updateSelectedPedestalSize);
+});
+loadPedestalStickerButton.addEventListener('click', () => {
+  if (!selectedPedestal) return;
+  pedestalStickerFileInput.click();
+});
+removePedestalStickerButton.addEventListener('click', removeSelectedPedestalSticker);
+[pedestalStickerWidthCmInput, pedestalStickerHeightCmInput, pedestalStickerOffsetXCmInput, pedestalStickerOffsetYCmInput].forEach((input) => {
+  input.addEventListener('input', updateSelectedPedestalSticker);
+  input.addEventListener('change', updateSelectedPedestalSticker);
+});
+pedestalStickerFileInput.addEventListener('change', () => {
+  const [file] = pedestalStickerFileInput.files;
+  if (!file || !selectedPedestal) return;
+  const reader = new FileReader();
+  reader.addEventListener('load', () => {
+    const image = new Image();
+    image.addEventListener('load', () => {
+      const aspect = image.naturalWidth / image.naturalHeight || 1;
+      const defaultWidth = Math.min(selectedPedestal.width * 0.62, 0.48);
+      const defaultHeight = defaultWidth / aspect;
+      pedestalStickerWidthCmInput.value = String(Math.round(defaultWidth * centimetersPerMeter));
+      pedestalStickerHeightCmInput.value = String(Math.round(defaultHeight * centimetersPerMeter));
+      pedestalStickerOffsetXCmInput.value = '0';
+      pedestalStickerOffsetYCmInput.value = String(Math.round(selectedPedestal.height * 0.52 * centimetersPerMeter));
+      const sticker = readPedestalStickerFromInputs(reader.result);
+      replaceSelectedPedestalContent({
+        ...(selectedPedestal.content ?? {}),
+        stickers: sticker ? [sticker] : [],
+      });
+      pedestalTitle.textContent = 'Obrázek nalepený';
+      pedestalStatus.textContent = 'Obrázek je na čele podstavce. Velikost a polohu doladíš číselně v panelu.';
+      pedestalStickerFileInput.value = '';
+    });
+    image.src = reader.result;
+  });
+  reader.readAsDataURL(file);
 });
 
 addTextPanelButton.addEventListener('click', () => {

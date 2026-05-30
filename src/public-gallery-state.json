@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-05-29T22:13:14.657Z",
+  "exportedAt": "2026-05-30T06:49:02.888Z",
   "gallery": {
     "version": 1,
     "audio": {
@@ -307,29 +307,6 @@
         "actionUrl": ""
       },
       {
-        "imageSrc": "art/olej-web/02-jungle.jpg",
-        "x": -0.171,
-        "y": 1.73,
-        "z": -5.935,
-        "ry": 0,
-        "w": 0.7,
-        "h": 0.7,
-        "aspect": 1,
-        "wallNormal": [
-          0,
-          0,
-          1
-        ],
-        "frameSize": "thin",
-        "frameColor": "#010101",
-        "labelTitle": "Jungle #2",
-        "labelMedium": "",
-        "labelSize": "40 x 40 cm",
-        "labelDate": "2019",
-        "labelPrice": "cena dohodou",
-        "actionUrl": ""
-      },
-      {
         "imageSrc": "art/olej-web/01-muj-prvni-obraz.jpg",
         "x": -3.25,
         "y": 1.73,
@@ -558,6 +535,52 @@
         "labelDate": "",
         "labelPrice": "",
         "actionUrl": ""
+      },
+      {
+        "imageSrc": "art/olej-web/02-jungle.jpg",
+        "x": -0.171,
+        "y": 1.73,
+        "z": -5.935,
+        "ry": 0,
+        "w": 0.7,
+        "h": 0.7,
+        "aspect": 1,
+        "wallNormal": [
+          0,
+          0,
+          1
+        ],
+        "frameSize": "thin",
+        "frameColor": "#010101",
+        "labelTitle": "Jungle #2",
+        "labelMedium": "",
+        "labelSize": "40 x 40 cm",
+        "labelDate": "2019",
+        "labelPrice": "cena dohodou",
+        "actionUrl": ""
+      },
+      {
+        "imageSrc": "art/stickers/ceska-sporitelna-qr.jpg",
+        "x": 1.2175,
+        "y": 1.45,
+        "z": 32.235,
+        "ry": 3.141593,
+        "w": 0.6,
+        "h": 0.6,
+        "aspect": 1,
+        "wallNormal": [
+          0,
+          0,
+          -1
+        ],
+        "frameSize": "medium",
+        "frameColor": "#000000",
+        "labelTitle": "qr ČESKÁ SPOŘITELNA",
+        "labelMedium": "",
+        "labelSize": "30 x 30 cm",
+        "labelDate": "",
+        "labelPrice": "",
+        "actionUrl": ""
       }
     ],
     "pedestals": [
@@ -581,10 +604,10 @@
         "height": 1.1,
         "content": {
           "type": "coins",
-          "scale": 1.06,
+          "scale": 1.05,
           "offsetX": 0,
           "offsetZ": 0,
-          "rotationY": 0.08
+          "rotationY": 0.12
         }
       }
     ],
@@ -634,7 +657,7 @@
         "ry": 3.141593,
         "width": 1.48,
         "height": 0.7,
-        "text": "Galerie je ještě ve fázi výstavby. Děkuji za podporu. <3",
+        "text": "Galerie je ještě ve fázi výstavby, stejně jako můj život. Děkuji za podporu. <3",
         "bgColor": "#ffffff",
         "textColor": "#111315",
         "fontSize": 54,
@@ -651,9 +674,9 @@
   "lighting": {
     "roomLight": {
       "enabled": true,
-      "power": 8
+      "power": 20
     },
-    "selectedLightIndex": 23,
+    "selectedLightIndex": 24,
     "ceilingLights": [
       {
         "trackId": "back",
@@ -894,6 +917,16 @@
         "color": "#b6a1e8",
         "angle": 30,
         "roomIndex": 1
+      },
+      {
+        "trackId": "front",
+        "trackPosition": 0.6581,
+        "yaw": 0,
+        "pitch": -61.45,
+        "power": 105,
+        "color": "#fff4e8",
+        "angle": 30,
+        "roomIndex": 2
       }
     ]
   }
