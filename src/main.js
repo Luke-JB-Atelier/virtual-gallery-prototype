@@ -79,6 +79,7 @@ const textPanelStatus = document.querySelector('#text-panel-status');
 const addTextPanelButton = document.querySelector('#add-text-panel');
 const moveTextPanelButton = document.querySelector('#move-text-panel');
 const removeTextPanelButton = document.querySelector('#remove-text-panel');
+const textPanelKindInput = document.querySelector('#text-panel-kind');
 const textPanelTextInput = document.querySelector('#text-panel-text');
 const textPanelWidthCmInput = document.querySelector('#text-panel-width-cm');
 const textPanelHeightCmInput = document.querySelector('#text-panel-height-cm');
@@ -2303,6 +2304,7 @@ function serializeGalleryState() {
       text: textPanelData.text ?? '',
       bgColor: textPanelData.bgColor ?? '#f7f4ea',
       textColor: textPanelData.textColor ?? '#111315',
+      kind: getTextPanelKind(textPanelData.kind),
       fontSize: Number((textPanelData.fontSize ?? 50).toFixed(2)),
       fontWeight: Number((textPanelData.fontWeight ?? 850).toFixed(0)),
       textAlign: textPanelData.textAlign ?? 'center',
@@ -2559,11 +2561,173 @@ function wrapCanvasText(ctx, text, maxWidth) {
   return wrapped;
 }
 
+function getTextPanelKind(kind) {
+  return kind === 'donors' ? 'donors' : 'plain';
+}
+
+function getDefaultDonorBoardText() {
+  return [
+    'Tady bude tabule dárců',
+    '',
+    'Jméno podporovatele | 500 Kč',
+  ].join('\n');
+}
+
+function parseDonorBoardRows(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^tady bude tabule d[áa]rc[ůu]?$/i.test(line))
+    .map((line) => {
+      const parts = line.split(/\s*[|;]\s*/);
+      if (parts.length >= 2) {
+        return {
+          name: parts.slice(0, -1).join(' | ').trim(),
+          amount: parts.at(-1).trim(),
+        };
+      }
+
+      const match = line.match(/^(.+?)\s{2,}(.+)$/) ?? line.match(/^(.+?)\s[-–—]\s(.+)$/);
+      if (!match) return null;
+      return {
+        name: match[1].trim(),
+        amount: match[2].trim(),
+      };
+    })
+    .filter((row) => row?.name && row?.amount);
+}
+
+function fitCanvasText(ctx, text, maxWidth, maxSize, minSize, weight = 800, family = 'Arial, Helvetica, sans-serif') {
+  let size = maxSize;
+  do {
+    ctx.font = `${weight} ${size}px ${family}`;
+    if (ctx.measureText(text).width <= maxWidth || size <= minSize) return size;
+    size -= 2;
+  } while (size >= minSize);
+  return minSize;
+}
+
+function drawFittedCanvasText(ctx, text, x, y, maxWidth, size, minSize, weight, align = 'left') {
+  const resolvedSize = fitCanvasText(ctx, text, maxWidth, size, minSize, weight);
+  ctx.font = `${weight} ${resolvedSize}px Arial, Helvetica, sans-serif`;
+  ctx.textAlign = align;
+  ctx.fillText(text, x, y);
+  return resolvedSize;
+}
+
+function drawDonorBoardPanel(ctx, labelCanvas, textPanelData) {
+  const bgColor = textPanelData.bgColor || '#f7f4ea';
+  const textColor = textPanelData.textColor || '#111315';
+  const rows = parseDonorBoardRows(textPanelData.text);
+  const paddingX = Math.max(58, labelCanvas.width * 0.075);
+  const paddingY = Math.max(58, labelCanvas.height * 0.065);
+  const innerX = paddingX;
+  const innerY = paddingY;
+  const innerWidth = labelCanvas.width - paddingX * 2;
+  const innerHeight = labelCanvas.height - paddingY * 2;
+  const accentColor = '#b8873a';
+
+  ctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, labelCanvas.width, labelCanvas.height);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+  ctx.fillRect(0, 0, labelCanvas.width, Math.round(labelCanvas.height * 0.16));
+
+  ctx.strokeStyle = 'rgba(18, 15, 12, 0.42)';
+  ctx.lineWidth = Math.max(8, labelCanvas.width * 0.012);
+  ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, labelCanvas.width - ctx.lineWidth, labelCanvas.height - ctx.lineWidth);
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = Math.max(3, labelCanvas.width * 0.004);
+  ctx.strokeRect(innerX * 0.62, innerY * 0.62, labelCanvas.width - innerX * 1.24, labelCanvas.height - innerY * 1.24);
+
+  const titleSize = Math.min(92, Math.max(48, labelCanvas.height * 0.09));
+  ctx.fillStyle = textColor;
+  ctx.textBaseline = 'top';
+  drawFittedCanvasText(ctx, 'TABULE DÁRCŮ', labelCanvas.width / 2, innerY, innerWidth, titleSize, 32, 1000, 'center');
+
+  const subtitleY = innerY + titleSize * 1.08;
+  ctx.fillStyle = 'rgba(17, 19, 21, 0.72)';
+  drawFittedCanvasText(
+    ctx,
+    'Na tabuli uvádím podporovatele od 500 Kč. Děkuji všem, kdo pomáhají galerii růst.',
+    labelCanvas.width / 2,
+    subtitleY,
+    innerWidth,
+    Math.min(40, Math.max(24, labelCanvas.height * 0.038)),
+    18,
+    800,
+    'center',
+  );
+
+  const tableTop = subtitleY + Math.max(72, labelCanvas.height * 0.105);
+  const headerHeight = Math.max(44, labelCanvas.height * 0.055);
+  const rowAreaHeight = innerY + innerHeight - tableTop - headerHeight - Math.max(20, labelCanvas.height * 0.025);
+  const rowHeight = Math.max(28, Math.min(52, rowAreaHeight / Math.max(rows.length || 1, 8)));
+  const maxRows = Math.max(1, Math.floor(rowAreaHeight / rowHeight));
+  const visibleRows = rows.slice(0, maxRows);
+  const amountColumnWidth = innerWidth * 0.31;
+  const nameX = innerX + 22;
+  const amountX = innerX + innerWidth - 22;
+
+  ctx.fillStyle = 'rgba(20, 18, 14, 0.12)';
+  ctx.fillRect(innerX, tableTop, innerWidth, headerHeight);
+  ctx.strokeStyle = 'rgba(20, 18, 14, 0.2)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(innerX, tableTop, innerWidth, headerHeight + rowHeight * Math.max(visibleRows.length, 1));
+  ctx.beginPath();
+  ctx.moveTo(innerX + innerWidth - amountColumnWidth, tableTop);
+  ctx.lineTo(innerX + innerWidth - amountColumnWidth, tableTop + headerHeight + rowHeight * Math.max(visibleRows.length, 1));
+  ctx.stroke();
+
+  ctx.fillStyle = textColor;
+  const headerFontSize = Math.min(34, Math.max(22, headerHeight * 0.48));
+  ctx.font = `950 ${headerFontSize}px Arial, Helvetica, sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillText('Jméno', nameX, tableTop + headerHeight / 2);
+  ctx.textAlign = 'right';
+  ctx.fillText('Podpora', amountX, tableTop + headerHeight / 2);
+
+  if (!visibleRows.length) {
+    ctx.fillStyle = 'rgba(17, 19, 21, 0.66)';
+    ctx.textAlign = 'center';
+    ctx.font = `800 ${Math.min(42, Math.max(24, rowHeight * 0.72))}px Arial, Helvetica, sans-serif`;
+    ctx.fillText('Tady bude tabule dárců', labelCanvas.width / 2, tableTop + headerHeight + rowHeight / 2);
+  }
+
+  visibleRows.forEach((row, index) => {
+    const rowTop = tableTop + headerHeight + index * rowHeight;
+    if (index % 2 === 0) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.13)';
+      ctx.fillRect(innerX, rowTop, innerWidth, rowHeight);
+    }
+    ctx.strokeStyle = 'rgba(20, 18, 14, 0.13)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(innerX, rowTop + rowHeight);
+    ctx.lineTo(innerX + innerWidth, rowTop + rowHeight);
+    ctx.stroke();
+
+    const rowFontSize = Math.min(34, Math.max(20, rowHeight * 0.46));
+    ctx.fillStyle = textColor;
+    ctx.textBaseline = 'middle';
+    drawFittedCanvasText(ctx, row.name, nameX, rowTop + rowHeight / 2, innerWidth - amountColumnWidth - 42, rowFontSize, 16, 850, 'left');
+    drawFittedCanvasText(ctx, row.amount, amountX, rowTop + rowHeight / 2, amountColumnWidth - 42, rowFontSize, 16, 900, 'right');
+  });
+}
+
 function redrawTextPanel(textPanelData) {
   if (!textPanelData?.panel) return;
   const { canvas: labelCanvas, texture } = textPanelData.panel.userData;
   syncTextPanelCanvasSize(textPanelData, labelCanvas);
   const ctx = labelCanvas.getContext('2d');
+  if (getTextPanelKind(textPanelData.kind) === 'donors') {
+    drawDonorBoardPanel(ctx, labelCanvas, textPanelData);
+    texture.needsUpdate = true;
+    return;
+  }
+
   const rawText = String(textPanelData.text ?? '');
   const text = rawText.trim().length ? rawText : 'Textová tabulka';
   const bgColor = textPanelData.bgColor || '#f7f4ea';
@@ -2647,6 +2811,7 @@ function createTextPanel({
   text = 'Textová tabulka',
   bgColor = '#f7f4ea',
   textColor = '#111315',
+  kind = 'plain',
   fontSize = 58,
   fontWeight = 850,
   textAlign = 'center',
@@ -2695,6 +2860,7 @@ function createTextPanel({
     text,
     bgColor,
     textColor,
+    kind: getTextPanelKind(kind),
     fontSize,
     fontWeight,
     textAlign,
@@ -3068,11 +3234,12 @@ function addSavedTextPanels() {
       y: THREE.MathUtils.clamp(config.y, 0.45, roomHeight - 0.28),
       z: THREE.MathUtils.clamp(config.z, galleryMinZ + 0.08, galleryMaxZ - 0.08),
       ry: config.ry,
-      width: THREE.MathUtils.clamp(config.width, 0.2, 2.6),
-      height: THREE.MathUtils.clamp(config.height, 0.12, 1.6),
+      width: THREE.MathUtils.clamp(config.width, 0.2, 3),
+      height: THREE.MathUtils.clamp(config.height, 0.12, 2.5),
       text: typeof config.text === 'string' ? config.text : 'Textová tabulka',
       bgColor: typeof config.bgColor === 'string' ? config.bgColor : '#f7f4ea',
       textColor: typeof config.textColor === 'string' ? config.textColor : '#111315',
+      kind: getTextPanelKind(config.kind),
       fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 58,
       fontWeight: Number.isFinite(config.fontWeight) ? config.fontWeight : 850,
       textAlign: ['left', 'center', 'right'].includes(config.textAlign) ? config.textAlign : 'center',
@@ -3956,8 +4123,8 @@ function rotateSelectedPedestal(direction) {
 
 function getTextPanelSizeFromInputs() {
   return {
-    width: THREE.MathUtils.clamp(Number(textPanelWidthCmInput.value) / centimetersPerMeter, 0.2, 2.6),
-    height: THREE.MathUtils.clamp(Number(textPanelHeightCmInput.value) / centimetersPerMeter, 0.12, 1.6),
+    width: THREE.MathUtils.clamp(Number(textPanelWidthCmInput.value) / centimetersPerMeter, 0.2, 3),
+    height: THREE.MathUtils.clamp(Number(textPanelHeightCmInput.value) / centimetersPerMeter, 0.12, 2.5),
   };
 }
 
@@ -3973,6 +4140,7 @@ function syncTextPanelPanel() {
   moveTextPanelButton.textContent = movingSelectedTextPanel ? 'Zrušit přesun' : 'Přesunout vybranou';
   addTextPanelButton.textContent = movingSelectedTextPanel ? 'Uchytit na stěnu' : 'Přidat na stěnu';
   if (!selectedTextPanel) return;
+  textPanelKindInput.value = getTextPanelKind(selectedTextPanel.kind);
   textPanelTextInput.value = selectedTextPanel.text ?? '';
   textPanelWidthCmInput.value = String(Math.round(selectedTextPanel.width * centimetersPerMeter));
   textPanelHeightCmInput.value = String(Math.round(selectedTextPanel.height * centimetersPerMeter));
@@ -4004,9 +4172,14 @@ function addTextPanelFromWall() {
     ry: placement.ry,
     width: placement.width,
     height: placement.height,
-    text: textPanelTextInput.value.trim().length ? textPanelTextInput.value : 'Textová tabulka',
+    text: textPanelTextInput.value.trim().length
+      ? textPanelTextInput.value
+      : getTextPanelKind(textPanelKindInput.value) === 'donors'
+        ? getDefaultDonorBoardText()
+        : 'Textová tabulka',
     bgColor: textPanelBgColorInput.value,
     textColor: textPanelTextColorInput.value,
+    kind: getTextPanelKind(textPanelKindInput.value),
     fontSize: Number(textPanelFontSizeInput.value),
     fontWeight: Number(textPanelFontWeightInput.value),
     textAlign: textPanelAlignInput.value,
@@ -4052,6 +4225,7 @@ function updateSelectedTextPanel() {
   selectedTextPanel.text = textPanelTextInput.value;
   selectedTextPanel.bgColor = textPanelBgColorInput.value;
   selectedTextPanel.textColor = textPanelTextColorInput.value;
+  selectedTextPanel.kind = getTextPanelKind(textPanelKindInput.value);
   selectedTextPanel.fontSize = Number(textPanelFontSizeInput.value);
   selectedTextPanel.fontWeight = Number(textPanelFontWeightInput.value);
   selectedTextPanel.textAlign = textPanelAlignInput.value;
@@ -4850,6 +5024,7 @@ moveTextPanelButton.addEventListener('click', () => {
 });
 removeTextPanelButton.addEventListener('click', removeSelectedTextPanel);
 [
+  textPanelKindInput,
   textPanelTextInput,
   textPanelWidthCmInput,
   textPanelHeightCmInput,

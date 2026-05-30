@@ -944,22 +944,23 @@
       },
       {
         "x": -4.429,
-        "y": 1.7645,
+        "y": 1.78,
         "z": 28.6117,
         "ry": 1.570796,
-        "width": 1.16,
-        "height": 0.24,
+        "width": 2.15,
+        "height": 1.45,
         "text": "Tady bude tabule dárců",
         "bgColor": "#f7e4bb",
-        "textColor": "#111315",
-        "fontSize": 96,
-        "fontWeight": 850,
-        "textAlign": "left",
+        "textColor": "#15100b",
+        "fontSize": 78,
+        "fontWeight": 900,
+        "textAlign": "center",
         "wallNormal": [
           1,
           0,
           0
-        ]
+        ],
+        "kind": "donors"
       },
       {
         "x": -4.429,
