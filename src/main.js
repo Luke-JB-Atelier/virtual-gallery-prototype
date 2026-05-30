@@ -12,7 +12,6 @@ const roomLightPublicPowerInput = document.querySelector('#room-light-public-pow
 const mobileControls = document.querySelector('#mobile-controls');
 const moveStick = document.querySelector('#move-stick');
 const moveStickKnob = document.querySelector('#move-stick-knob');
-const lookPad = document.querySelector('#look-pad');
 const toggleLightEditor = document.querySelector('#toggle-light-editor');
 const lightPanel = document.querySelector('#light-panel');
 const lightTitle = document.querySelector('#light-title');
@@ -96,21 +95,39 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070a);
 scene.fog = new THREE.Fog(0x05070a, 34, 70);
 
-const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.05, 60);
+function getViewportSize() {
+  const viewport = window.visualViewport;
+  return {
+    width: Math.max(1, Math.round(viewport?.width ?? window.innerWidth)),
+    height: Math.max(1, Math.round(viewport?.height ?? window.innerHeight)),
+  };
+}
+
+const viewportSize = getViewportSize();
+const camera = new THREE.PerspectiveCamera(68, viewportSize.width / viewportSize.height, 0.05, 60);
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
+const prefersCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+const isTouchDevice = prefersCoarsePointer;
+const lowMemoryDevice = Number(navigator.deviceMemory) > 0 && Number(navigator.deviceMemory) <= 4;
+const mobilePerformanceMode = prefersCoarsePointer || lowMemoryDevice || viewportSize.width <= 760;
+const textureAnisotropy = mobilePerformanceMode ? 1 : 4;
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+function getRenderPixelRatio() {
+  return Math.min(window.devicePixelRatio || 1, mobilePerformanceMode ? 1 : 2);
+}
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobilePerformanceMode, powerPreference: 'high-performance' });
+renderer.setPixelRatio(getRenderPixelRatio());
+renderer.setSize(viewportSize.width, viewportSize.height);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.95;
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !mobilePerformanceMode;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.shadowMap.needsUpdate = true;
-const maxShadowedSpotLights = 3;
+const maxShadowedSpotLights = mobilePerformanceMode ? 0 : 3;
 
 const roomWidth = 9;
 const roomDepth = 12;
@@ -134,6 +151,7 @@ if (audioVolumeInput) {
   audioVolumeInput.value = String(Math.round(audioSettings.volume * 100));
 }
 document.body.classList.toggle('viewer-mode', !editorMode);
+document.body.classList.toggle('mobile-performance', mobilePerformanceMode);
 
 function publicAssetPath(path) {
   if (!path || /^(data:|blob:|https?:)/i.test(path)) return path;
@@ -736,7 +754,7 @@ function createFlatCapTexture() {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(1.35, 1.35);
-  texture.anisotropy = 4;
+  texture.anisotropy = textureAnisotropy;
   return texture;
 }
 
@@ -1300,7 +1318,7 @@ function createBarrierRopeTexture() {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(7, 1);
-  texture.anisotropy = 4;
+  texture.anisotropy = textureAnisotropy;
   return texture;
 }
 
@@ -3182,7 +3200,7 @@ function createMaterialFromImageUrl(url) {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
-  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  texture.anisotropy = mobilePerformanceMode ? 1 : renderer.capabilities.getMaxAnisotropy();
   const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
   material.color.setScalar(1);
   material.toneMapped = false;
@@ -4904,10 +4922,9 @@ const turnSpeed = 1.9;
 const fallbackTurnSpeed = 0.85;
 const fallbackPitchSpeed = 0.52;
 const eyeHeight = 1.68;
-const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
 const touchMove = new THREE.Vector2();
 const stickPointer = { id: null };
-const lookPointer = { id: null, lastX: 0, lastY: 0 };
+const lookPointer = { id: null, lastX: 0, lastY: 0, captureTarget: null };
 
 function isTextEditingTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
@@ -4919,7 +4936,7 @@ function isTextEditingTarget(target) {
 }
 
 if (isTouchDevice) {
-  hint.textContent = 'Levy palec chuze · pravy palec pohled';
+  hint.textContent = 'Levy palec chuze · tahem po scene pohled';
   hint.classList.add('active');
   mobileControls.classList.add('visible');
 }
@@ -5154,10 +5171,24 @@ canvas.addEventListener('mouseleave', () => {
   if (!pointerLocked) disableLook();
 });
 
-window.addEventListener('blur', disableLook);
+function resetTouchControls() {
+  if (!isTouchDevice) return;
+  resetStick();
+  lookPointer.id = null;
+  lookPointer.captureTarget = null;
+  canvas.classList.remove('dragging');
+}
+
+window.addEventListener('blur', () => {
+  disableLook();
+  resetTouchControls();
+});
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) disableLook();
+  if (document.hidden) {
+    disableLook();
+    resetTouchControls();
+  }
 });
 
 window.addEventListener('mousemove', (event) => {
@@ -5189,6 +5220,22 @@ function resetStick() {
   moveStickKnob.style.transform = 'translate(-50%, -50%)';
 }
 
+function safelySetPointerCapture(element, pointerId) {
+  try {
+    element.setPointerCapture?.(pointerId);
+  } catch {
+    // Synthetic tests and a few mobile browsers can reject capture; the window fallback still tracks movement.
+  }
+}
+
+function safelyReleasePointerCapture(element, pointerId) {
+  try {
+    element?.releasePointerCapture?.(pointerId);
+  } catch {
+    // Capture may already be gone after pointercancel/orientation changes.
+  }
+}
+
 function updateStick(event) {
   const rect = moveStick.getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
@@ -5200,9 +5247,51 @@ function updateStick(event) {
   const angle = Math.atan2(dy, dx);
   const knobX = Math.cos(angle) * length;
   const knobY = Math.sin(angle) * length;
+  const deadZone = 8;
+  const moveAmount = length <= deadZone ? 0 : (length - deadZone) / (max - deadZone);
 
   moveStickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
-  touchMove.set(knobX / max, knobY / max);
+  touchMove.set(Math.cos(angle) * moveAmount, Math.sin(angle) * moveAmount);
+}
+
+function isMobileUiTouchTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest([
+    '#move-stick',
+    '#audio-toggle',
+    '#room-light-control',
+    '#light-editor',
+    '#art-editor',
+    '#pedestal-editor',
+    '#text-panel-editor',
+    '#audio-editor',
+    'button',
+    'input',
+    'textarea',
+    'select',
+  ].join(',')));
+}
+
+function beginTouchLook(event) {
+  if (!isTouchDevice || event.pointerType !== 'touch') return;
+  if (lookPointer.id !== null || event.pointerId === stickPointer.id) return;
+  if (isMobileUiTouchTarget(event.target)) return;
+
+  lookPointer.id = event.pointerId;
+  lookPointer.lastX = event.clientX;
+  lookPointer.lastY = event.clientY;
+  lookPointer.captureTarget = event.currentTarget;
+  safelySetPointerCapture(event.currentTarget, event.pointerId);
+  canvas.classList.add('dragging');
+  event.preventDefault();
+}
+
+function releaseTouchLook(event) {
+  if (event.pointerId !== lookPointer.id) return;
+  safelyReleasePointerCapture(lookPointer.captureTarget, event.pointerId);
+  lookPointer.id = null;
+  lookPointer.captureTarget = null;
+  canvas.classList.remove('dragging');
 }
 
 moveStick.addEventListener('pointerdown', (event) => {
@@ -5210,21 +5299,13 @@ moveStick.addEventListener('pointerdown', (event) => {
   if (stickPointer.id !== null) return;
 
   stickPointer.id = event.pointerId;
-  moveStick.setPointerCapture?.(event.pointerId);
   updateStick(event);
+  safelySetPointerCapture(moveStick, event.pointerId);
+  tryStartRequestedAudio();
   event.preventDefault();
 });
 
-lookPad.addEventListener('pointerdown', (event) => {
-  if (!isTouchDevice) return;
-  if (lookPointer.id !== null) return;
-
-  lookPointer.id = event.pointerId;
-  lookPointer.lastX = event.clientX;
-  lookPointer.lastY = event.clientY;
-  lookPad.setPointerCapture?.(event.pointerId);
-  event.preventDefault();
-});
+canvas.addEventListener('pointerdown', beginTouchLook, { passive: false });
 
 window.addEventListener('pointermove', (event) => {
   if (!isTouchDevice) return;
@@ -5239,19 +5320,19 @@ window.addEventListener('pointermove', (event) => {
     const deltaY = event.clientY - lookPointer.lastY;
     lookPointer.lastX = event.clientX;
     lookPointer.lastY = event.clientY;
-    applyLookDelta(deltaX, deltaY, 0.0042);
+    applyLookDelta(deltaX, deltaY, 0.0034);
     event.preventDefault();
   }
 }, { passive: false });
 
 window.addEventListener('pointerup', (event) => {
   if (event.pointerId === stickPointer.id) resetStick();
-  if (event.pointerId === lookPointer.id) lookPointer.id = null;
+  releaseTouchLook(event);
 });
 
 window.addEventListener('pointercancel', (event) => {
   if (event.pointerId === stickPointer.id) resetStick();
-  if (event.pointerId === lookPointer.id) lookPointer.id = null;
+  releaseTouchLook(event);
 });
 
 const clock = new THREE.Clock();
@@ -5285,7 +5366,9 @@ function updateMovement(delta) {
 
   const moving = movement.lengthSq() > 0;
   if (moving) {
-    const speed = moveSpeed * (keys.has('ShiftLeft') || keys.has('ShiftRight') ? sprintMultiplier : 1);
+    const speed = moveSpeed
+      * (isTouchDevice ? 0.82 : 1)
+      * (keys.has('ShiftLeft') || keys.has('ShiftRight') ? sprintMultiplier : 1);
     movement.normalize().multiplyScalar(speed * delta);
     body.position.add(movement);
   }
@@ -5295,7 +5378,7 @@ function updateMovement(delta) {
 
   velocityBob = THREE.MathUtils.lerp(velocityBob, moving ? 1 : 0, 1 - Math.pow(0.001, delta));
   bobTime += delta * 8.5 * velocityBob;
-  camera.position.y = Math.sin(bobTime) * 0.028 * velocityBob;
+  camera.position.y = Math.sin(bobTime) * (isTouchDevice ? 0.012 : 0.028) * velocityBob;
   body.position.y = eyeHeight;
   syncCameraRotation();
 }
@@ -5392,10 +5475,19 @@ function animate() {
   requestAnimationFrame(animate);
 }
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+function resizeRendererToViewport() {
+  const { width, height } = getViewportSize();
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(getRenderPixelRatio());
+  renderer.setSize(width, height);
+}
+
+window.addEventListener('resize', resizeRendererToViewport);
+window.visualViewport?.addEventListener('resize', resizeRendererToViewport);
+window.addEventListener('orientationchange', () => {
+  resizeRendererToViewport();
+  window.setTimeout(resizeRendererToViewport, 250);
 });
 
 syncCameraRotation();
@@ -5441,6 +5533,9 @@ window.__galleryDebug = () => ({
     currentTrack: jazzPlaylist[currentJazzTrackIndex] ?? null,
   },
   rendererInfo: {
+    mobilePerformanceMode,
+    pixelRatio: renderer.getPixelRatio(),
+    shadowsEnabled: renderer.shadowMap.enabled,
     calls: renderer.info.render.calls,
     triangles: renderer.info.render.triangles,
     geometries: renderer.info.memory.geometries,
@@ -5451,6 +5546,9 @@ window.__galleryDebug = () => ({
   pitch,
   pointerLocked,
   lookEnabled,
+  touchMove: touchMove.toArray(),
+  stickPointerId: stickPointer.id,
+  lookPointerId: lookPointer.id,
   keys: [...keys],
 });
 
