@@ -132,6 +132,7 @@ const maxShadowedSpotLights = mobilePerformanceMode ? 0 : 3;
 const roomWidth = 9;
 const roomDepth = 12;
 const roomHeight = 3.4;
+const artworkWallEdgeGap = 0.04;
 const centimetersPerMeter = 100;
 const defaultArtworkWidthCm = 120;
 const defaultArtworkAspect = 1;
@@ -1444,6 +1445,21 @@ const navigationSpaces = [
     { minX: -sideRoomStep * 2 - roomWidth / 2, maxX: -sideRoomStep * 2 + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
   ] : []),
 ];
+
+const closedFutureWingBounds = {
+  minX: -sideRoomStep * 2 - roomWidth / 2 - 0.5,
+  maxX: x0 - 0.12,
+  minZ: roomStep - roomDepth / 2 - corridorLength - 0.5,
+  maxZ: roomStep + roomDepth / 2 + corridorLength + 0.5,
+};
+
+function isInsideClosedFutureWing(position) {
+  return !editorMode
+    && position.x >= closedFutureWingBounds.minX
+    && position.x <= closedFutureWingBounds.maxX
+    && position.z >= closedFutureWingBounds.minZ
+    && position.z <= closedFutureWingBounds.maxZ;
+}
 
 function getNavigationBounds(space, margin) {
   const xInset = space.isConnector ? margin * 0.35 : margin;
@@ -3145,7 +3161,7 @@ function getWallPlacement({ usePointer = false } = {}) {
   }
 
   const centerY = artFreeModeInput.checked
-    ? THREE.MathUtils.clamp(hit.point.y, 0.75 + height / 2, roomHeight - 0.45 - height / 2)
+    ? clampArtworkCenterY(height, hit.point.y)
     : Number(artHeightInput.value);
   const offset = artFreeModeInput.checked ? 0 : Number(artOffsetXInput.value);
   const point = hit.point.clone();
@@ -3155,7 +3171,7 @@ function getWallPlacement({ usePointer = false } = {}) {
   } else {
     point.z += offset;
   }
-  point.y = THREE.MathUtils.clamp(centerY, 0.75 + height / 2, roomHeight - 0.45 - height / 2);
+  point.y = clampArtworkCenterY(height, centerY);
   point.addScaledVector(normal, 0.065);
 
   let ry = 0;
@@ -3238,7 +3254,7 @@ function syncArtPanel() {
   swapArtButton.disabled = !selectedPainting;
   if (!selectedPainting) return;
   setArtworkSizeInputs(selectedPainting.w, selectedPainting.h, false);
-  artHeightInput.value = String(selectedPainting.group.position.y);
+  syncArtworkHeightRange(selectedPainting.h, selectedPainting.group.position.y);
   artFrameSizeInput.value = selectedPainting.frameSize ?? 'medium';
   artFrameColorInput.value = selectedPainting.frameColor ?? defaultFrameColor;
   artLabelTitleInput.value = selectedPainting.labelTitle ?? '';
@@ -3258,6 +3274,32 @@ function createMaterialFromImageUrl(url) {
   material.color.setScalar(1);
   material.toneMapped = false;
   return material;
+}
+
+function getArtworkHeightRange(artworkHeight) {
+  const halfHeight = Math.max(artworkHeight, 0.01) / 2;
+  const min = halfHeight + artworkWallEdgeGap;
+  const max = roomHeight - halfHeight - artworkWallEdgeGap;
+  if (max < min) {
+    return {
+      min: roomHeight / 2,
+      max: roomHeight / 2,
+    };
+  }
+  return { min, max };
+}
+
+function clampArtworkCenterY(artworkHeight, centerY) {
+  const range = getArtworkHeightRange(artworkHeight);
+  const value = Number(centerY);
+  return THREE.MathUtils.clamp(Number.isFinite(value) ? value : roomHeight / 2, range.min, range.max);
+}
+
+function syncArtworkHeightRange(artworkHeight, preferredValue = Number(artHeightInput.value)) {
+  const range = getArtworkHeightRange(artworkHeight);
+  artHeightInput.min = range.min.toFixed(2);
+  artHeightInput.max = range.max.toFixed(2);
+  artHeightInput.value = clampArtworkCenterY(artworkHeight, preferredValue).toFixed(2);
 }
 
 function parseArtworkSize(input, pixelAspect) {
@@ -3339,6 +3381,7 @@ function setArtworkSizeInputs(widthMeters, heightMeters, syncLabel = true) {
   const heightCm = heightMeters * centimetersPerMeter;
   fitNumberInputToValue(artWidthCmInput, widthCm);
   fitNumberInputToValue(artHeightCmInput, heightCm);
+  syncArtworkHeightRange(heightMeters);
   if (syncLabel) updateArtworkSizeLabel(widthCm, heightCm);
 }
 
@@ -3347,6 +3390,7 @@ function getArtworkSizeFromInputs() {
   const widthCm = readCmInput(artWidthCmInput, defaultArtworkWidthCm);
   const heightCm = widthCm / aspect;
   fitNumberInputToValue(artHeightCmInput, heightCm);
+  syncArtworkHeightRange(heightCm / centimetersPerMeter);
   return {
     width: widthCm / centimetersPerMeter,
     height: heightCm / centimetersPerMeter,
@@ -3359,6 +3403,7 @@ function syncArtworkHeightFromWidth() {
   const widthCm = readCmInput(artWidthCmInput, defaultArtworkWidthCm);
   const heightCm = widthCm / aspect;
   fitNumberInputToValue(artHeightCmInput, heightCm);
+  syncArtworkHeightRange(heightCm / centimetersPerMeter);
   updateArtworkSizeLabel(widthCm, heightCm);
 }
 
@@ -3368,6 +3413,7 @@ function syncArtworkWidthFromHeight() {
   const heightCm = readCmInput(artHeightCmInput, fallbackHeight);
   const widthCm = heightCm * aspect;
   fitNumberInputToValue(artWidthCmInput, widthCm);
+  syncArtworkHeightRange(heightCm / centimetersPerMeter);
   updateArtworkSizeLabel(widthCm, heightCm);
 }
 
@@ -3637,6 +3683,8 @@ function updateSelectedPaintingSize() {
   if (!selectedPainting) return;
   const { width, height, aspect } = getArtworkSizeFromInputs();
   const position = selectedPainting.group.position.clone();
+  position.y = clampArtworkCenterY(height, Number(artHeightInput.value));
+  artHeightInput.value = position.y.toFixed(2);
   const ry = selectedPainting.group.rotation.y;
   const material = selectedPainting.material;
   const wallNormal = selectedPainting.wallNormal;
@@ -3654,7 +3702,7 @@ function updateSelectedPaintingSize() {
   if (index >= 0) editablePaintings.splice(index, 1);
   selectedPainting = addPainting({
     x: position.x,
-    y: Number(artHeightInput.value),
+    y: position.y,
     z: position.z,
     ry,
     w: width,
@@ -5012,6 +5060,17 @@ function resetView() {
   syncCameraRotation();
 }
 
+function teleportOutOfClosedFutureWing() {
+  if (!isInsideClosedFutureWing(body.position)) return false;
+  resetView();
+  keys.clear();
+  touchMove.set(0, 0);
+  velocityBob = 0;
+  bobTime = 0;
+  status.textContent = 'Tahle část galerie je zatím zavřená';
+  return true;
+}
+
 function updateStatus() {
   if (isTouchDevice) {
     status.textContent = 'mobilní ovládání';
@@ -5396,6 +5455,8 @@ const movement = new THREE.Vector3();
 function updateMovement(delta) {
   const previousPosition = body.position.clone();
 
+  if (teleportOutOfClosedFutureWing()) return;
+
   if (!pointerLocked && fallbackTurning) {
     bodyYaw -= fallbackTurnVelocity * fallbackTurnSpeed * delta;
     pitch -= fallbackPitchVelocity * fallbackPitchSpeed * delta;
@@ -5426,8 +5487,12 @@ function updateMovement(delta) {
     body.position.add(movement);
   }
 
+  if (teleportOutOfClosedFutureWing()) return;
+
   const margin = 0.55;
   constrainToGallery(body.position, margin, previousPosition);
+
+  if (teleportOutOfClosedFutureWing()) return;
 
   velocityBob = THREE.MathUtils.lerp(velocityBob, moving ? 1 : 0, 1 - Math.pow(0.001, delta));
   bobTime += delta * 8.5 * velocityBob;
