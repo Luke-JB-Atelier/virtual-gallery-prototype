@@ -15,6 +15,16 @@
       <div id="room-light-control">
         <label>Světlo místnosti <input id="room-light-public-power" type="range" min="0" max="100" step="1" value="12" /></label>
       </div>
+      <div id="action-dialog" hidden>
+        <div id="action-dialog-box" role="dialog" aria-modal="true" aria-labelledby="action-dialog-title">
+          <div id="action-dialog-title">E-mail</div>
+          <input id="action-dialog-value" type="text" readonly />
+          <div id="action-dialog-buttons">
+            <button id="action-dialog-copy" type="button">Kopírovat</button>
+            <button id="action-dialog-close" type="button">Zavřít</button>
+          </div>
+        </div>
+      </div>
       <div id="crosshair"></div>
       <section id="light-editor">
         <button id="toggle-light-editor" type="button">Světla</button>

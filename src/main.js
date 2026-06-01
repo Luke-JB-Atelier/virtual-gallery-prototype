@@ -9,6 +9,10 @@ const crosshair = document.querySelector('#crosshair');
 const audioToggle = document.querySelector('#audio-toggle');
 const roomLightControl = document.querySelector('#room-light-control');
 const roomLightPublicPowerInput = document.querySelector('#room-light-public-power');
+const actionDialog = document.querySelector('#action-dialog');
+const actionDialogValue = document.querySelector('#action-dialog-value');
+const actionDialogCopy = document.querySelector('#action-dialog-copy');
+const actionDialogClose = document.querySelector('#action-dialog-close');
 const mobileControls = document.querySelector('#mobile-controls');
 const moveStick = document.querySelector('#move-stick');
 const moveStickKnob = document.querySelector('#move-stick-knob');
@@ -139,6 +143,66 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.shadowMap.needsUpdate = true;
 const maxShadowedSpotLights = mobilePerformanceMode ? 0 : 3;
+let editableRaycastObjects = [];
+let editableRaycastObjectsDirty = true;
+let interactionUpdateTimer = 0;
+const editableTargetMaxDistance = 3.8;
+const nearbyCrossRoomTargetDistance = 1.6;
+const viewerTargetMaxDistance = 6.2;
+const editorInteractionUpdateInterval = 0.08;
+const viewerInteractionUpdateInterval = 0.14;
+
+function markEditableRaycastObjectsDirty() {
+  editableRaycastObjectsDirty = true;
+}
+
+function collectEditableRaycastMeshes(root, objects) {
+  root.traverse((child) => {
+    if (!child.isMesh) return;
+    if (child.userData.lightData || child.userData.paintingData || child.userData.pedestalData || child.userData.textPanelData) {
+      objects.push(child);
+    }
+  });
+}
+
+function getEditableRaycastObjects() {
+  if (!editableRaycastObjectsDirty) return editableRaycastObjects;
+  const objects = [];
+  ceilingLights.forEach((lightData) => collectEditableRaycastMeshes(lightData.fixture, objects));
+  editablePaintings.forEach((paintingData) => collectEditableRaycastMeshes(paintingData.group, objects));
+  displayPedestals.forEach((pedestalData) => collectEditableRaycastMeshes(pedestalData.group, objects));
+  displayTextPanels.forEach((textPanelData) => collectEditableRaycastMeshes(textPanelData.group, objects));
+  editableRaycastObjects = objects;
+  editableRaycastObjectsDirty = false;
+  return editableRaycastObjects;
+}
+
+function isObjectVisibleForInteraction(object) {
+  let current = object;
+  while (current) {
+    if (!current.visible) return false;
+    current = current.parent;
+  }
+  return true;
+}
+
+function getInteractionTargetPosition(target) {
+  return target?.paintingData?.group.position
+    ?? target?.lightData?.position
+    ?? target?.pedestalData?.group.position
+    ?? target?.textPanelData?.group.position
+    ?? null;
+}
+
+function isTargetInEditorReach(target, distance) {
+  if (!target) return false;
+  if (distance > editableTargetMaxDistance) return false;
+  const targetPosition = getInteractionTargetPosition(target);
+  if (!targetPosition) return false;
+  const playerRoomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
+  const targetRoomIndex = getRoomIndexForPosition(targetPosition.x, targetPosition.z);
+  return targetRoomIndex === playerRoomIndex || distance <= nearbyCrossRoomTargetDistance;
+}
 
 const roomWidth = 9;
 const roomDepth = 12;
@@ -1294,6 +1358,7 @@ function createDisplayPedestal({
   });
   room.add(group);
   displayPedestals.push(pedestalData);
+  markEditableRaycastObjectsDirty();
   return pedestalData;
 }
 
@@ -2131,6 +2196,7 @@ function addCeilingLight({ position, targetPoint, trackId = 'back', trackPositio
   });
   lightRig.add(spot, target, fixture);
   ceilingLights.push(lightData);
+  markEditableRaycastObjectsDirty();
   if (select) {
     selectedLightIndex = ceilingLights.length - 1;
   }
@@ -2890,6 +2956,7 @@ function createTextPanel({
   });
   room.add(group);
   displayTextPanels.push(textPanelData);
+  markEditableRaycastObjectsDirty();
   return textPanelData;
 }
 
@@ -3104,7 +3171,10 @@ function addPainting({
   group.traverse((child) => {
     child.userData.paintingData = paintingData;
   });
-  if (editable) editablePaintings.push(paintingData);
+  if (editable) {
+    editablePaintings.push(paintingData);
+    markEditableRaycastObjectsDirty();
+  }
   return paintingData;
 }
 
@@ -3339,6 +3409,11 @@ function getWallPlacement({ usePointer = false } = {}) {
     && hit.point.z <= centerZ + roomDepth / 2 + 0.08
   ));
   if (!roomLayout) return null;
+  const playerRoomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
+  const playerRoom = galleryRooms[playerRoomIndex];
+  if (playerRoom && roomLayout.id !== playerRoom.id && hit.distance > nearbyCrossRoomTargetDistance) {
+    return null;
+  }
 
   const onBackWall = Math.abs(hit.point.z - (roomLayout.centerZ - roomDepth / 2)) < 0.12;
   const onFrontWall = Math.abs(hit.point.z - (roomLayout.centerZ + roomDepth / 2)) < 0.12;
@@ -3381,6 +3456,18 @@ function getTextPanelPlacement({ usePointer = false } = {}) {
   const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
   if (normal.dot(cameraPosition.clone().sub(hit.point)) < 0) {
     normal.negate();
+  }
+  const roomLayout = galleryRooms.find(({ centerX, centerZ }) => (
+    hit.point.x >= centerX - roomWidth / 2 - 0.08
+    && hit.point.x <= centerX + roomWidth / 2 + 0.08
+    && hit.point.z >= centerZ - roomDepth / 2 - 0.08
+    && hit.point.z <= centerZ + roomDepth / 2 + 0.08
+  ));
+  if (!roomLayout) return null;
+  const playerRoomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
+  const playerRoom = galleryRooms[playerRoomIndex];
+  if (playerRoom && roomLayout.id !== playerRoom.id && hit.distance > nearbyCrossRoomTargetDistance) {
+    return null;
   }
 
   const { width, height } = getTextPanelSizeFromInputs();
@@ -3711,6 +3798,7 @@ function removeCeilingLight(lightData, { persist = true, sync = true } = {}) {
     }
   });
   lightRig.remove(lightData.spot, lightData.target, lightData.fixture);
+  markEditableRaycastObjectsDirty();
   spotShadowSetupDirty = true;
   renderer.shadowMap.needsUpdate = true;
   if (sync) {
@@ -3861,6 +3949,7 @@ function removeSelectedPainting() {
   room.remove(selectedPainting.group);
   const index = editablePaintings.indexOf(selectedPainting);
   if (index >= 0) editablePaintings.splice(index, 1);
+  markEditableRaycastObjectsDirty();
   selectedPainting = null;
   movingSelectedPainting = false;
   moveOriginalTransform = null;
@@ -4042,6 +4131,7 @@ function removeSelectedPedestal() {
   room.remove(selectedPedestal.group);
   const index = displayPedestals.indexOf(selectedPedestal);
   if (index >= 0) displayPedestals.splice(index, 1);
+  markEditableRaycastObjectsDirty();
   selectedPedestal = null;
   movingSelectedPedestal = false;
   syncPedestalPanel();
@@ -4343,6 +4433,7 @@ function removeSelectedTextPanel() {
   room.remove(selectedTextPanel.group);
   const index = displayTextPanels.indexOf(selectedTextPanel);
   if (index >= 0) displayTextPanels.splice(index, 1);
+  markEditableRaycastObjectsDirty();
   selectedTextPanel = null;
   movingSelectedTextPanel = false;
   syncTextPanelPanel();
@@ -4443,31 +4534,16 @@ function resetLocalGalleryFromEditor() {
   }, 450);
 }
 
-function getEditableTargetFromCrosshair() {
+function getEditableTargetFromCrosshair({ maxDistance = editorMode ? editableTargetMaxDistance : viewerTargetMaxDistance, restrictToEditorReach = editorMode } = {}) {
   getCenterRaycaster();
-  const objects = [];
-  ceilingLights.forEach((lightData) => {
-    lightData.fixture.traverse((child) => {
-      if (child.isMesh) objects.push(child);
-    });
-  });
-  editablePaintings.forEach((paintingData) => {
-    paintingData.group.traverse((child) => {
-      if (child.isMesh) objects.push(child);
-    });
-  });
-  displayPedestals.forEach((pedestalData) => {
-    pedestalData.group.traverse((child) => {
-      if (child.isMesh) objects.push(child);
-    });
-  });
-  displayTextPanels.forEach((textPanelData) => {
-    textPanelData.group.traverse((child) => {
-      if (child.isMesh) objects.push(child);
-    });
-  });
+  const previousFar = raycaster.far;
+  raycaster.far = maxDistance;
+  const objects = getEditableRaycastObjects().filter(isObjectVisibleForInteraction);
   const hit = raycaster.intersectObjects(objects, false)[0];
-  return hit?.object?.userData ?? null;
+  raycaster.far = previousFar;
+  const target = hit?.object?.userData ?? null;
+  if (restrictToEditorReach && !isTargetInEditorReach(target, hit?.distance ?? Infinity)) return null;
+  return target;
 }
 
 function selectEditableFromCrosshair() {
@@ -4543,11 +4619,23 @@ function selectEditableFromCrosshair() {
 
 const paintingActionMaxDistance = 2.2;
 
-function copyTextToClipboard(text) {
+function hideActionDialog() {
+  actionDialog.hidden = true;
+  canvas.focus();
+}
+
+function showActionDialog(text) {
+  actionDialog.hidden = false;
+  actionDialogValue.value = text;
+  actionDialogValue.focus();
+  actionDialogValue.select();
+}
+
+function copyTextToClipboard(text, successMessage = 'Zkopírováno') {
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(text)
       .then(() => {
-        status.textContent = 'E-mail zkopírovaný';
+        status.textContent = successMessage;
       })
       .catch(() => {
         status.textContent = text;
@@ -4564,12 +4652,20 @@ function copyTextToClipboard(text) {
   textarea.select();
   try {
     document.execCommand('copy');
-    status.textContent = 'E-mail zkopírovaný';
+    status.textContent = successMessage;
   } catch {
     status.textContent = text;
   }
   textarea.remove();
 }
+
+actionDialogClose.addEventListener('click', hideActionDialog);
+actionDialogCopy.addEventListener('click', () => {
+  copyTextToClipboard(actionDialogValue.value, 'E-mail zkopírovaný');
+});
+actionDialog.addEventListener('mousedown', (event) => {
+  if (event.target === actionDialog) hideActionDialog();
+});
 
 function openPaintingActionFromCrosshair() {
   const target = getEditableTargetFromCrosshair();
@@ -4583,7 +4679,7 @@ function openPaintingActionFromCrosshair() {
     return true;
   }
   if (actionUrl.startsWith('copy:')) {
-    copyTextToClipboard(actionUrl.slice(5));
+    showActionDialog(actionUrl.slice(5));
     return true;
   }
   let resolvedUrl = actionUrl;
@@ -5522,6 +5618,11 @@ canvas.addEventListener('mousedown', (event) => {
 
   if (event.button !== 0 || isTouchDevice) return;
   rememberCanvasPointer(event);
+  if (!editorMode && openPaintingActionFromCrosshair()) {
+    event.preventDefault();
+    releaseLook();
+    return;
+  }
   if (aimingSelectedLight) {
     event.preventDefault();
     finishAimSelectedLight({ commit: true });
@@ -5616,6 +5717,7 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') hideDonorContextMenu();
+  if (event.key === 'Escape' && !actionDialog.hidden) hideActionDialog();
 });
 
 window.addEventListener('blur', hideDonorContextMenu);
@@ -5927,8 +6029,18 @@ function updateArtworkBrightness(delta) {
   });
 }
 
-function updateCrosshairAndEditors() {
-  hoveredEditable = getEditableTargetFromCrosshair();
+function updateCrosshairAndEditors(delta) {
+  const needsRealtimeInteraction = movingSelectedPainting
+    || movingSelectedPedestal
+    || movingSelectedTextPanel
+    || movingSelectedLight
+    || aimingSelectedLight;
+  interactionUpdateTimer -= delta;
+  const shouldRefreshHover = needsRealtimeInteraction || interactionUpdateTimer <= 0;
+  if (shouldRefreshHover) {
+    hoveredEditable = getEditableTargetFromCrosshair();
+    interactionUpdateTimer = editorMode ? editorInteractionUpdateInterval : viewerInteractionUpdateInterval;
+  }
   const isPaintingTarget = Boolean(hoveredEditable?.paintingData);
   const isAnyEditableTarget = Boolean(hoveredEditable?.lightData || hoveredEditable?.paintingData || hoveredEditable?.pedestalData || hoveredEditable?.textPanelData);
   crosshair.classList.toggle('target', editorMode && isAnyEditableTarget);
@@ -5950,9 +6062,13 @@ function updateCrosshairAndEditors() {
   }
   updateMovingSelectedLight();
   updateAimingSelectedLight();
-  updatePedestalSelection();
-  updateTextPanelSelection();
-  syncArtPreview();
+  if (editorMode) {
+    updatePedestalSelection();
+    updateTextPanelSelection();
+    if (movingSelectedPainting || pendingArtMaterial || artPreview.visible || (!selectedPainting && artPanel.classList.contains('visible') && shouldRefreshHover)) {
+      syncArtPreview();
+    }
+  }
 }
 
 function animate() {
@@ -5960,7 +6076,7 @@ function animate() {
   updateMovement(delta);
   updateAutoRoomLights(delta);
   updateArtworkBrightness(delta);
-  updateCrosshairAndEditors();
+  updateCrosshairAndEditors(delta);
   updateGalleryAudioListener();
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
