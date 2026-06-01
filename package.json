@@ -3,6 +3,7 @@
     "dev": "vite --host 127.0.0.1",
     "import-gallery": "node scripts/import-gallery-state.mjs",
     "optimize-gallery": "node scripts/optimize-gallery-state.mjs",
+    "publish-gallery": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish-gallery.ps1 -NoPause",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1"
   },

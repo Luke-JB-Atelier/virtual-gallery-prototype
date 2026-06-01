@@ -46,6 +46,14 @@ npm run build
 
 Bez zadane cesty skript zkusi najit nejnovejsi `virtual-gallery-state*.json` ve stazenych souborech. Konkretni soubor jde predat za `--`.
 
+Publikovani exportu jednim prikazem:
+
+```powershell
+.\publish-gallery.cmd
+```
+
+Skript najde posledni export galerie ve stazenych souborech, zmensi velke vlozene obrazky, spusti build, ulozi zmenu do Gitu a posle ji na GitHub Pages. Uz zmensene JPEGy znovu neprekomprimovava, pokud nejsou porad moc velke nebo nad povolenym rozmerem.
+
 ## GitHub Pages
 
 Repozitar obsahuje workflow `.github/workflows/deploy.yml`, ktere po pushi do vetve `main` sestavi projekt a publikuje `dist` na GitHub Pages.
@@ -53,5 +61,5 @@ Repozitar obsahuje workflow `.github/workflows/deploy.yml`, ktere po pushi do ve
 Verejna beta:
 
 ```text
-https://lukasjanbalek-bit.github.io/virtual-gallery-prototype/
+https://luke-jb-atelier.github.io/virtual-gallery-prototype/
 ```
