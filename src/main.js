@@ -153,13 +153,6 @@ const urlParams = new URLSearchParams(window.location.search);
 const editorMode = urlParams.has('edit');
 const forceGitHubState = urlParams.has('github') || urlParams.has('fresh');
 const useLocalSavedState = (editorMode || urlParams.has('local')) && !forceGitHubState;
-const canonicalGalleryUrl = 'https://luke-jb-atelier.github.io/virtual-gallery-prototype/';
-const approvedHosts = new Set(['luke-jb-atelier.github.io']);
-const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
-const runningHost = window.location.hostname.toLowerCase();
-const deploymentTrusted = window.location.protocol === 'file:'
-  || approvedHosts.has(runningHost)
-  || localHosts.has(runningHost);
 const exportedGalleryState = publicGalleryState?.version === 1 ? publicGalleryState : null;
 const savedGallery = useLocalSavedState
   ? loadGalleryState() ?? exportedGalleryState?.gallery ?? null
@@ -172,18 +165,6 @@ if (audioVolumeInput) {
 }
 document.body.classList.toggle('viewer-mode', !editorMode);
 document.body.classList.toggle('mobile-performance', mobilePerformanceMode);
-
-if (!deploymentTrusted) {
-  document.body.classList.add('external-mirror');
-  const mirrorNotice = document.createElement('div');
-  mirrorNotice.id = 'mirror-notice';
-  mirrorNotice.innerHTML = `
-    <strong>Neoficiální kopie galerie</strong>
-    <span>Originál najdete na</span>
-    <a href="${canonicalGalleryUrl}" rel="noopener noreferrer">${canonicalGalleryUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a>
-  `;
-  document.body.append(mirrorNotice);
-}
 
 function publicAssetPath(path) {
   if (!path || /^(data:|blob:|https?:)/i.test(path)) return path;

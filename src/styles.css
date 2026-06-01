@@ -26,66 +26,6 @@ body,
   cursor: grabbing;
 }
 
-.external-mirror #gallery {
-  filter: blur(16px) grayscale(0.45) brightness(0.56);
-  transform: scale(1.035);
-  pointer-events: none;
-}
-
-.external-mirror #hint,
-.external-mirror #status,
-.external-mirror #audio-toggle,
-.external-mirror #room-light-control,
-.external-mirror #crosshair,
-.external-mirror #mobile-controls,
-.external-mirror #light-editor,
-.external-mirror #art-editor,
-.external-mirror #pedestal-editor,
-.external-mirror #text-panel-editor,
-.external-mirror #audio-editor {
-  display: none !important;
-}
-
-#mirror-notice {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  z-index: 2000;
-  width: min(420px, calc(100vw - 32px));
-  padding: 22px 24px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 8px;
-  background: rgba(8, 10, 12, 0.88);
-  color: rgba(255, 255, 255, 0.9);
-  text-align: center;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(14px);
-}
-
-#mirror-notice strong,
-#mirror-notice span,
-#mirror-notice a {
-  display: block;
-}
-
-#mirror-notice strong {
-  margin-bottom: 10px;
-  font-size: 20px;
-}
-
-#mirror-notice span {
-  margin-bottom: 8px;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 13px;
-}
-
-#mirror-notice a {
-  color: #ffd46a;
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-
 #hint {
   position: fixed;
   left: 50%;
