@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-06-01T09:04:30.164Z",
+  "exportedAt": "2026-06-01T10:37:35.046Z",
   "gallery": {
     "version": 1,
     "audio": {
@@ -416,30 +416,6 @@
         "actionUrl": ""
       },
       {
-        "imageSrc": "art/olej-web/04-temny-les.jpg",
-        "x": -4.42,
-        "y": 1.73,
-        "z": 16.0422,
-        "ry": 1.570796,
-        "w": 1.862,
-        "h": 0.9052,
-        "aspect": 2.057,
-        "wallNormal": [
-          1,
-          0,
-          0
-        ],
-        "frameSize": "light",
-        "frameColor": "#010101",
-        "labelTitle": "Temný les",
-        "labelMedium": "olej (zalakováno)",
-        "labelSize": "80cm x 40cmas",
-        "labelDate": "2026",
-        "labelPrice": "15000kč",
-        "labelVisible": true,
-        "actionUrl": ""
-      },
-      {
         "imageSrc": "art/olej-web/22-nemesis.jpg",
         "x": -4.435,
         "y": 1.93,
@@ -846,6 +822,30 @@
         "labelPrice": "",
         "labelVisible": true,
         "actionUrl": ""
+      },
+      {
+        "imageSrc": "art/olej-web/04-temny-les.jpg",
+        "x": -4.435,
+        "y": 1.73,
+        "z": 17.8747,
+        "ry": 1.570796,
+        "w": 1.862,
+        "h": 0.9052,
+        "aspect": 2.057,
+        "wallNormal": [
+          1,
+          0,
+          0
+        ],
+        "frameSize": "light",
+        "frameColor": "#010101",
+        "labelTitle": "Temný les",
+        "labelMedium": "olej (zalakováno)",
+        "labelSize": "80cm x 40cmas",
+        "labelDate": "2026",
+        "labelPrice": "15000kč",
+        "labelVisible": true,
+        "actionUrl": ""
       }
     ],
     "pedestals": [
@@ -1005,7 +1005,7 @@
       "enabled": true,
       "power": 12
     },
-    "selectedLightIndex": 37,
+    "selectedLightIndex": 13,
     "ceilingLights": [
       {
         "kind": "painting",
@@ -1153,9 +1153,9 @@
       {
         "kind": "painting",
         "trackId": "left",
-        "trackPosition": 0.7781,
+        "trackPosition": 0.9543,
         "yaw": -90,
-        "pitch": -63.29,
+        "pitch": -62.84,
         "power": 105,
         "color": "#fff4e8",
         "angle": 30,
