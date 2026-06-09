@@ -5834,7 +5834,7 @@ let jumpOffset = 0;
 let grounded = true;
 
 function isCrouching() {
-  return keys.has('ControlLeft') || keys.has('ControlRight');
+  return keys.has('KeyC');
 }
 
 function isBrowserMovementShortcut(event) {
@@ -5947,7 +5947,7 @@ document.addEventListener('keydown', (event) => {
     return;
   }
 
-  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space', 'ControlLeft', 'ControlRight'].includes(event.code)) {
+  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC', 'Space'].includes(event.code)) {
     event.preventDefault();
     if (event.code === 'KeyW') {
       tryStartRequestedAudio();
