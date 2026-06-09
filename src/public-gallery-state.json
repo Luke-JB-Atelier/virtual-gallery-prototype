@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-06-09T18:31:42.315Z",
+  "exportedAt": "2026-06-09T18:53:16.170Z",
   "gallery": {
     "version": 1,
     "audio": {
@@ -536,30 +536,6 @@
         "actionUrl": ""
       },
       {
-        "imageSrc": "art/olej-web/15-hell.jpg",
-        "x": 4.42,
-        "y": 1.73,
-        "z": 13.8935,
-        "ry": -1.570796,
-        "w": 0.8,
-        "h": 0.8,
-        "aspect": 1,
-        "wallNormal": [
-          -1,
-          0,
-          0
-        ],
-        "frameSize": "light",
-        "frameColor": "#000000",
-        "labelTitle": "Call",
-        "labelMedium": "olej na plátně",
-        "labelSize": "50 x 50 cm",
-        "labelDate": "2024",
-        "labelPrice": "15000kč",
-        "labelVisible": true,
-        "actionUrl": ""
-      },
-      {
         "imageSrc": "art/olej-web/14-zrozeni-pumika.jpg",
         "x": 4.42,
         "y": 1.63,
@@ -803,7 +779,7 @@
         "imageSrc": "art/olej-web/04-temny-les.jpg",
         "x": -4.435,
         "y": 1.73,
-        "z": 17.8747,
+        "z": 16.7781,
         "ry": 1.570796,
         "w": 1.862,
         "h": 0.9052,
@@ -846,6 +822,30 @@
         "labelPrice": "",
         "labelVisible": true,
         "actionUrl": "https://streamelements.com/luke_jb_atelier/tip"
+      },
+      {
+        "imageSrc": "art/olej-web/15-hell.jpg",
+        "x": 4.42,
+        "y": 1.73,
+        "z": 13.8935,
+        "ry": -1.570796,
+        "w": 0.8,
+        "h": 0.8,
+        "aspect": 1,
+        "wallNormal": [
+          -1,
+          0,
+          0
+        ],
+        "frameSize": "light",
+        "frameColor": "#000000",
+        "labelTitle": "Call",
+        "labelMedium": "olej na plátně",
+        "labelSize": "50 x 50 cm",
+        "labelDate": "2024",
+        "labelPrice": "15000kč",
+        "labelVisible": true,
+        "actionUrl": ""
       }
     ],
     "pedestals": [
@@ -1153,7 +1153,7 @@
       {
         "kind": "painting",
         "trackId": "left",
-        "trackPosition": 0.9543,
+        "trackPosition": 0.8489,
         "yaw": -90,
         "pitch": -62.84,
         "power": 105,
