@@ -5,17 +5,29 @@ import os from 'node:os';
 const projectRoot = path.resolve(import.meta.dirname, '..');
 const outputPath = path.join(projectRoot, 'src', 'public-gallery-state.json');
 
-function findLatestExport() {
-  const candidates = [
-    path.join(os.homedir(), 'Downloads'),
-    'E:\\Stazene',
-    'E:\\Stažené',
-    'E:\\Downloads',
-  ];
-  const files = [];
+function addCandidate(candidates, directory) {
+  if (directory && fs.existsSync(directory) && !candidates.includes(directory)) {
+    candidates.push(directory);
+  }
+}
 
+function addChildDirectories(candidates, root) {
+  if (!root || !fs.existsSync(root)) return;
+  fs.readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .forEach((entry) => addCandidate(candidates, path.join(root, entry.name)));
+}
+
+function findLatestExport() {
+  const candidates = [];
+  addCandidate(candidates, path.join(os.homedir(), 'Downloads'));
+  addCandidate(candidates, 'E:\\Downloads');
+  addCandidate(candidates, 'E:\\Stazene');
+  addChildDirectories(candidates, os.homedir());
+  addChildDirectories(candidates, 'E:\\');
+
+  const files = [];
   candidates.forEach((directory) => {
-    if (!fs.existsSync(directory)) return;
     fs.readdirSync(directory)
       .filter((name) => /^virtual-gallery-state.*\.json$/i.test(name))
       .forEach((name) => {

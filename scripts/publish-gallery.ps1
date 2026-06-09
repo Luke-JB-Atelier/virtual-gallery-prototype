@@ -33,8 +33,10 @@ function Find-LatestGalleryExport {
 
   $directories = [System.Collections.Generic.List[string]]::new()
   Add-ExistingDirectory $directories (Join-Path $env:USERPROFILE 'Downloads')
+  Add-ExistingDirectory $directories (Join-Path $env:USERPROFILE 'Stažené')
   Add-ExistingDirectory $directories 'E:\Downloads'
   Add-ExistingDirectory $directories 'E:\Stazene'
+  Add-ExistingDirectory $directories 'E:\Stažené'
 
   if (Test-Path -LiteralPath 'E:\' -PathType Container) {
     Get-ChildItem -LiteralPath 'E:\' -Directory -ErrorAction SilentlyContinue | ForEach-Object {

@@ -1425,7 +1425,9 @@ function createEaselCanvas(canvasWidth, canvasHeight, imageSrc = '') {
   const front = new THREE.Mesh(new THREE.PlaneGeometry(canvasWidth * 1.004, canvasHeight * 1.004), frontMaterial);
   front.position.z = canvasDepth / 2 + 0.002;
   front.renderOrder = 16;
+  front.userData.isEaselCanvasFront = true;
   group.add(front);
+  group.userData.canvasFrontMaterials = [frontMaterial];
 
   const back = new THREE.Mesh(
     new THREE.PlaneGeometry(
@@ -1570,6 +1572,7 @@ function createPleinAirEasel(width, depth, height, content = {}) {
   canvasGroup.position.set(canvasX, canvasCenterY, frontZ * 0.36);
   canvasGroup.rotation.x = THREE.MathUtils.degToRad(-8);
   group.add(canvasGroup);
+  group.userData.canvasFrontMaterials = canvasGroup.userData.canvasFrontMaterials ?? [];
 
   addEaselShadowFlags(group);
   return group;
@@ -1649,6 +1652,15 @@ function createDisplayPedestal({
   selection.renderOrder = 12;
   group.add(selection);
 
+  const easelCanvasMaterials = [];
+  if (type === 'easel') {
+    group.traverse((child) => {
+      if (child.userData.isEaselCanvasFront && child.material?.color) {
+        easelCanvasMaterials.push(child.material);
+      }
+    });
+  }
+
   const pedestalData = {
     group,
     selection,
@@ -1657,6 +1669,7 @@ function createDisplayPedestal({
     height,
     type,
     content: resolvedContent,
+    easelCanvasMaterials,
   };
   group.userData.pedestalData = pedestalData;
   group.traverse((child) => {
@@ -3685,9 +3698,9 @@ function getPlacementRaycaster(usePointer = false) {
 const galleryFloorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const floorHitPoint = new THREE.Vector3();
 
-function getFloorPlacement() {
-  getCenterRaycaster();
-  const hit = raycaster.ray.intersectPlane(galleryFloorPlane, floorHitPoint);
+function getFloorPlacement({ usePointer = false } = {}) {
+  const placementRaycaster = getPlacementRaycaster(usePointer);
+  const hit = placementRaycaster.ray.intersectPlane(galleryFloorPlane, floorHitPoint);
   if (!hit) return null;
   const position = hit.clone();
   const previous = body.position.clone();
@@ -4385,7 +4398,7 @@ function syncPedestalPanel() {
     ? isEasel ? 'Vybraný stojan' : 'Vybraný podstavec'
     : isEasel ? 'Nový stojan' : 'Nový podstavec';
   pedestalStatus.textContent = movingSelectedPedestal
-    ? 'Namiř tečku na podlahu a klikni Přidat na podlahu.'
+    ? 'Táhni umístění myší po podlaze a klikni Uchytit na podlahu.'
       : selectedPedestal
         ? isEasel
           ? 'Stojan je vybraný. Můžeš ho přesunout, kolečkem otočit, změnit rozměr, nebo na něj dát plátno.'
@@ -4450,7 +4463,7 @@ function addPedestalFromFloor() {
 
 function moveSelectedPedestalToFloor() {
   if (!selectedPedestal) return false;
-  const placement = getFloorPlacement();
+  const placement = getFloorPlacement({ usePointer: true });
   if (!placement) {
     pedestalTitle.textContent = 'Není vybraná podlaha';
     pedestalStatus.textContent = 'Namiř tečku níž na podlahu a zkus přesun znovu.';
@@ -6434,6 +6447,23 @@ function updateArtworkBrightness(delta) {
       paintingData.label.material.color.setScalar(nextBrightness);
     }
   });
+
+  displayPedestals.forEach((pedestalData) => {
+    if (pedestalData.type !== 'easel' || !pedestalData.easelCanvasMaterials?.length) return;
+    const pedestalRoomIndex = getRoomIndexForPosition(pedestalData.group.position.x, pedestalData.group.position.z);
+    const roomLight = autoRoomLights[pedestalRoomIndex];
+    const roomPower = roomLightState.enabled ? (roomLight?.currentPower ?? 0) : 0;
+    const powerRatio = roomLightState.power > 0
+      ? THREE.MathUtils.clamp(roomPower / roomLightState.power, 0, 1)
+      : 0;
+    const targetBrightness = THREE.MathUtils.lerp(0.018, 1, powerRatio);
+    const currentBrightness = pedestalData.canvasDisplayBrightness ?? targetBrightness;
+    const nextBrightness = THREE.MathUtils.lerp(currentBrightness, targetBrightness, 1 - Math.pow(0.0003, delta));
+    pedestalData.canvasDisplayBrightness = nextBrightness;
+    pedestalData.easelCanvasMaterials.forEach((material) => {
+      material.color.setScalar(nextBrightness);
+    });
+  });
 }
 
 function updateCrosshairAndEditors(delta) {
@@ -6453,7 +6483,7 @@ function updateCrosshairAndEditors(delta) {
   crosshair.classList.toggle('target', editorMode && isAnyEditableTarget);
   crosshair.classList.toggle('viewer-hidden', !editorMode && isPaintingTarget);
   if (movingSelectedPedestal && selectedPedestal) {
-    const placement = getFloorPlacement();
+    const placement = getFloorPlacement({ usePointer: true });
     if (placement) {
       selectedPedestal.group.position.x = placement.x;
       selectedPedestal.group.position.z = placement.z;
