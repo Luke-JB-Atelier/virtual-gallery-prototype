@@ -860,6 +860,28 @@
         "content": null
       },
       {
+        "type": "easel",
+        "x": -1.45,
+        "z": 5.05,
+        "ry": 2.7,
+        "width": 0.86,
+        "depth": 0.84,
+        "height": 1.81,
+        "content": {
+          "stickers": [
+            {
+              "imageSrc": "",
+              "blankCanvas": true,
+              "face": "front",
+              "width": 0.6,
+              "height": 0.7,
+              "offsetX": 0,
+              "offsetY": 1.05
+            }
+          ]
+        }
+      },
+      {
         "type": "pillar",
         "x": 1.2921,
         "z": 30.0569,

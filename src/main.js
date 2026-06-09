@@ -788,6 +788,32 @@ const pedestalSelectionMaterial = new THREE.MeshBasicMaterial({
   depthWrite: false,
   wireframe: true,
 });
+const easelWoodMaterial = new THREE.MeshStandardMaterial({
+  color: 0xc28b56,
+  roughness: 0.58,
+  metalness: 0.02,
+});
+const easelWoodDarkMaterial = new THREE.MeshStandardMaterial({
+  color: 0x8f6037,
+  roughness: 0.68,
+  metalness: 0.02,
+});
+const easelHardwareMaterial = new THREE.MeshStandardMaterial({
+  color: 0xb8aa86,
+  roughness: 0.32,
+  metalness: 0.72,
+});
+const canvasSideMaterial = new THREE.MeshStandardMaterial({
+  color: 0xf3eee3,
+  roughness: 0.86,
+  metalness: 0,
+});
+const canvasBackMaterial = new THREE.MeshStandardMaterial({
+  color: 0xb8a37d,
+  roughness: 0.94,
+  metalness: 0,
+});
+const canvasCenterBraceThreshold = 0.85;
 
 function createFlatCapTexture() {
   const canvas = document.createElement('canvas');
@@ -1136,9 +1162,10 @@ function createPedestalCoinsContent(pedestalWidth, pedestalDepth, pedestalHeight
 function normalizePedestalStickers(stickers) {
   if (!Array.isArray(stickers)) return [];
   return stickers
-    .filter((sticker) => sticker && typeof sticker.imageSrc === 'string' && sticker.imageSrc)
+    .filter((sticker) => sticker && ((typeof sticker.imageSrc === 'string' && sticker.imageSrc) || sticker.blankCanvas === true))
     .map((sticker) => ({
-      imageSrc: sticker.imageSrc,
+      imageSrc: typeof sticker.imageSrc === 'string' ? sticker.imageSrc : '',
+      blankCanvas: sticker.blankCanvas === true,
       face: ['front', 'back', 'left', 'right'].includes(sticker.face) ? sticker.face : 'front',
       width: THREE.MathUtils.clamp(Number(sticker.width) || 0.42, 0.08, 1.8),
       height: THREE.MathUtils.clamp(Number(sticker.height) || 0.42, 0.08, 1.8),
@@ -1271,6 +1298,195 @@ function normalizePedestalContent(content) {
   };
 }
 
+function createBlankCanvasFrontMaterial() {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#f7f5ee';
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 2400; i += 1) {
+    const shade = 225 + Math.floor(Math.random() * 26);
+    ctx.fillStyle = `rgba(${shade}, ${shade}, ${shade - 8}, 0.2)`;
+    ctx.fillRect(Math.random() * size, Math.random() * size, 1.1, 1.1);
+  }
+
+  ctx.lineWidth = 1;
+  for (let x = -size; x < size * 2; x += 14) {
+    ctx.strokeStyle = 'rgba(180, 170, 150, 0.11)';
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x + size, size);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(1.05, 1.05);
+  texture.anisotropy = textureAnisotropy;
+  const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.FrontSide });
+  material.toneMapped = false;
+  return material;
+}
+
+function createEaselStick(start, end, thickness, material = easelWoodMaterial) {
+  const direction = new THREE.Vector3().subVectors(end, start);
+  const length = direction.length();
+  if (length <= 0.001) return null;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(thickness, length, thickness), material);
+  mesh.position.copy(start).add(end).multiplyScalar(0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  return mesh;
+}
+
+function createEaselKnob(x, y, z, radius, length) {
+  const knob = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 18), easelHardwareMaterial);
+  knob.position.set(x, y, z);
+  knob.rotation.z = Math.PI / 2;
+  return knob;
+}
+
+function addEaselShadowFlags(root) {
+  root.traverse((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+  });
+}
+
+function createEaselCanvas(canvasWidth, canvasHeight, imageSrc = '') {
+  const group = new THREE.Group();
+  const canvasDepth = 0.048;
+  const stretcherDepth = 0.032;
+  const rail = THREE.MathUtils.clamp(Math.min(canvasWidth, canvasHeight) * 0.07, 0.035, 0.07);
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(canvasWidth, canvasHeight, canvasDepth), canvasSideMaterial);
+  group.add(body);
+
+  const frontMaterial = imageSrc ? createMaterialFromImageUrl(imageSrc) : createBlankCanvasFrontMaterial();
+  frontMaterial.side = THREE.FrontSide;
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(canvasWidth * 1.004, canvasHeight * 1.004), frontMaterial);
+  front.position.z = canvasDepth / 2 + 0.002;
+  front.renderOrder = 16;
+  group.add(front);
+
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(canvasWidth * 0.94, canvasHeight * 0.94), canvasBackMaterial);
+  back.position.z = -canvasDepth / 2 - 0.002;
+  back.rotation.y = Math.PI;
+  group.add(back);
+
+  const backZ = -canvasDepth / 2 - stretcherDepth / 2 - 0.004;
+  const railWidth = Math.max(0.04, canvasWidth - rail * 1.2);
+  const railHeight = Math.max(0.04, canvasHeight - rail * 1.2);
+  const topRail = new THREE.Mesh(new THREE.BoxGeometry(railWidth, rail, stretcherDepth), easelWoodMaterial);
+  topRail.position.set(0, canvasHeight / 2 - rail / 2, backZ);
+  const bottomRail = topRail.clone();
+  bottomRail.position.y = -canvasHeight / 2 + rail / 2;
+  const leftRail = new THREE.Mesh(new THREE.BoxGeometry(rail, railHeight, stretcherDepth), easelWoodMaterial);
+  leftRail.position.set(-canvasWidth / 2 + rail / 2, 0, backZ);
+  const rightRail = leftRail.clone();
+  rightRail.position.x = canvasWidth / 2 - rail / 2;
+  group.add(topRail, bottomRail, leftRail, rightRail);
+
+  if (canvasWidth >= canvasCenterBraceThreshold) {
+    const centerVertical = new THREE.Mesh(new THREE.BoxGeometry(rail * 0.82, railHeight, stretcherDepth * 0.92), easelWoodDarkMaterial);
+    centerVertical.position.set(0, 0, backZ - 0.002);
+    group.add(centerVertical);
+  }
+
+  if (canvasHeight >= canvasCenterBraceThreshold) {
+    const centerHorizontal = new THREE.Mesh(new THREE.BoxGeometry(railWidth, rail * 0.82, stretcherDepth * 0.92), easelWoodDarkMaterial);
+    centerHorizontal.position.set(0, 0, backZ - 0.003);
+    group.add(centerHorizontal);
+  }
+
+  const stapleCount = Math.max(4, Math.floor(canvasHeight / 0.18));
+  for (let i = 1; i < stapleCount; i += 1) {
+    const y = -canvasHeight / 2 + (canvasHeight * i) / stapleCount;
+    [-1, 1].forEach((side) => {
+      const staple = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.042, 0.004), easelHardwareMaterial);
+      staple.position.set(side * (canvasWidth / 2 - rail * 0.28), y, backZ - stretcherDepth / 2 - 0.004);
+      group.add(staple);
+    });
+  }
+
+  addEaselShadowFlags(group);
+  return group;
+}
+
+function createPleinAirEasel(width, depth, height, content = {}) {
+  const group = new THREE.Group();
+  const sticker = normalizePedestalStickers(content?.stickers)[0] ?? null;
+  const legThickness = THREE.MathUtils.clamp(Math.min(width, depth, height) * 0.026, 0.018, 0.038);
+  const centerThickness = legThickness * 1.18;
+  const footY = 0.045;
+  const hubY = height * 0.52;
+  const topY = height;
+  const frontZ = depth * 0.42;
+  const backZ = -depth * 0.45;
+  const mastBack = -depth * 0.055;
+  const canvasWidth = THREE.MathUtils.clamp(sticker?.width ?? Math.min(width * 0.56, 0.62), 0.28, Math.min(1.45, width * 0.9));
+  const canvasHeight = THREE.MathUtils.clamp(sticker?.height ?? canvasWidth * 1.16, 0.32, Math.min(1.42, height * 0.62));
+  const canvasCenterY = THREE.MathUtils.clamp(
+    sticker?.offsetY ?? height * 0.57,
+    canvasHeight / 2 + 0.34,
+    Math.max(canvasHeight / 2 + 0.34, height - canvasHeight / 2 - 0.12),
+  );
+  const canvasX = THREE.MathUtils.clamp(sticker?.offsetX ?? 0, -width * 0.2, width * 0.2);
+  const shelfY = canvasCenterY - canvasHeight / 2 - 0.035;
+
+  [
+    createEaselStick(new THREE.Vector3(-0.045, 0.12, 0.03), new THREE.Vector3(-0.045, topY, mastBack), centerThickness, easelWoodMaterial),
+    createEaselStick(new THREE.Vector3(0.045, 0.12, 0.03), new THREE.Vector3(0.045, topY, mastBack), centerThickness, easelWoodMaterial),
+    createEaselStick(new THREE.Vector3(-0.06, hubY, 0.02), new THREE.Vector3(-width / 2, footY, frontZ), legThickness, easelWoodMaterial),
+    createEaselStick(new THREE.Vector3(0.06, hubY, 0.02), new THREE.Vector3(width / 2, footY, frontZ), legThickness, easelWoodMaterial),
+    createEaselStick(new THREE.Vector3(0, hubY + 0.04, -0.02), new THREE.Vector3(0, footY, backZ), legThickness, easelWoodDarkMaterial),
+    createEaselStick(new THREE.Vector3(0, Math.max(0.12, shelfY - 0.36), 0.095), new THREE.Vector3(0, Math.min(height - 0.18, canvasCenterY + canvasHeight / 2 + 0.22), 0.02), legThickness * 0.9, easelWoodDarkMaterial),
+  ].forEach((stick) => {
+    if (stick) group.add(stick);
+  });
+
+  const shelfWidth = Math.min(width * 0.62, canvasWidth + 0.18);
+  const shelf = new THREE.Mesh(new THREE.BoxGeometry(shelfWidth, legThickness * 1.25, 0.085), easelWoodMaterial);
+  shelf.position.set(canvasX, shelfY, frontZ * 0.44);
+  group.add(shelf);
+
+  const lowerLip = new THREE.Mesh(new THREE.BoxGeometry(shelfWidth, legThickness * 0.75, 0.045), easelWoodDarkMaterial);
+  lowerLip.position.set(canvasX, shelfY + legThickness * 1.05, frontZ * 0.58);
+  group.add(lowerLip);
+
+  const topClamp = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.052, 0.06), easelWoodMaterial);
+  topClamp.position.set(canvasX, canvasCenterY + canvasHeight / 2 + 0.04, frontZ * 0.28);
+  group.add(topClamp);
+
+  const footRadius = legThickness * 0.85;
+  [
+    [-width / 2, footY / 2, frontZ],
+    [width / 2, footY / 2, frontZ],
+    [0, footY / 2, backZ],
+  ].forEach(([x, y, z]) => {
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(footRadius, 10, 8), easelHardwareMaterial);
+    foot.position.set(x, y, z);
+    group.add(foot);
+  });
+
+  group.add(createEaselKnob(-width * 0.22, height * 0.31, frontZ * 0.64, legThickness * 0.55, 0.075));
+  group.add(createEaselKnob(width * 0.22, height * 0.31, frontZ * 0.64, legThickness * 0.55, 0.075));
+  group.add(createEaselKnob(0.09, hubY + 0.03, 0.02, legThickness * 0.58, 0.09));
+
+  const canvasGroup = createEaselCanvas(canvasWidth, canvasHeight, sticker?.imageSrc ?? '');
+  canvasGroup.position.set(canvasX, canvasCenterY, frontZ * 0.36);
+  canvasGroup.rotation.x = THREE.MathUtils.degToRad(-8);
+  group.add(canvasGroup);
+
+  addEaselShadowFlags(group);
+  return group;
+}
+
 function createDisplayPedestal({
   x = 2.2,
   z = roomDepth / 2 - 1.05,
@@ -1286,7 +1502,9 @@ function createDisplayPedestal({
   group.rotation.y = ry;
   const resolvedContent = normalizePedestalContent(content);
 
-  if (type === 'table') {
+  if (type === 'easel') {
+    group.add(createPleinAirEasel(width, depth, height, resolvedContent));
+  } else if (type === 'table') {
     const topHeight = Math.max(0.06, height * 0.1);
     const legWidth = Math.max(0.06, Math.min(width, depth) * 0.08);
     const top = new THREE.Mesh(new THREE.BoxGeometry(width, topHeight, depth), pedestalTopMaterial);
@@ -1320,16 +1538,16 @@ function createDisplayPedestal({
     group.add(base, shaft, cap);
   }
 
-  group.children.forEach((part) => {
+  group.traverse((part) => {
     if (!part.isMesh) return;
     part.castShadow = true;
     part.receiveShadow = true;
   });
 
-  if (resolvedContent?.type === 'coins') {
+  if (type !== 'easel' && resolvedContent?.type === 'coins') {
     group.add(createPedestalCoinsContent(width, depth, height, resolvedContent));
   }
-  normalizePedestalStickers(resolvedContent?.stickers).forEach((sticker) => {
+  if (type !== 'easel') normalizePedestalStickers(resolvedContent?.stickers).forEach((sticker) => {
     const stickerMesh = createPedestalStickerContent(width, depth, height, type, sticker);
     if (stickerMesh) group.add(stickerMesh);
   });
@@ -3260,7 +3478,7 @@ function isValidPedestalConfig(config) {
     && config.width > 0.2
     && config.depth > 0.2
     && config.height > 0.25
-    && (!config.type || ['pillar', 'table'].includes(config.type));
+    && (!config.type || ['pillar', 'table', 'easel'].includes(config.type));
 }
 
 function addSavedDisplayPedestals() {
@@ -4043,26 +4261,57 @@ function swapPaintingTransforms(firstPainting, secondPainting) {
 }
 
 function getPedestalSizeFromInputs() {
+  const type = ['pillar', 'table', 'easel'].includes(pedestalTypeInput.value) ? pedestalTypeInput.value : 'pillar';
+  if (type === 'easel') {
+    return {
+      type,
+      width: THREE.MathUtils.clamp(Number(pedestalWidthCmInput.value) / centimetersPerMeter, 0.45, 1.4),
+      depth: THREE.MathUtils.clamp(Number(pedestalDepthCmInput.value) / centimetersPerMeter, 0.35, 1.4),
+      height: THREE.MathUtils.clamp(Number(pedestalHeightCmInput.value) / centimetersPerMeter, 0.95, 2.05),
+    };
+  }
   return {
-    type: pedestalTypeInput.value === 'table' ? 'table' : 'pillar',
+    type,
     width: THREE.MathUtils.clamp(Number(pedestalWidthCmInput.value) / centimetersPerMeter, 0.25, 2.2),
     depth: THREE.MathUtils.clamp(Number(pedestalDepthCmInput.value) / centimetersPerMeter, 0.25, 2.2),
     height: THREE.MathUtils.clamp(Number(pedestalHeightCmInput.value) / centimetersPerMeter, 0.35, 1.8),
   };
 }
 
+function applyPedestalTypeDefaults() {
+  if (selectedPedestal) return;
+  if (pedestalTypeInput.value === 'easel') {
+    pedestalWidthCmInput.value = '86';
+    pedestalDepthCmInput.value = '84';
+    pedestalHeightCmInput.value = '181';
+    pedestalStickerWidthCmInput.value = '60';
+    pedestalStickerHeightCmInput.value = '70';
+    pedestalStickerOffsetYCmInput.value = '105';
+  }
+}
+
 function syncPedestalPanel() {
-  pedestalTitle.textContent = selectedPedestal ? 'Vybraný podstavec' : 'Nový podstavec';
+  const selectedType = selectedPedestal?.type ?? pedestalTypeInput.value;
+  const isEasel = selectedType === 'easel';
+  pedestalTitle.textContent = selectedPedestal
+    ? isEasel ? 'Vybraný stojan' : 'Vybraný podstavec'
+    : isEasel ? 'Nový stojan' : 'Nový podstavec';
   pedestalStatus.textContent = movingSelectedPedestal
     ? 'Namiř tečku na podlahu a klikni Přidat na podlahu.'
       : selectedPedestal
-        ? 'Objekt je vybraný. Můžeš ho přesunout, kolečkem otočit, změnit typ, rozměr, nebo nalepit obrázek na čelo.'
-        : 'Namiř tečku na podlahu a přidej nový podstavec.';
+        ? isEasel
+          ? 'Stojan je vybraný. Můžeš ho přesunout, kolečkem otočit, změnit rozměr, nebo na něj dát plátno.'
+          : 'Objekt je vybraný. Můžeš ho přesunout, kolečkem otočit, změnit typ, rozměr, nebo nalepit obrázek na čelo.'
+        : isEasel
+          ? 'Namiř tečku na podlahu a přidej nový plenérový stojan.'
+          : 'Namiř tečku na podlahu a přidej nový podstavec.';
   movePedestalButton.disabled = !selectedPedestal;
   removePedestalButton.disabled = !selectedPedestal;
   movePedestalButton.textContent = movingSelectedPedestal ? 'Zrušit přesun' : 'Přesunout vybraný';
   addPedestalButton.textContent = movingSelectedPedestal ? 'Uchytit na podlahu' : 'Přidat na podlahu';
   const selectedSticker = selectedPedestal?.content?.stickers?.[0] ?? null;
+  loadPedestalStickerButton.textContent = isEasel ? 'Dát plátno' : 'Nalepit obrázek';
+  removePedestalStickerButton.textContent = isEasel ? 'Sundat plátno' : 'Smazat obrázek';
   loadPedestalStickerButton.disabled = !selectedPedestal;
   removePedestalStickerButton.disabled = !selectedSticker;
   if (!selectedPedestal) {
@@ -4143,7 +4392,7 @@ function updateSelectedPedestalSize() {
   const position = selectedPedestal.group.position.clone();
   const ry = selectedPedestal.group.rotation.y;
   const content = selectedPedestal.content ?? null;
-  const type = pedestalTypeInput.value === 'table' ? 'table' : 'pillar';
+  const type = ['pillar', 'table', 'easel'].includes(pedestalTypeInput.value) ? pedestalTypeInput.value : 'pillar';
   room.remove(selectedPedestal.group);
   const index = displayPedestals.indexOf(selectedPedestal);
   if (index >= 0) displayPedestals.splice(index, 1);
@@ -4182,15 +4431,22 @@ function replaceSelectedPedestalContent(content) {
 
 function readPedestalStickerFromInputs(imageSrc = selectedPedestal?.content?.stickers?.[0]?.imageSrc ?? '') {
   if (!selectedPedestal || !imageSrc) return null;
+  const isEasel = selectedPedestal.type === 'easel';
+  const maxStickerWidth = isEasel
+    ? Math.max(0.08, Math.min(1.2, selectedPedestal.width * 0.96))
+    : Math.max(0.08, selectedPedestal.width * 0.96);
+  const maxStickerHeight = isEasel
+    ? Math.max(0.08, Math.min(1.35, selectedPedestal.height * 0.68))
+    : Math.max(0.08, selectedPedestal.height * 0.9);
   const width = THREE.MathUtils.clamp(
-    Number(pedestalStickerWidthCmInput.value) / centimetersPerMeter || Math.min(selectedPedestal.width * 0.62, 0.48),
+    Number(pedestalStickerWidthCmInput.value) / centimetersPerMeter || Math.min(selectedPedestal.width * 0.62, isEasel ? 0.6 : 0.48),
     0.08,
-    Math.max(0.08, selectedPedestal.width * 0.96),
+    maxStickerWidth,
   );
   const height = THREE.MathUtils.clamp(
     Number(pedestalStickerHeightCmInput.value) / centimetersPerMeter || width,
     0.08,
-    Math.max(0.08, selectedPedestal.height * 0.9),
+    maxStickerHeight,
   );
   const offsetX = THREE.MathUtils.clamp(
     Number(pedestalStickerOffsetXCmInput.value) / centimetersPerMeter || 0,
@@ -5216,6 +5472,10 @@ movePedestalButton.addEventListener('click', () => {
   syncPedestalPanel();
 });
 removePedestalButton.addEventListener('click', removeSelectedPedestal);
+pedestalTypeInput.addEventListener('change', () => {
+  applyPedestalTypeDefaults();
+  syncPedestalPanel();
+});
 [pedestalTypeInput, pedestalWidthCmInput, pedestalDepthCmInput, pedestalHeightCmInput].forEach((input) => {
   input.addEventListener('input', updateSelectedPedestalSize);
   input.addEventListener('change', updateSelectedPedestalSize);
@@ -5237,19 +5497,24 @@ pedestalStickerFileInput.addEventListener('change', () => {
     const image = new Image();
     image.addEventListener('load', () => {
       const aspect = image.naturalWidth / image.naturalHeight || 1;
-      const defaultWidth = Math.min(selectedPedestal.width * 0.62, 0.48);
+      const isEasel = selectedPedestal.type === 'easel';
+      const defaultWidth = isEasel
+        ? Math.min(selectedPedestal.width * 0.7, 0.7)
+        : Math.min(selectedPedestal.width * 0.62, 0.48);
       const defaultHeight = defaultWidth / aspect;
       pedestalStickerWidthCmInput.value = String(Math.round(defaultWidth * centimetersPerMeter));
       pedestalStickerHeightCmInput.value = String(Math.round(defaultHeight * centimetersPerMeter));
       pedestalStickerOffsetXCmInput.value = '0';
-      pedestalStickerOffsetYCmInput.value = String(Math.round(selectedPedestal.height * 0.52 * centimetersPerMeter));
+      pedestalStickerOffsetYCmInput.value = String(Math.round(selectedPedestal.height * (isEasel ? 0.58 : 0.52) * centimetersPerMeter));
       const sticker = readPedestalStickerFromInputs(reader.result);
       replaceSelectedPedestalContent({
         ...(selectedPedestal.content ?? {}),
         stickers: sticker ? [sticker] : [],
       });
-      pedestalTitle.textContent = 'Obrázek nalepený';
-      pedestalStatus.textContent = 'Obrázek je na čele podstavce. Velikost a polohu doladíš číselně v panelu.';
+      pedestalTitle.textContent = isEasel ? 'Plátno nasazené' : 'Obrázek nalepený';
+      pedestalStatus.textContent = isEasel
+        ? 'Obrázek je teď jako plátno bez rámu na stojanu. Šířku a výšku doladíš číselně v panelu.'
+        : 'Obrázek je na čele podstavce. Velikost a polohu doladíš číselně v panelu.';
       pedestalStickerFileInput.value = '';
     });
     image.src = reader.result;
