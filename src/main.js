@@ -1393,11 +1393,11 @@ function createEaselWingNutAssembly(length, radius) {
 
   const wingSize = [radius * 1.55, radius * 0.42, radius * 0.58];
   const leftWing = new THREE.Mesh(new THREE.BoxGeometry(...wingSize), easelHardwareMaterial);
-  leftWing.position.set(length * 0.24, radius * 0.82, 0);
-  leftWing.rotation.z = -0.42;
+  leftWing.position.set(length * 0.02, radius * 0.82, 0);
+  leftWing.rotation.z = 0.42;
   const rightWing = leftWing.clone();
   rightWing.position.y = -radius * 0.82;
-  rightWing.rotation.z = 0.42;
+  rightWing.rotation.z = -0.42;
 
   assembly.add(screw, washer, nut, leftWing, rightWing);
   return assembly;
@@ -1537,7 +1537,8 @@ function createPleinAirEasel(width, depth, height, content = {}) {
   group.add(topClamp);
 
   const topClampScrew = createEaselWingNutAssembly(0.12, legThickness * 0.82);
-  topClampScrew.position.set(canvasX + 0.09, canvasCenterY + canvasHeight / 2 + 0.035, 0.066);
+  topClampScrew.position.set(canvasX, canvasCenterY + canvasHeight / 2 + 0.02, 0.07);
+  topClampScrew.rotation.y = -Math.PI / 2;
   topClampScrew.scale.setScalar(0.86);
   group.add(topClampScrew);
 
@@ -5836,6 +5837,12 @@ function isCrouching() {
   return keys.has('ControlLeft') || keys.has('ControlRight');
 }
 
+function isBrowserMovementShortcut(event) {
+  return (event.ctrlKey || event.metaKey)
+    && !event.altKey
+    && (event.code === 'KeyW' || event.code === 'KeyQ');
+}
+
 function isTextEditingTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
   if (target === roomLightPublicPowerInput) return false;
@@ -5920,7 +5927,17 @@ function releaseLook() {
   disableLook();
 }
 
+window.addEventListener('keydown', (event) => {
+  if (isBrowserMovementShortcut(event)) {
+    event.preventDefault();
+  }
+}, { capture: true });
+
 document.addEventListener('keydown', (event) => {
+  if (isBrowserMovementShortcut(event)) {
+    event.preventDefault();
+  }
+
   if (isTextEditingTarget(event.target)) {
     keys.clear();
     if (event.code === 'Escape') {
