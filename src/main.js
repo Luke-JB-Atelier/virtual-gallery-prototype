@@ -1357,6 +1357,65 @@ function createEaselLegBand(x, y, z, width, height, depth, rotationZ = 0) {
   return band;
 }
 
+function createEaselClampBlock(width, height, depth) {
+  const block = new THREE.Group();
+  const core = new THREE.Mesh(new THREE.BoxGeometry(width, height * 0.72, depth), easelWoodMaterial);
+  const topRound = new THREE.Mesh(new THREE.CylinderGeometry(height * 0.18, height * 0.18, width, 18), easelWoodMaterial);
+  topRound.rotation.z = Math.PI / 2;
+  topRound.position.y = height * 0.36;
+  const bottomRound = topRound.clone();
+  bottomRound.position.y = -height * 0.36;
+  block.add(core, topRound, bottomRound);
+  return block;
+}
+
+function createThreadedBolt(length, radius) {
+  const bolt = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 18), easelHardwareMaterial);
+  shaft.rotation.z = Math.PI / 2;
+  bolt.add(shaft);
+
+  const threadCount = Math.max(5, Math.floor(length / (radius * 0.82)));
+  for (let i = 0; i < threadCount; i += 1) {
+    const x = -length * 0.46 + (length * 0.92 * i) / Math.max(1, threadCount - 1);
+    const thread = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.03, radius * 0.105, 6, 18), easelHardwareMaterial);
+    thread.position.x = x;
+    thread.rotation.y = Math.PI / 2;
+    thread.rotation.x = i * 0.45;
+    bolt.add(thread);
+  }
+
+  return bolt;
+}
+
+function createEaselWingNutAssembly(length, radius) {
+  const assembly = new THREE.Group();
+  const screw = createThreadedBolt(length, radius * 0.42);
+  const washer = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.25, radius * 1.25, radius * 0.18, 20), easelHardwareMaterial);
+  washer.rotation.z = Math.PI / 2;
+  washer.position.x = -length * 0.18;
+  const nut = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.78, radius * 0.78, radius * 0.36, 6), easelHardwareMaterial);
+  nut.rotation.z = Math.PI / 2;
+  nut.position.x = length * 0.18;
+
+  const wingSize = [radius * 1.55, radius * 0.42, radius * 0.58];
+  const leftWing = new THREE.Mesh(new THREE.BoxGeometry(...wingSize), easelHardwareMaterial);
+  leftWing.position.set(length * 0.24, radius * 0.82, 0);
+  leftWing.rotation.z = -0.42;
+  const rightWing = leftWing.clone();
+  rightWing.position.y = -radius * 0.82;
+  rightWing.rotation.z = 0.42;
+
+  assembly.add(screw, washer, nut, leftWing, rightWing);
+  return assembly;
+}
+
+function createEaselHingeHandle(length, radius) {
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.46, radius * 0.46, length, 14), easelHardwareMaterial);
+  handle.rotation.x = Math.PI / 2;
+  return handle;
+}
+
 function addEaselShadowFlags(root) {
   root.traverse((child) => {
     if (!child.isMesh) return;
@@ -1485,11 +1544,13 @@ function createPleinAirEasel(width, depth, height, content = {}) {
   lowerLip.position.set(canvasX, shelfY + legThickness * 1.05, frontZ * 0.58);
   group.add(lowerLip);
 
-  const topClamp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.052, 0.052), easelWoodMaterial);
+  const topClamp = createEaselClampBlock(0.16, 0.09, 0.062);
   topClamp.position.set(canvasX, canvasCenterY + canvasHeight / 2 + 0.035, 0.025);
   group.add(topClamp);
 
-  const topClampScrew = createEaselKnob(canvasX + 0.095, canvasCenterY + canvasHeight / 2 + 0.035, 0.055, legThickness * 0.5, 0.055);
+  const topClampScrew = createEaselWingNutAssembly(0.12, legThickness * 0.82);
+  topClampScrew.position.set(canvasX + 0.09, canvasCenterY + canvasHeight / 2 + 0.035, 0.066);
+  topClampScrew.scale.setScalar(0.86);
   group.add(topClampScrew);
 
   const footRadius = legThickness * 0.85;
@@ -1505,7 +1566,12 @@ function createPleinAirEasel(width, depth, height, content = {}) {
 
   group.add(createEaselLegBand(-width * 0.25, height * 0.31, frontZ * 0.46, 0.07, 0.035, 0.026, -0.32));
   group.add(createEaselLegBand(width * 0.25, height * 0.31, frontZ * 0.46, 0.07, 0.035, 0.026, 0.32));
-  group.add(createEaselKnob(0.09, hubY + 0.03, 0.02, legThickness * 0.58, 0.09));
+  const hingeAssembly = createEaselWingNutAssembly(0.16, legThickness * 0.95);
+  hingeAssembly.position.set(0.09, hubY + 0.03, 0.04);
+  group.add(hingeAssembly);
+  const hingeHandle = createEaselHingeHandle(0.34, legThickness * 0.82);
+  hingeHandle.position.set(0.15, hubY - 0.13, 0.04);
+  group.add(hingeHandle);
 
   const canvasGroup = createEaselCanvas(canvasWidth, canvasHeight, sticker?.imageSrc ?? '');
   canvasGroup.position.set(canvasX, canvasCenterY, frontZ * 0.36);
