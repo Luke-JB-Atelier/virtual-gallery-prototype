@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-06-09T18:58:55.039Z",
+  "exportedAt": "2026-06-09T19:00:36.763Z",
   "gallery": {
     "version": 1,
     "audio": {
@@ -102,30 +102,6 @@
         "labelPrice": "",
         "labelVisible": false,
         "actionUrl": "copy:lukeart88@gmail.com"
-      },
-      {
-        "imageSrc": "art/olej-web/21-kocka.jpg",
-        "x": -4.42,
-        "y": 2.09,
-        "z": 2.5498,
-        "ry": 1.570796,
-        "w": 0.809,
-        "h": 1.0112,
-        "aspect": 0.8,
-        "wallNormal": [
-          1,
-          0,
-          0
-        ],
-        "frameSize": "light",
-        "frameColor": "#010101",
-        "labelTitle": "Kočka",
-        "labelMedium": "",
-        "labelSize": "80.9 x 101.1 cm",
-        "labelDate": "2024",
-        "labelPrice": "nedostupné",
-        "labelVisible": true,
-        "actionUrl": ""
       },
       {
         "imageSrc": "art/olej-web/08-redpandadragon.jpg",
@@ -844,6 +820,30 @@
         "labelSize": "40 x 40 cm",
         "labelDate": "2019",
         "labelPrice": "8000",
+        "labelVisible": true,
+        "actionUrl": ""
+      },
+      {
+        "imageSrc": "art/olej-web/21-kocka.jpg",
+        "x": -4.42,
+        "y": 2.09,
+        "z": 2.5498,
+        "ry": 1.570796,
+        "w": 0.809,
+        "h": 1.0112,
+        "aspect": 0.8,
+        "wallNormal": [
+          1,
+          0,
+          0
+        ],
+        "frameSize": "light",
+        "frameColor": "#010101",
+        "labelTitle": "Muro",
+        "labelMedium": "",
+        "labelSize": "80.9 x 101.1 cm",
+        "labelDate": "2024",
+        "labelPrice": "nedostupné",
         "labelVisible": true,
         "actionUrl": ""
       }
