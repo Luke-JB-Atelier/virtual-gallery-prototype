@@ -1350,13 +1350,6 @@ function createEaselKnob(x, y, z, radius, length) {
   return knob;
 }
 
-function createEaselLegBand(x, y, z, width, height, depth, rotationZ = 0) {
-  const band = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), easelHardwareMaterial);
-  band.position.set(x, y, z);
-  band.rotation.z = rotationZ;
-  return band;
-}
-
 function createEaselClampBlock(width, height, depth) {
   const block = new THREE.Group();
   const core = new THREE.Mesh(new THREE.BoxGeometry(width, height * 0.72, depth), easelWoodMaterial);
@@ -1408,12 +1401,6 @@ function createEaselWingNutAssembly(length, radius) {
 
   assembly.add(screw, washer, nut, leftWing, rightWing);
   return assembly;
-}
-
-function createEaselHingeHandle(length, radius) {
-  const handle = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.46, radius * 0.46, length, 14), easelHardwareMaterial);
-  handle.rotation.x = Math.PI / 2;
-  return handle;
 }
 
 function addEaselShadowFlags(root) {
@@ -1514,6 +1501,7 @@ function createPleinAirEasel(width, depth, height, content = {}) {
   const frontZ = depth * 0.42;
   const backZ = -depth * 0.45;
   const mastBack = -depth * 0.055;
+  const mastBottomY = Math.max(0.38, hubY - 0.33);
   const canvasWidth = THREE.MathUtils.clamp(sticker?.width ?? Math.min(width * 0.56, 0.62), 0.28, Math.min(1.45, width * 0.9));
   const canvasHeight = THREE.MathUtils.clamp(sticker?.height ?? canvasWidth * 1.16, 0.32, Math.min(1.42, height * 0.62));
   const canvasCenterY = THREE.MathUtils.clamp(
@@ -1525,12 +1513,12 @@ function createPleinAirEasel(width, depth, height, content = {}) {
   const shelfY = canvasCenterY - canvasHeight / 2 - 0.035;
 
   [
-    createEaselStick(new THREE.Vector3(-0.045, 0.12, 0.03), new THREE.Vector3(-0.045, topY, mastBack), centerThickness, easelWoodMaterial),
-    createEaselStick(new THREE.Vector3(0.045, 0.12, 0.03), new THREE.Vector3(0.045, topY, mastBack), centerThickness, easelWoodMaterial),
+    createEaselStick(new THREE.Vector3(-0.045, mastBottomY, 0.03), new THREE.Vector3(-0.045, topY, mastBack), centerThickness, easelWoodMaterial),
+    createEaselStick(new THREE.Vector3(0.045, mastBottomY, 0.03), new THREE.Vector3(0.045, topY, mastBack), centerThickness, easelWoodMaterial),
     createEaselStick(new THREE.Vector3(-0.06, hubY, 0.02), new THREE.Vector3(-width / 2, footY, frontZ), legThickness, easelWoodMaterial),
     createEaselStick(new THREE.Vector3(0.06, hubY, 0.02), new THREE.Vector3(width / 2, footY, frontZ), legThickness, easelWoodMaterial),
     createEaselStick(new THREE.Vector3(0, hubY + 0.04, -0.02), new THREE.Vector3(0, footY, backZ), legThickness, easelWoodDarkMaterial),
-    createEaselStick(new THREE.Vector3(0, Math.max(0.12, shelfY - 0.36), 0.095), new THREE.Vector3(0, Math.min(height - 0.18, canvasCenterY + canvasHeight / 2 + 0.22), 0.02), legThickness * 0.9, easelWoodDarkMaterial),
+    createEaselStick(new THREE.Vector3(0, Math.max(mastBottomY + 0.04, shelfY - 0.16), 0.095), new THREE.Vector3(0, Math.min(height - 0.18, canvasCenterY + canvasHeight / 2 + 0.22), 0.02), legThickness * 0.9, easelWoodDarkMaterial),
   ].forEach((stick) => {
     if (stick) group.add(stick);
   });
@@ -1564,14 +1552,18 @@ function createPleinAirEasel(width, depth, height, content = {}) {
     group.add(foot);
   });
 
-  group.add(createEaselLegBand(-width * 0.25, height * 0.31, frontZ * 0.46, 0.07, 0.035, 0.026, -0.32));
-  group.add(createEaselLegBand(width * 0.25, height * 0.31, frontZ * 0.46, 0.07, 0.035, 0.026, 0.32));
+  const hingeY = hubY + 0.015;
+  const hingeZ = 0.035;
   const hingeAssembly = createEaselWingNutAssembly(0.16, legThickness * 0.95);
-  hingeAssembly.position.set(0.09, hubY + 0.03, 0.04);
+  hingeAssembly.position.set(0, hingeY, hingeZ);
   group.add(hingeAssembly);
-  const hingeHandle = createEaselHingeHandle(0.34, legThickness * 0.82);
-  hingeHandle.position.set(0.15, hubY - 0.13, 0.04);
-  group.add(hingeHandle);
+  const hingeHandle = createEaselStick(
+    new THREE.Vector3(0.085, hingeY - 0.012, hingeZ + 0.006),
+    new THREE.Vector3(0.085, hingeY - 0.17, hingeZ + 0.07),
+    legThickness * 0.42,
+    easelHardwareMaterial,
+  );
+  if (hingeHandle) group.add(hingeHandle);
 
   const canvasGroup = createEaselCanvas(canvasWidth, canvasHeight, sticker?.imageSrc ?? '');
   canvasGroup.position.set(canvasX, canvasCenterY, frontZ * 0.36);
@@ -5827,9 +5819,22 @@ const turnSpeed = 1.9;
 const fallbackTurnSpeed = 0.85;
 const fallbackPitchSpeed = 0.52;
 const eyeHeight = 1.68;
+const crouchEyeHeight = 0.92;
+const crouchTransitionSpeed = 2.4;
+const crouchMoveMultiplier = 0.48;
+const jumpVelocity = 4.65;
+const gravity = 12.2;
 const touchMove = new THREE.Vector2();
 const stickPointer = { id: null };
 const lookPointer = { id: null, lastX: 0, lastY: 0, captureTarget: null };
+let currentEyeHeight = eyeHeight;
+let verticalVelocity = 0;
+let jumpOffset = 0;
+let grounded = true;
+
+function isCrouching() {
+  return keys.has('ControlLeft') || keys.has('ControlRight');
+}
 
 function isTextEditingTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
@@ -5855,6 +5860,10 @@ function syncCameraRotation() {
 
 function resetView() {
   body.position.set(0, eyeHeight, 2.4);
+  currentEyeHeight = eyeHeight;
+  verticalVelocity = 0;
+  jumpOffset = 0;
+  grounded = true;
   bodyYaw = initialBodyYaw;
   headYaw = 0;
   pitch = 0;
@@ -5921,11 +5930,16 @@ document.addEventListener('keydown', (event) => {
     return;
   }
 
-  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE'].includes(event.code)) {
+  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space', 'ControlLeft', 'ControlRight'].includes(event.code)) {
     event.preventDefault();
     if (event.code === 'KeyW') {
       tryStartRequestedAudio();
     }
+  }
+
+  if (event.code === 'Space' && grounded && jumpOffset <= 0.001 && !isCrouching()) {
+    verticalVelocity = jumpVelocity;
+    grounded = false;
   }
 
   if (event.code === 'Escape') {
@@ -6301,6 +6315,7 @@ function updateMovement(delta) {
   if (keys.has('KeyA') || keys.has('KeyQ')) bodyYaw += turnSpeed * delta;
   if (keys.has('KeyD') || keys.has('KeyE')) bodyYaw -= turnSpeed * delta;
 
+  const crouching = isCrouching();
   const walkYaw = bodyYaw + headYaw;
   forward.set(-Math.sin(walkYaw), 0, -Math.cos(walkYaw));
   right.set(Math.cos(bodyYaw), 0, -Math.sin(bodyYaw));
@@ -6317,7 +6332,7 @@ function updateMovement(delta) {
   if (moving) {
     const speed = moveSpeed
       * (isTouchDevice ? 0.82 : 1)
-      * (keys.has('ShiftLeft') || keys.has('ShiftRight') ? sprintMultiplier : 1);
+      * (crouching ? crouchMoveMultiplier : (keys.has('ShiftLeft') || keys.has('ShiftRight') ? sprintMultiplier : 1));
     movement.normalize().multiplyScalar(speed * delta);
     body.position.add(movement);
   }
@@ -6331,8 +6346,23 @@ function updateMovement(delta) {
 
   velocityBob = THREE.MathUtils.lerp(velocityBob, moving ? 1 : 0, 1 - Math.pow(0.001, delta));
   bobTime += delta * 8.5 * velocityBob;
+  if (!grounded || verticalVelocity > 0) {
+    verticalVelocity -= gravity * delta;
+    jumpOffset += verticalVelocity * delta;
+    if (jumpOffset <= 0) {
+      jumpOffset = 0;
+      verticalVelocity = 0;
+      grounded = true;
+    }
+  }
+  const targetEyeHeight = crouching && grounded ? crouchEyeHeight : eyeHeight;
+  currentEyeHeight = THREE.MathUtils.lerp(
+    currentEyeHeight,
+    targetEyeHeight,
+    1 - Math.pow(0.0006, delta * crouchTransitionSpeed),
+  );
   camera.position.y = Math.sin(bobTime) * (isTouchDevice ? 0.012 : 0.028) * velocityBob;
-  body.position.y = eyeHeight;
+  body.position.y = currentEyeHeight + jumpOffset;
   syncCameraRotation();
 }
 
@@ -6463,6 +6493,12 @@ animate();
 
 window.__galleryDebug = () => ({
   bodyPosition: body.position.toArray(),
+  movement: {
+    currentEyeHeight: Number(currentEyeHeight.toFixed(3)),
+    jumpOffset: Number(jumpOffset.toFixed(3)),
+    grounded,
+    crouching: isCrouching(),
+  },
   currentRoomIndex: getRoomIndexForPosition(body.position.x, body.position.z),
   wallMeshes: wallMeshes.length,
   wallMaterial: {
