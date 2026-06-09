@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-06-09T18:53:16.170Z",
+  "exportedAt": "2026-06-09T18:58:55.039Z",
   "gallery": {
     "version": 1,
     "audio": {
@@ -440,30 +440,6 @@
         "actionUrl": ""
       },
       {
-        "imageSrc": "art/olej-web/02-jungle.jpg",
-        "x": -0.171,
-        "y": 1.73,
-        "z": -5.935,
-        "ry": 0,
-        "w": 0.7,
-        "h": 0.7,
-        "aspect": 1,
-        "wallNormal": [
-          0,
-          0,
-          1
-        ],
-        "frameSize": "thin",
-        "frameColor": "#010101",
-        "labelTitle": "Jungle (prvotina) #2",
-        "labelMedium": "",
-        "labelSize": "70 x 147.7 cm",
-        "labelDate": "2019",
-        "labelPrice": "8000kč",
-        "labelVisible": true,
-        "actionUrl": ""
-      },
-      {
         "imageSrc": "art/olej-web/20-portrait-20260130.jpg",
         "x": -2.5465,
         "y": 1.73,
@@ -628,30 +604,6 @@
         "labelSize": "60 x 60 cm",
         "labelDate": "2018",
         "labelPrice": "nedostupné",
-        "labelVisible": true,
-        "actionUrl": ""
-      },
-      {
-        "imageSrc": "art/olej-web/03-vietnam.jpg",
-        "x": 3.25,
-        "y": 1.73,
-        "z": -5.93,
-        "ry": 0,
-        "w": 0.7,
-        "h": 0.6924,
-        "aspect": 1.011,
-        "wallNormal": [
-          0,
-          0,
-          1
-        ],
-        "frameSize": "light",
-        "frameColor": "#010101",
-        "labelTitle": "Vietnam- (prvotina) #4",
-        "labelMedium": "olej na plátně",
-        "labelSize": "40 x 39.2 cm",
-        "labelDate": "2019",
-        "labelPrice": "8000",
         "labelVisible": true,
         "actionUrl": ""
       },
@@ -844,6 +796,54 @@
         "labelSize": "50 x 50 cm",
         "labelDate": "2024",
         "labelPrice": "15000kč",
+        "labelVisible": true,
+        "actionUrl": ""
+      },
+      {
+        "imageSrc": "art/olej-web/02-jungle.jpg",
+        "x": -0.171,
+        "y": 1.73,
+        "z": -5.935,
+        "ry": 0,
+        "w": 0.7,
+        "h": 0.7,
+        "aspect": 1,
+        "wallNormal": [
+          0,
+          0,
+          1
+        ],
+        "frameSize": "thin",
+        "frameColor": "#010101",
+        "labelTitle": "Jungle (prvotina) #2",
+        "labelMedium": "",
+        "labelSize": "40 x 40 cm",
+        "labelDate": "2019",
+        "labelPrice": "8000kč",
+        "labelVisible": true,
+        "actionUrl": ""
+      },
+      {
+        "imageSrc": "art/olej-web/03-vietnam.jpg",
+        "x": 3.25,
+        "y": 1.73,
+        "z": -5.93,
+        "ry": 0,
+        "w": 0.7,
+        "h": 0.6924,
+        "aspect": 1.011,
+        "wallNormal": [
+          0,
+          0,
+          1
+        ],
+        "frameSize": "light",
+        "frameColor": "#010101",
+        "labelTitle": "Vietnam- (prvotina) #4",
+        "labelMedium": "olej na plátně",
+        "labelSize": "40 x 40 cm",
+        "labelDate": "2019",
+        "labelPrice": "8000",
         "labelVisible": true,
         "actionUrl": ""
       }
