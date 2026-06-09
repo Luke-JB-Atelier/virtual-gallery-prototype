@@ -1350,6 +1350,13 @@ function createEaselKnob(x, y, z, radius, length) {
   return knob;
 }
 
+function createEaselLegBand(x, y, z, width, height, depth, rotationZ = 0) {
+  const band = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), easelHardwareMaterial);
+  band.position.set(x, y, z);
+  band.rotation.z = rotationZ;
+  return band;
+}
+
 function addEaselShadowFlags(root) {
   root.traverse((child) => {
     if (!child.isMesh) return;
@@ -1362,7 +1369,7 @@ function createEaselCanvas(canvasWidth, canvasHeight, imageSrc = '') {
   const group = new THREE.Group();
   const canvasDepth = 0.048;
   const stretcherDepth = 0.032;
-  const rail = THREE.MathUtils.clamp(Math.min(canvasWidth, canvasHeight) * 0.07, 0.035, 0.07);
+  const rail = THREE.MathUtils.clamp(Math.min(canvasWidth, canvasHeight) * 0.055, 0.028, 0.052);
 
   const body = new THREE.Mesh(new THREE.BoxGeometry(canvasWidth, canvasHeight, canvasDepth), canvasSideMaterial);
   group.add(body);
@@ -1374,22 +1381,30 @@ function createEaselCanvas(canvasWidth, canvasHeight, imageSrc = '') {
   front.renderOrder = 16;
   group.add(front);
 
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(canvasWidth * 0.94, canvasHeight * 0.94), canvasBackMaterial);
+  const back = new THREE.Mesh(
+    new THREE.PlaneGeometry(
+      Math.max(0.04, canvasWidth - rail * 3),
+      Math.max(0.04, canvasHeight - rail * 3),
+    ),
+    canvasBackMaterial,
+  );
   back.position.z = -canvasDepth / 2 - 0.002;
   back.rotation.y = Math.PI;
   group.add(back);
 
-  const backZ = -canvasDepth / 2 - stretcherDepth / 2 - 0.004;
-  const railWidth = Math.max(0.04, canvasWidth - rail * 1.2);
-  const railHeight = Math.max(0.04, canvasHeight - rail * 1.2);
+  const backZ = -canvasDepth / 2 + stretcherDepth / 2 - 0.003;
+  const railWidth = Math.max(0.04, canvasWidth - rail * 2.5);
+  const railHeight = Math.max(0.04, canvasHeight - rail * 2.5);
+  const railInsetX = canvasWidth / 2 - rail * 1.05;
+  const railInsetY = canvasHeight / 2 - rail * 1.05;
   const topRail = new THREE.Mesh(new THREE.BoxGeometry(railWidth, rail, stretcherDepth), easelWoodMaterial);
-  topRail.position.set(0, canvasHeight / 2 - rail / 2, backZ);
+  topRail.position.set(0, railInsetY, backZ);
   const bottomRail = topRail.clone();
-  bottomRail.position.y = -canvasHeight / 2 + rail / 2;
+  bottomRail.position.y = -railInsetY;
   const leftRail = new THREE.Mesh(new THREE.BoxGeometry(rail, railHeight, stretcherDepth), easelWoodMaterial);
-  leftRail.position.set(-canvasWidth / 2 + rail / 2, 0, backZ);
+  leftRail.position.set(-railInsetX, 0, backZ);
   const rightRail = leftRail.clone();
-  rightRail.position.x = canvasWidth / 2 - rail / 2;
+  rightRail.position.x = railInsetX;
   group.add(topRail, bottomRail, leftRail, rightRail);
 
   if (canvasWidth >= canvasCenterBraceThreshold) {
@@ -1404,12 +1419,23 @@ function createEaselCanvas(canvasWidth, canvasHeight, imageSrc = '') {
     group.add(centerHorizontal);
   }
 
-  const stapleCount = Math.max(4, Math.floor(canvasHeight / 0.18));
-  for (let i = 1; i < stapleCount; i += 1) {
-    const y = -canvasHeight / 2 + (canvasHeight * i) / stapleCount;
+  const stapleZ = -canvasDepth / 2 - 0.006;
+  const verticalStapleCount = Math.max(4, Math.floor(canvasHeight / 0.18));
+  for (let i = 1; i < verticalStapleCount; i += 1) {
+    const y = -canvasHeight / 2 + (canvasHeight * i) / verticalStapleCount;
     [-1, 1].forEach((side) => {
       const staple = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.042, 0.004), easelHardwareMaterial);
-      staple.position.set(side * (canvasWidth / 2 - rail * 0.28), y, backZ - stretcherDepth / 2 - 0.004);
+      staple.position.set(side * (canvasWidth / 2 - rail * 0.22), y, stapleZ);
+      group.add(staple);
+    });
+  }
+
+  const horizontalStapleCount = Math.max(4, Math.floor(canvasWidth / 0.18));
+  for (let i = 1; i < horizontalStapleCount; i += 1) {
+    const x = -canvasWidth / 2 + (canvasWidth * i) / horizontalStapleCount;
+    [-1, 1].forEach((side) => {
+      const staple = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.006, 0.004), easelHardwareMaterial);
+      staple.position.set(x, side * (canvasHeight / 2 - rail * 0.22), stapleZ);
       group.add(staple);
     });
   }
@@ -1459,9 +1485,12 @@ function createPleinAirEasel(width, depth, height, content = {}) {
   lowerLip.position.set(canvasX, shelfY + legThickness * 1.05, frontZ * 0.58);
   group.add(lowerLip);
 
-  const topClamp = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.052, 0.06), easelWoodMaterial);
-  topClamp.position.set(canvasX, canvasCenterY + canvasHeight / 2 + 0.04, frontZ * 0.28);
+  const topClamp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.052, 0.052), easelWoodMaterial);
+  topClamp.position.set(canvasX, canvasCenterY + canvasHeight / 2 + 0.035, 0.025);
   group.add(topClamp);
+
+  const topClampScrew = createEaselKnob(canvasX + 0.095, canvasCenterY + canvasHeight / 2 + 0.035, 0.055, legThickness * 0.5, 0.055);
+  group.add(topClampScrew);
 
   const footRadius = legThickness * 0.85;
   [
@@ -1474,8 +1503,8 @@ function createPleinAirEasel(width, depth, height, content = {}) {
     group.add(foot);
   });
 
-  group.add(createEaselKnob(-width * 0.22, height * 0.31, frontZ * 0.64, legThickness * 0.55, 0.075));
-  group.add(createEaselKnob(width * 0.22, height * 0.31, frontZ * 0.64, legThickness * 0.55, 0.075));
+  group.add(createEaselLegBand(-width * 0.25, height * 0.31, frontZ * 0.46, 0.07, 0.035, 0.026, -0.32));
+  group.add(createEaselLegBand(width * 0.25, height * 0.31, frontZ * 0.46, 0.07, 0.035, 0.026, 0.32));
   group.add(createEaselKnob(0.09, hubY + 0.03, 0.02, legThickness * 0.58, 0.09));
 
   const canvasGroup = createEaselCanvas(canvasWidth, canvasHeight, sticker?.imageSrc ?? '');
