@@ -2959,7 +2959,20 @@ function wrapCanvasText(ctx, text, maxWidth) {
 }
 
 function getTextPanelKind(kind) {
-  return kind === 'donors' ? 'donors' : 'plain';
+  if (kind === 'donors' || kind === 'discount') return kind;
+  return 'plain';
+}
+
+function getDefaultTextPanelText(kind) {
+  if (getTextPanelKind(kind) === 'discount') {
+    return [
+      'SLEVA',
+      '-50 %',
+      '15.900 Kč',
+    ].join('\n');
+  }
+  if (getTextPanelKind(kind) === 'donors') return '';
+  return 'Textová tabulka';
 }
 
 function isDonorBoardPlaceholder(text) {
@@ -3118,13 +3131,102 @@ function drawDonorBoardPanel(ctx, labelCanvas, textPanelData) {
   });
 }
 
+function drawStarburstPath(ctx, centerX, centerY, outerRadius, innerRadius, points = 28) {
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i += 1) {
+    const radius = i % 2 === 0 ? outerRadius : innerRadius;
+    const angle = -Math.PI / 2 + (i * Math.PI) / points;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function drawDiscountPanel(ctx, labelCanvas, textPanelData) {
+  const bgColor = textPanelData.bgColor || '#ffc400';
+  const textColor = textPanelData.textColor || '#d60000';
+  const lines = String(textPanelData.text || getDefaultTextPanelText('discount'))
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const title = lines[0] || 'SLEVA';
+  const main = lines[1] || '-50 %';
+  const note = lines.slice(2).join(' ') || 'AKCE';
+  const centerX = labelCanvas.width / 2;
+  const centerY = labelCanvas.height / 2;
+  const radius = Math.min(labelCanvas.width, labelCanvas.height) * 0.43;
+  const innerRadius = radius * 0.88;
+  const maxTextWidth = radius * 1.48;
+
+  ctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+  ctx.shadowBlur = Math.max(18, radius * 0.08);
+  ctx.shadowOffsetX = Math.max(7, radius * 0.03);
+  ctx.shadowOffsetY = Math.max(9, radius * 0.04);
+  drawStarburstPath(ctx, centerX, centerY, radius, innerRadius, 30);
+  ctx.fillStyle = bgColor;
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  drawStarburstPath(ctx, centerX, centerY, radius * 0.965, innerRadius * 0.965, 30);
+  ctx.clip();
+  const highlight = ctx.createLinearGradient(0, centerY - radius, 0, centerY + radius);
+  highlight.addColorStop(0, 'rgba(255, 255, 255, 0.34)');
+  highlight.addColorStop(0.32, 'rgba(255, 255, 255, 0.08)');
+  highlight.addColorStop(1, 'rgba(0, 0, 0, 0.1)');
+  ctx.fillStyle = highlight;
+  ctx.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+
+  ctx.translate(centerX, centerY);
+  ctx.rotate(THREE.MathUtils.degToRad(-10));
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = textColor;
+
+  const titleSize = fitCanvasText(ctx, title.toUpperCase(), maxTextWidth, radius * 0.22, radius * 0.1, 950);
+  ctx.font = `950 ${titleSize}px Arial, Helvetica, sans-serif`;
+  ctx.fillText(title.toUpperCase(), 0, -radius * 0.34);
+
+  const mainSize = fitCanvasText(ctx, main, maxTextWidth, radius * 0.42, radius * 0.18, 1000);
+  ctx.font = `1000 ${mainSize}px Arial, Helvetica, sans-serif`;
+  ctx.fillText(main, 0, radius * 0.04);
+
+  if (note) {
+    const noteY = radius * 0.36;
+    const noteHeight = radius * 0.23;
+    const noteWidth = Math.min(maxTextWidth * 0.88, ctx.measureText(note).width + radius * 0.24);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+    ctx.fillRect(-noteWidth / 2, noteY - noteHeight / 2, noteWidth, noteHeight);
+    ctx.fillStyle = textColor;
+    const noteSize = fitCanvasText(ctx, note, noteWidth * 0.9, radius * 0.16, radius * 0.07, 900);
+    ctx.font = `900 ${noteSize}px Arial, Helvetica, sans-serif`;
+    ctx.fillText(note, 0, noteY + noteHeight * 0.02);
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+  ctx.lineWidth = Math.max(5, radius * 0.025);
+  drawStarburstPath(ctx, centerX, centerY, radius * 0.96, innerRadius * 0.96, 30);
+  ctx.stroke();
+}
+
 function redrawTextPanel(textPanelData) {
   if (!textPanelData?.panel) return;
   const { canvas: labelCanvas, texture } = textPanelData.panel.userData;
   syncTextPanelCanvasSize(textPanelData, labelCanvas);
   const ctx = labelCanvas.getContext('2d');
-  if (getTextPanelKind(textPanelData.kind) === 'donors') {
+  const kind = getTextPanelKind(textPanelData.kind);
+  if (kind === 'donors') {
     drawDonorBoardPanel(ctx, labelCanvas, textPanelData);
+    texture.needsUpdate = true;
+    return;
+  }
+  if (kind === 'discount') {
+    drawDiscountPanel(ctx, labelCanvas, textPanelData);
     texture.needsUpdate = true;
     return;
   }
@@ -3231,13 +3333,15 @@ function createTextPanel({
     side: THREE.DoubleSide,
     toneMapped: false,
     depthWrite: false,
+    transparent: true,
+    alphaTest: 0.02,
   });
 
   const group = new THREE.Group();
   group.position.set(x, y, z);
   group.rotation.y = ry;
   const panel = new THREE.Mesh(new THREE.PlaneGeometry(width, height), material);
-  panel.renderOrder = 10;
+  panel.renderOrder = getTextPanelKind(kind) === 'discount' ? 14 : 10;
   panel.userData.canvas = labelCanvas;
   panel.userData.texture = texture;
   group.add(panel);
@@ -4601,6 +4705,34 @@ function getTextPanelSizeFromInputs() {
   };
 }
 
+function applyTextPanelKindDefaults({ force = false } = {}) {
+  if (selectedTextPanel && !force) return;
+  const kind = getTextPanelKind(textPanelKindInput.value);
+  if (kind === 'discount') {
+    textPanelWidthCmInput.value = '58';
+    textPanelHeightCmInput.value = '58';
+    textPanelFontSizeInput.value = '74';
+    textPanelFontWeightInput.value = '1000';
+    textPanelAlignInput.value = 'center';
+    textPanelBgColorInput.value = '#ffc400';
+    textPanelTextColorInput.value = '#d60000';
+    if (!textPanelTextInput.value.trim() || force) {
+      textPanelTextInput.value = getDefaultTextPanelText('discount');
+    }
+  } else if (kind === 'plain') {
+    textPanelWidthCmInput.value = '120';
+    textPanelHeightCmInput.value = '38';
+    textPanelFontSizeInput.value = '58';
+    textPanelFontWeightInput.value = '850';
+    textPanelAlignInput.value = 'center';
+    textPanelBgColorInput.value = '#f7f4ea';
+    textPanelTextColorInput.value = '#111315';
+    if (!textPanelTextInput.value.trim() || force) {
+      textPanelTextInput.value = getDefaultTextPanelText('plain');
+    }
+  }
+}
+
 function getDonorRowsFromEditor() {
   return [...donorRowList.querySelectorAll('.donor-row')]
     .map((row) => ({
@@ -4703,14 +4835,20 @@ function syncTextPanelPanel() {
   textPanelTextInput.closest('label').style.display = selectedKind === 'donors' ? 'none' : 'grid';
   textPanelTextInput.placeholder = selectedKind === 'donors'
     ? 'Každý řádek: Jméno | 500 Kč'
-    : 'Napiš text na tabulku';
+    : selectedKind === 'discount'
+      ? 'SLEVA\n-50 %\n15.900 Kč'
+      : 'Napiš text na tabulku';
   textPanelStatus.textContent = movingSelectedTextPanel
     ? 'Pohybuj tabulkou kurzorem myši po stěně a klikni pro uchycení.'
       : selectedTextPanel
         ? selectedKind === 'donors'
           ? 'Tabule dárců je vybraná. Přidej jméno a částku, nebo uprav seznam řádků ve formátu Jméno | částka.'
-          : 'Tabulka je vybraná. Můžeš změnit text, barvy, velikost, přesunout ji, kolečkem otočit, nebo smazat.'
-        : 'Namiř tečku na stěnu a přidej textovou tabulku.';
+          : selectedKind === 'discount'
+            ? 'Slevový štítek je vybraný. Každý řádek textu se použije jako část štítku, můžeš měnit barvy i velikost.'
+            : 'Tabulka je vybraná. Můžeš změnit text, barvy, velikost, přesunout ji, kolečkem otočit, nebo smazat.'
+        : selectedKind === 'discount'
+          ? 'Namiř na místo přes cenu nebo obraz a přidej slevový štítek.'
+          : 'Namiř tečku na stěnu a přidej textovou tabulku.';
   moveTextPanelButton.disabled = !selectedTextPanel;
   removeTextPanelButton.disabled = !selectedTextPanel;
   moveTextPanelButton.textContent = movingSelectedTextPanel ? 'Zrušit přesun' : 'Přesunout vybranou';
@@ -4752,9 +4890,7 @@ function addTextPanelFromWall() {
     height: placement.height,
     text: textPanelTextInput.value.trim().length
       ? textPanelTextInput.value
-      : getTextPanelKind(textPanelKindInput.value) === 'donors'
-        ? ''
-        : 'Textová tabulka',
+      : getDefaultTextPanelText(textPanelKindInput.value),
     bgColor: textPanelBgColorInput.value,
     textColor: textPanelTextColorInput.value,
     kind: getTextPanelKind(textPanelKindInput.value),
@@ -4810,6 +4946,7 @@ function updateSelectedTextPanel() {
   selectedTextPanel.fontSize = Number(textPanelFontSizeInput.value);
   selectedTextPanel.fontWeight = Number(textPanelFontWeightInput.value);
   selectedTextPanel.textAlign = textPanelAlignInput.value;
+  selectedTextPanel.panel.renderOrder = selectedTextPanel.kind === 'discount' ? 14 : 10;
   syncTextPanelPanel();
   updateTextPanelGeometry(selectedTextPanel);
   redrawTextPanel(selectedTextPanel);
@@ -5650,10 +5787,16 @@ donorContextMenu.addEventListener('click', (event) => {
   if (index !== null) removeDonorRow(index);
 });
 textPanelKindInput.addEventListener('change', () => {
-  if (getTextPanelKind(textPanelKindInput.value) === 'donors') {
+  const nextKind = getTextPanelKind(textPanelKindInput.value);
+  if (!selectedTextPanel) {
+    applyTextPanelKindDefaults();
+  } else if (nextKind === 'discount' && !textPanelTextInput.value.trim()) {
+    textPanelTextInput.value = getDefaultTextPanelText('discount');
+  }
+  if (nextKind === 'donors') {
     textPanelTextInput.placeholder = 'Každý řádek: Jméno | 500 Kč';
   }
-  if (!selectedTextPanel) syncTextPanelPanel();
+  syncTextPanelPanel();
 });
 [
   textPanelKindInput,
