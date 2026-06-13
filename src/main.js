@@ -3953,6 +3953,80 @@ function getTextPanelPlacement({ usePointer = false } = {}) {
   return { point, normal, ry, width, height };
 }
 
+function getSurfaceRotationY(normal) {
+  if (Math.abs(normal.x) > Math.abs(normal.z)) {
+    return normal.x > 0 ? Math.PI / 2 : -Math.PI / 2;
+  }
+  return normal.z > 0 ? 0 : Math.PI;
+}
+
+function getDiscountStickerSurfaceMeshes(excludeTextPanel = null) {
+  const surfaces = [...wallMeshes];
+  editablePaintings.forEach((paintingData) => {
+    if (paintingData.art && isObjectVisibleForInteraction(paintingData.art)) {
+      surfaces.push(paintingData.art);
+    }
+    if (paintingData.label && isObjectVisibleForInteraction(paintingData.label)) {
+      surfaces.push(paintingData.label);
+    }
+  });
+  displayTextPanels.forEach((textPanelData) => {
+    if (textPanelData !== excludeTextPanel && textPanelData.panel && isObjectVisibleForInteraction(textPanelData.panel)) {
+      surfaces.push(textPanelData.panel);
+    }
+  });
+  return surfaces;
+}
+
+function getRoomLayoutForPoint(point) {
+  return galleryRooms.find(({ centerX, centerZ }) => (
+    point.x >= centerX - roomWidth / 2 - 0.08
+    && point.x <= centerX + roomWidth / 2 + 0.08
+    && point.z >= centerZ - roomDepth / 2 - 0.08
+    && point.z <= centerZ + roomDepth / 2 + 0.08
+  ));
+}
+
+function getDiscountStickerPlacement({ usePointer = false, excludeTextPanel = null } = {}) {
+  getPlacementRaycaster(usePointer);
+  const surfaces = getDiscountStickerSurfaceMeshes(excludeTextPanel);
+  const hit = raycaster.intersectObjects(surfaces, false)[0];
+  if (!hit) return null;
+
+  const cameraPosition = new THREE.Vector3();
+  camera.getWorldPosition(cameraPosition);
+  const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+  if (normal.dot(cameraPosition.clone().sub(hit.point)) < 0) {
+    normal.negate();
+  }
+  const roomLayout = getRoomLayoutForPoint(hit.point);
+  if (!roomLayout) return null;
+  const playerRoomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
+  const playerRoom = galleryRooms[playerRoomIndex];
+  if (playerRoom && roomLayout.id !== playerRoom.id && hit.distance > nearbyCrossRoomTargetDistance) {
+    return null;
+  }
+
+  const { width, height } = getTextPanelSizeFromInputs();
+  const point = hit.point.clone();
+  point.y = THREE.MathUtils.clamp(point.y, 0.2, roomHeight - 0.08);
+  point.addScaledVector(normal, 0.042);
+
+  return {
+    point,
+    normal,
+    ry: getSurfaceRotationY(normal),
+    width,
+    height,
+  };
+}
+
+function getTextPanelPlacementForKind(kind, options = {}) {
+  return getTextPanelKind(kind) === 'discount'
+    ? getDiscountStickerPlacement(options)
+    : getTextPanelPlacement(options);
+}
+
 function syncArtPreview() {
   if (!artPanel.classList.contains('visible') || (selectedPainting && !movingSelectedPainting && !pendingArtMaterial)) {
     artPreview.visible = false;
@@ -4910,20 +4984,28 @@ function syncTextPanelPanel() {
       ? 'SLEVA\n-50 %\n15.900 Kč'
       : 'Napiš text na tabulku';
   textPanelStatus.textContent = movingSelectedTextPanel
-    ? 'Pohybuj tabulkou kurzorem myši po stěně a klikni pro uchycení.'
+    ? selectedKind === 'discount'
+      ? 'Pohybuj štítkem kurzorem myši přes obraz, cenu nebo stěnu a klikni pro přilepení.'
+      : 'Pohybuj tabulkou kurzorem myši po stěně a klikni pro uchycení.'
       : selectedTextPanel
         ? selectedKind === 'donors'
           ? 'Tabule dárců je vybraná. Přidej jméno a částku, nebo uprav seznam řádků ve formátu Jméno | částka.'
           : selectedKind === 'discount'
-            ? 'Slevový štítek je vybraný. Každý řádek textu se použije jako část štítku, můžeš měnit barvy i velikost.'
+            ? 'Slevový štítek je vybraný. Přesuň ho myší přes obraz nebo cenu, velikost nastav šířkou a výškou nebo Shift + kolečkem.'
             : 'Tabulka je vybraná. Můžeš změnit text, barvy, velikost, přesunout ji, kolečkem otočit, nebo smazat.'
         : selectedKind === 'discount'
-          ? 'Namiř na místo přes cenu nebo obraz a přidej slevový štítek.'
+          ? 'Namiř na místo přes cenu, obraz nebo stěnu a přidej slevový štítek.'
           : 'Namiř tečku na stěnu a přidej textovou tabulku.';
   moveTextPanelButton.disabled = !selectedTextPanel;
   removeTextPanelButton.disabled = !selectedTextPanel;
   moveTextPanelButton.textContent = movingSelectedTextPanel ? 'Zrušit přesun' : 'Přesunout vybranou';
-  addTextPanelButton.textContent = movingSelectedTextPanel ? 'Uchytit na stěnu' : 'Přidat na stěnu';
+  addTextPanelButton.textContent = movingSelectedTextPanel
+    ? selectedKind === 'discount'
+      ? 'Přilepit štítek'
+      : 'Uchytit na stěnu'
+    : selectedKind === 'discount'
+      ? 'Přidat štítek'
+      : 'Přidat na stěnu';
   if (!selectedTextPanel) return;
   textPanelKindInput.value = selectedKind;
   const panelText = selectedTextPanel.text ?? '';
@@ -4958,14 +5040,16 @@ function updateTextPanelSelection() {
 }
 
 function addTextPanelFromWall() {
-  const placement = getTextPanelPlacement();
+  const kind = getTextPanelKind(textPanelKindInput.value);
+  const placement = getTextPanelPlacementForKind(kind);
   if (!placement) {
     textPanelPanel.classList.add('visible');
-    textPanelTitle.textContent = 'Není vybraná stěna';
-    textPanelStatus.textContent = 'Namiř tečku na stěnu nebo nad dveře a zkus to znovu.';
+    textPanelTitle.textContent = kind === 'discount' ? 'Není vybrané místo' : 'Není vybraná stěna';
+    textPanelStatus.textContent = kind === 'discount'
+      ? 'Namiř tečku na obraz, cenu nebo stěnu a zkus to znovu.'
+      : 'Namiř tečku na stěnu nebo nad dveře a zkus to znovu.';
     return false;
   }
-  const kind = getTextPanelKind(textPanelKindInput.value);
   const discountConfig = kind === 'discount' ? getDiscountConfigFromInputs() : null;
   selectedTextPanel = createTextPanel({
     x: placement.point.x,
@@ -4995,10 +5079,16 @@ function addTextPanelFromWall() {
 
 function moveSelectedTextPanelToWall() {
   if (!selectedTextPanel) return false;
-  const placement = getTextPanelPlacement({ usePointer: true });
+  const kind = getTextPanelKind(selectedTextPanel.kind);
+  const placement = getTextPanelPlacementForKind(kind, {
+    usePointer: true,
+    excludeTextPanel: selectedTextPanel,
+  });
   if (!placement) {
-    textPanelTitle.textContent = 'Není vybraná stěna';
-    textPanelStatus.textContent = 'Pro přesun dej kurzor myši na stěnu nebo nad dveře.';
+    textPanelTitle.textContent = kind === 'discount' ? 'Není vybrané místo' : 'Není vybraná stěna';
+    textPanelStatus.textContent = kind === 'discount'
+      ? 'Pro přesun dej kurzor myši na obraz, cenu nebo stěnu.'
+      : 'Pro přesun dej kurzor myši na stěnu nebo nad dveře.';
     return false;
   }
   selectedTextPanel.group.position.copy(placement.point);
@@ -5059,6 +5149,21 @@ function rotateSelectedTextPanel(direction) {
   selectedTextPanel.group.rotation.y += direction * THREE.MathUtils.degToRad(7.5);
   textPanelTitle.textContent = 'Tabulka otočená';
   textPanelStatus.textContent = 'Kolečkem můžeš doladit natočení. Nezapomeň galerii uložit nebo exportovat.';
+  return true;
+}
+
+function resizeSelectedDiscountSticker(direction) {
+  if (!selectedTextPanel || getTextPanelKind(selectedTextPanel.kind) !== 'discount') return false;
+  const scale = direction > 0 ? 1.08 : 1 / 1.08;
+  const currentWidthCm = Number(textPanelWidthCmInput.value) || selectedTextPanel.width * centimetersPerMeter;
+  const currentHeightCm = Number(textPanelHeightCmInput.value) || selectedTextPanel.height * centimetersPerMeter;
+  const nextWidthCm = THREE.MathUtils.clamp(currentWidthCm * scale, 20, 300);
+  const nextHeightCm = THREE.MathUtils.clamp(currentHeightCm * scale, 12, 250);
+  textPanelWidthCmInput.value = String(Math.round(nextWidthCm));
+  textPanelHeightCmInput.value = String(Math.round(nextHeightCm));
+  updateSelectedTextPanel();
+  textPanelTitle.textContent = direction > 0 ? 'Štítek zvětšený' : 'Štítek zmenšený';
+  textPanelStatus.textContent = 'Shift + kolečko mění velikost slevového štítku, samotné kolečko ho otáčí.';
   return true;
 }
 
@@ -6340,6 +6445,10 @@ canvas.addEventListener('wheel', (event) => {
   if (!editorMode) return;
   if (selectedTextPanel && textPanelPanel.classList.contains('visible')) {
     event.preventDefault();
+    if (event.shiftKey && getTextPanelKind(selectedTextPanel.kind) === 'discount') {
+      resizeSelectedDiscountSticker(event.deltaY < 0 ? 1 : -1);
+      return;
+    }
     rotateSelectedTextPanel(event.deltaY > 0 ? -1 : 1);
     return;
   }
@@ -6737,7 +6846,10 @@ function updateCrosshairAndEditors(delta) {
     }
   }
   if (movingSelectedTextPanel && selectedTextPanel) {
-    const placement = getTextPanelPlacement({ usePointer: true });
+    const placement = getTextPanelPlacementForKind(selectedTextPanel.kind, {
+      usePointer: true,
+      excludeTextPanel: selectedTextPanel,
+    });
     if (placement) {
       selectedTextPanel.group.position.copy(placement.point);
       selectedTextPanel.group.rotation.y = placement.ry;
