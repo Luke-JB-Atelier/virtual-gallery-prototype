@@ -94,6 +94,25 @@ const donorRowList = document.querySelector('#donor-row-list');
 const addDonorRowButton = document.querySelector('#add-donor-row');
 const textPanelWidthCmInput = document.querySelector('#text-panel-width-cm');
 const textPanelHeightCmInput = document.querySelector('#text-panel-height-cm');
+const textPanelWidthLabel = textPanelWidthCmInput?.closest('label') ?? null;
+const textPanelHeightLabel = textPanelHeightCmInput?.closest('label') ?? null;
+const textPanelSizeLabel = document.createElement('label');
+const textPanelSizeCmInput = document.createElement('input');
+const textPanelSizeValue = document.createElement('span');
+textPanelSizeLabel.id = 'text-panel-size-label';
+textPanelSizeLabel.hidden = true;
+textPanelSizeLabel.append(document.createTextNode('Velikost (cm) '));
+textPanelSizeCmInput.id = 'text-panel-size-cm';
+textPanelSizeCmInput.type = 'range';
+textPanelSizeCmInput.min = '20';
+textPanelSizeCmInput.max = '300';
+textPanelSizeCmInput.step = '1';
+textPanelSizeCmInput.value = '58';
+textPanelSizeValue.id = 'text-panel-size-value';
+textPanelSizeValue.textContent = '58 cm';
+textPanelSizeLabel.append(textPanelSizeCmInput);
+textPanelSizeLabel.append(textPanelSizeValue);
+textPanelWidthLabel?.parentElement?.insertBefore(textPanelSizeLabel, textPanelWidthLabel);
 const textPanelFontSizeInput = document.querySelector('#text-panel-font-size');
 const textPanelFontWeightInput = document.querySelector('#text-panel-font-weight');
 const textPanelAlignInput = document.querySelector('#text-panel-align');
@@ -3529,6 +3548,42 @@ let movingSelectedTextPanel = false;
 let moveOriginalTransform = null;
 let swapSourcePainting = null;
 
+function syncEditorToggleState() {
+  toggleLightEditor.classList.toggle('active', lightPanel.classList.contains('visible'));
+  toggleArtEditor.classList.toggle('active', artPanel.classList.contains('visible'));
+  togglePedestalEditor.classList.toggle('active', pedestalPanel.classList.contains('visible'));
+  toggleTextPanelEditor.classList.toggle('active', textPanelPanel.classList.contains('visible'));
+  toggleAudioEditor.classList.toggle('active', audioPanel.classList.contains('visible'));
+  toggleArtEditor.classList.toggle('has-selection', Boolean(selectedPainting));
+  togglePedestalEditor.classList.toggle('has-selection', Boolean(selectedPedestal));
+  toggleTextPanelEditor.classList.toggle('has-selection', Boolean(selectedTextPanel));
+  toggleLightEditor.classList.toggle('has-selection', lightPanel.classList.contains('visible') && Boolean(getSelectedLight()));
+}
+
+function clearSelectedEditable(keep = '') {
+  if (keep !== 'painting') {
+    selectedPainting = null;
+    movingSelectedPainting = false;
+    swapSourcePainting = null;
+  }
+  if (keep !== 'pedestal') {
+    selectedPedestal = null;
+    movingSelectedPedestal = false;
+  }
+  if (keep !== 'textPanel') {
+    selectedTextPanel = null;
+    movingSelectedTextPanel = false;
+  }
+  if (keep !== 'light') {
+    movingSelectedLight = false;
+    if (aimingSelectedLight) finishAimSelectedLight({ commit: false });
+  }
+  syncPaintingSelection();
+  updatePedestalSelection();
+  updateTextPanelSelection();
+  syncEditorToggleState();
+}
+
 const artPreviewMaterial = new THREE.MeshBasicMaterial({
   color: 0x55ff8a,
   opacity: 0.34,
@@ -4421,6 +4476,7 @@ function addArtworkFromPreview() {
     labelVisible: artLabelVisibleInput.checked,
     imageSrc: pendingArtSource,
   });
+  clearSelectedEditable('painting');
   selectedPainting = paintingData;
   pendingArtMaterial = null;
   pendingArtSource = '';
@@ -4672,6 +4728,7 @@ function addPedestalFromFloor() {
     return false;
   }
   const size = getPedestalSizeFromInputs();
+  clearSelectedEditable('pedestal');
   selectedPedestal = createDisplayPedestal({
     x: placement.x,
     z: placement.z,
@@ -4817,7 +4874,34 @@ function rotateSelectedPedestal(direction) {
   return true;
 }
 
-function getTextPanelSizeFromInputs() {
+function setDiscountStickerSizeInput(sizeCm) {
+  const clampedSize = THREE.MathUtils.clamp(Number(sizeCm) || 58, 20, 300);
+  textPanelSizeCmInput.value = String(Math.round(clampedSize));
+  textPanelSizeValue.textContent = `${Math.round(clampedSize)} cm`;
+  textPanelWidthCmInput.value = String(Math.round(clampedSize));
+  textPanelHeightCmInput.value = String(Math.round(clampedSize));
+}
+
+function syncTextPanelSizeControls(kind, widthMeters = null, heightMeters = null) {
+  const isDiscount = getTextPanelKind(kind) === 'discount';
+  textPanelSizeLabel.hidden = !isDiscount;
+  if (textPanelWidthLabel) textPanelWidthLabel.style.display = isDiscount ? 'none' : 'grid';
+  if (textPanelHeightLabel) textPanelHeightLabel.style.display = isDiscount ? 'none' : 'grid';
+  if (isDiscount) {
+    const sizeCm = Number.isFinite(widthMeters)
+      ? widthMeters * centimetersPerMeter
+      : Number.isFinite(heightMeters)
+        ? heightMeters * centimetersPerMeter
+        : Number(textPanelSizeCmInput.value) || 58;
+    setDiscountStickerSizeInput(sizeCm);
+  }
+}
+
+function getTextPanelSizeFromInputs(kind = textPanelKindInput.value) {
+  if (getTextPanelKind(kind) === 'discount') {
+    const size = THREE.MathUtils.clamp(Number(textPanelSizeCmInput.value) / centimetersPerMeter, 0.2, 3);
+    return { width: size, height: size };
+  }
   return {
     width: THREE.MathUtils.clamp(Number(textPanelWidthCmInput.value) / centimetersPerMeter, 0.2, 3),
     height: THREE.MathUtils.clamp(Number(textPanelHeightCmInput.value) / centimetersPerMeter, 0.12, 2.5),
@@ -4828,8 +4912,7 @@ function applyTextPanelKindDefaults({ force = false } = {}) {
   if (selectedTextPanel && !force) return;
   const kind = getTextPanelKind(textPanelKindInput.value);
   if (kind === 'discount') {
-    textPanelWidthCmInput.value = '58';
-    textPanelHeightCmInput.value = '58';
+    setDiscountStickerSizeInput(58);
     textPanelFontSizeInput.value = '74';
     textPanelFontWeightInput.value = '1000';
     textPanelAlignInput.value = 'center';
@@ -4975,6 +5058,7 @@ function renderDonorEditorRows() {
 function syncTextPanelPanel() {
   textPanelTitle.textContent = selectedTextPanel ? 'Vybraná tabulka' : 'Nová tabulka';
   const selectedKind = getTextPanelKind(selectedTextPanel?.kind ?? textPanelKindInput.value);
+  syncTextPanelSizeControls(selectedKind, selectedTextPanel?.width ?? null, selectedTextPanel?.height ?? null);
   textPanelDonorTools.classList.toggle('visible', selectedKind === 'donors');
   textPanelDiscountTools.classList.toggle('visible', selectedKind === 'discount');
   textPanelTextInput.closest('label').style.display = selectedKind === 'donors' ? 'none' : 'grid';
@@ -4991,7 +5075,7 @@ function syncTextPanelPanel() {
         ? selectedKind === 'donors'
           ? 'Tabule dárců je vybraná. Přidej jméno a částku, nebo uprav seznam řádků ve formátu Jméno | částka.'
           : selectedKind === 'discount'
-            ? 'Slevový štítek je vybraný. Přesuň ho myší přes obraz nebo cenu, velikost nastav šířkou a výškou nebo Shift + kolečkem.'
+            ? 'Slevový štítek je vybraný. Přesuň ho myší přes obraz nebo cenu, velikost nastav posuvníkem nebo Shift + kolečkem.'
             : 'Tabulka je vybraná. Můžeš změnit text, barvy, velikost, přesunout ji, kolečkem otočit, nebo smazat.'
         : selectedKind === 'discount'
           ? 'Namiř na místo přes cenu, obraz nebo stěnu a přidej slevový štítek.'
@@ -5051,6 +5135,7 @@ function addTextPanelFromWall() {
     return false;
   }
   const discountConfig = kind === 'discount' ? getDiscountConfigFromInputs() : null;
+  clearSelectedEditable('textPanel');
   selectedTextPanel = createTextPanel({
     x: placement.point.x,
     y: placement.point.y,
@@ -5112,11 +5197,14 @@ function removeSelectedTextPanel() {
 
 function updateSelectedTextPanel() {
   if (!selectedTextPanel) return;
-  const { width, height } = getTextPanelSizeFromInputs();
   const kind = getTextPanelKind(textPanelKindInput.value);
+  const { width, height } = getTextPanelSizeFromInputs(kind);
   const discountConfig = kind === 'discount' ? getDiscountConfigFromInputs() : null;
   selectedTextPanel.width = width;
   selectedTextPanel.height = height;
+  if (kind === 'discount') {
+    setDiscountStickerSizeInput(width * centimetersPerMeter);
+  }
   selectedTextPanel.text = discountConfig?.text ?? (kind === 'donors' && isDonorBoardPlaceholder(textPanelTextInput.value)
     ? ''
     : textPanelTextInput.value);
@@ -5155,12 +5243,9 @@ function rotateSelectedTextPanel(direction) {
 function resizeSelectedDiscountSticker(direction) {
   if (!selectedTextPanel || getTextPanelKind(selectedTextPanel.kind) !== 'discount') return false;
   const scale = direction > 0 ? 1.08 : 1 / 1.08;
-  const currentWidthCm = Number(textPanelWidthCmInput.value) || selectedTextPanel.width * centimetersPerMeter;
-  const currentHeightCm = Number(textPanelHeightCmInput.value) || selectedTextPanel.height * centimetersPerMeter;
-  const nextWidthCm = THREE.MathUtils.clamp(currentWidthCm * scale, 20, 300);
-  const nextHeightCm = THREE.MathUtils.clamp(currentHeightCm * scale, 12, 250);
-  textPanelWidthCmInput.value = String(Math.round(nextWidthCm));
-  textPanelHeightCmInput.value = String(Math.round(nextHeightCm));
+  const currentSizeCm = Number(textPanelSizeCmInput.value) || selectedTextPanel.width * centimetersPerMeter;
+  const nextSizeCm = THREE.MathUtils.clamp(currentSizeCm * scale, 20, 300);
+  setDiscountStickerSizeInput(nextSizeCm);
   updateSelectedTextPanel();
   textPanelTitle.textContent = direction > 0 ? 'Štítek zvětšený' : 'Štítek zmenšený';
   textPanelStatus.textContent = 'Shift + kolečko mění velikost slevového štítku, samotné kolečko ho otáčí.';
@@ -5243,6 +5328,7 @@ function selectEditableFromCrosshair() {
   const target = getEditableTargetFromCrosshair();
   if (!target) return false;
   if (target.lightData) {
+    clearSelectedEditable('light');
     selectedLightIndex = ceilingLights.indexOf(target.lightData);
     lightPanel.classList.add('visible');
     artPanel.classList.remove('visible');
@@ -5251,6 +5337,7 @@ function selectEditableFromCrosshair() {
     audioPanel.classList.remove('visible');
     artPreview.visible = false;
     syncLightPanel();
+    syncEditorToggleState();
     return true;
   }
   if (target.paintingData) {
@@ -5258,6 +5345,7 @@ function selectEditableFromCrosshair() {
       const firstTitle = swapSourcePainting.labelTitle || 'první obraz';
       const secondTitle = target.paintingData.labelTitle || 'druhý obraz';
       swapPaintingTransforms(swapSourcePainting, target.paintingData);
+      clearSelectedEditable('painting');
       selectedPainting = target.paintingData;
       swapSourcePainting = null;
       artPanel.classList.add('visible');
@@ -5270,8 +5358,10 @@ function selectEditableFromCrosshair() {
       syncArtPreview();
       artTitle.textContent = 'Obrazy prohozené';
       artStatus.textContent = `${firstTitle} a ${secondTitle} mají prohozené místo. Nezapomeň kliknout Uložit galerii.`;
+      syncEditorToggleState();
       return true;
     }
+    clearSelectedEditable('painting');
     selectedPainting = target.paintingData;
     movingSelectedPainting = false;
     artPanel.classList.add('visible');
@@ -5282,9 +5372,11 @@ function selectEditableFromCrosshair() {
     updateLightLabels();
     syncArtPanel();
     syncArtPreview();
+    syncEditorToggleState();
     return true;
   }
   if (target.pedestalData) {
+    clearSelectedEditable('pedestal');
     selectedPedestal = target.pedestalData;
     movingSelectedPedestal = false;
     pedestalPanel.classList.add('visible');
@@ -5293,9 +5385,11 @@ function selectEditableFromCrosshair() {
     textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
     syncPedestalPanel();
+    syncEditorToggleState();
     return true;
   }
   if (target.textPanelData) {
+    clearSelectedEditable('textPanel');
     selectedTextPanel = target.textPanelData;
     movingSelectedTextPanel = false;
     textPanelPanel.classList.add('visible');
@@ -5304,6 +5398,7 @@ function selectEditableFromCrosshair() {
     pedestalPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
     syncTextPanelPanel();
+    syncEditorToggleState();
     return true;
   }
   return false;
@@ -5595,6 +5690,7 @@ function addLightFromView() {
   );
   const kind = lightKindInput.value === 'painting' ? 'painting' : 'display';
   const trackId = kind === 'display' ? chooseCustomTrackForTarget(targetPoint) : chooseTrackForTarget(targetPoint);
+  clearSelectedEditable('light');
   addCeilingLight({
     position,
     targetPoint,
@@ -5738,6 +5834,7 @@ roomLightPublicPowerInput.addEventListener('input', () => {
 toggleLightEditor.addEventListener('click', () => {
   lightPanel.classList.toggle('visible');
   if (lightPanel.classList.contains('visible')) {
+    clearSelectedEditable('light');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
@@ -5745,6 +5842,7 @@ toggleLightEditor.addEventListener('click', () => {
     artPreview.visible = false;
   }
   updateLightLabels();
+  syncEditorToggleState();
 });
 
 addLightButton.addEventListener('click', addLightFromView);
@@ -5844,6 +5942,7 @@ lightKindInput.addEventListener('change', () => {
 toggleArtEditor.addEventListener('click', () => {
   artPanel.classList.toggle('visible');
   if (artPanel.classList.contains('visible')) {
+    clearSelectedEditable('painting');
     lightPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
@@ -5852,11 +5951,13 @@ toggleArtEditor.addEventListener('click', () => {
   }
   syncArtPanel();
   syncArtPreview();
+  syncEditorToggleState();
 });
 
 togglePedestalEditor.addEventListener('click', () => {
   pedestalPanel.classList.toggle('visible');
   if (pedestalPanel.classList.contains('visible')) {
+    clearSelectedEditable('pedestal');
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
@@ -5864,11 +5965,13 @@ togglePedestalEditor.addEventListener('click', () => {
     artPreview.visible = false;
   }
   syncPedestalPanel();
+  syncEditorToggleState();
 });
 
 toggleTextPanelEditor.addEventListener('click', () => {
   textPanelPanel.classList.toggle('visible');
   if (textPanelPanel.classList.contains('visible')) {
+    clearSelectedEditable('textPanel');
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
@@ -5876,17 +5979,20 @@ toggleTextPanelEditor.addEventListener('click', () => {
     artPreview.visible = false;
   }
   syncTextPanelPanel();
+  syncEditorToggleState();
 });
 
 toggleAudioEditor.addEventListener('click', () => {
   audioPanel.classList.toggle('visible');
   if (audioPanel.classList.contains('visible')) {
+    clearSelectedEditable('audio');
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
     artPreview.visible = false;
   }
+  syncEditorToggleState();
 });
 
 audioVolumeInput.addEventListener('input', () => {
@@ -6010,6 +6116,7 @@ textPanelKindInput.addEventListener('change', () => {
 [
   textPanelKindInput,
   textPanelTextInput,
+  textPanelSizeCmInput,
   textPanelWidthCmInput,
   textPanelHeightCmInput,
   textPanelFontSizeInput,
@@ -6861,6 +6968,7 @@ function updateCrosshairAndEditors(delta) {
   if (editorMode) {
     updatePedestalSelection();
     updateTextPanelSelection();
+    syncEditorToggleState();
     if (movingSelectedPainting || pendingArtMaterial || artPreview.visible || (!selectedPainting && artPanel.classList.contains('visible') && shouldRefreshHover)) {
       syncArtPreview();
     }

@@ -235,8 +235,10 @@ body,
 }
 
 #text-panel-editor {
-  top: 146px;
-  --editor-top: 146px;
+  left: auto;
+  right: 14px;
+  top: 14px;
+  --editor-top: 14px;
 }
 
 #toggle-light-editor,
@@ -268,6 +270,23 @@ body,
   background: rgba(28, 30, 32, 0.82);
 }
 
+#toggle-light-editor.active,
+#toggle-art-editor.active,
+#toggle-pedestal-editor.active,
+#toggle-text-panel-editor.active,
+#toggle-audio-editor.active {
+  border-color: rgba(255, 206, 96, 0.72);
+  background: rgba(86, 62, 19, 0.86);
+  color: rgba(255, 241, 196, 0.96);
+}
+
+#toggle-light-editor.has-selection,
+#toggle-art-editor.has-selection,
+#toggle-pedestal-editor.has-selection,
+#toggle-text-panel-editor.has-selection {
+  box-shadow: inset 3px 0 0 rgba(255, 206, 96, 0.86);
+}
+
 #light-panel,
 #art-panel,
 #pedestal-panel,
@@ -285,6 +304,16 @@ body,
   background: rgba(9, 10, 11, 0.72);
   backdrop-filter: blur(8px);
   overscroll-behavior: contain;
+}
+
+#text-panel-panel {
+  width: min(320px, calc(100vw - 28px));
+}
+
+#text-panel-size-value {
+  color: rgba(255, 229, 184, 0.86);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 #light-panel.visible,
