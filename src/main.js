@@ -87,6 +87,9 @@ const removeTextPanelButton = document.querySelector('#remove-text-panel');
 const textPanelKindInput = document.querySelector('#text-panel-kind');
 const textPanelTextInput = document.querySelector('#text-panel-text');
 const textPanelDonorTools = document.querySelector('#text-panel-donor-tools');
+const textPanelDiscountTools = document.querySelector('#text-panel-discount-tools');
+const discountOriginalPriceInput = document.querySelector('#discount-original-price');
+const discountPercentInput = document.querySelector('#discount-percent');
 const donorRowList = document.querySelector('#donor-row-list');
 const addDonorRowButton = document.querySelector('#add-donor-row');
 const textPanelWidthCmInput = document.querySelector('#text-panel-width-cm');
@@ -2704,6 +2707,8 @@ function serializeGalleryState() {
       fontSize: Number((textPanelData.fontSize ?? 50).toFixed(2)),
       fontWeight: Number((textPanelData.fontWeight ?? 850).toFixed(0)),
       textAlign: textPanelData.textAlign ?? 'center',
+      discountOriginalPrice: Number.isFinite(textPanelData.discountOriginalPrice) ? Number(textPanelData.discountOriginalPrice.toFixed(2)) : null,
+      discountPercent: Number.isFinite(textPanelData.discountPercent) ? Number(textPanelData.discountPercent.toFixed(2)) : null,
       wallNormal: textPanelData.wallNormal?.toArray().map((value) => Number(value.toFixed(4))) ?? null,
     })),
   };
@@ -2963,13 +2968,47 @@ function getTextPanelKind(kind) {
   return 'plain';
 }
 
+function formatDiscountPercent(value) {
+  const percent = THREE.MathUtils.clamp(Number(value) || 0, 0, 95);
+  return Number.isInteger(percent)
+    ? String(percent)
+    : String(Number(percent.toFixed(1))).replace('.', ',');
+}
+
+function parseDiscountPrice(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return 0;
+  const normalized = text
+    .replace(/\s+/g, '')
+    .replace(/[Kk][Čč]?\b/g, '')
+    .replace(/[^\d,.-]/g, '');
+  if (!normalized) return 0;
+  const hasComma = normalized.includes(',');
+  const decimalNormalized = hasComma
+    ? normalized.replace(/\./g, '').replace(',', '.')
+    : normalized.replace(/\.(?=\d{3}(?:\D|$))/g, '');
+  const parsed = Number(decimalNormalized);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function formatDiscountPrice(value) {
+  const rounded = Math.max(0, Math.round(Number(value) || 0));
+  return `${String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, '.')} Kč`;
+}
+
+function buildDiscountText(originalPrice, percent) {
+  const clampedPercent = THREE.MathUtils.clamp(Number(percent) || 0, 0, 95);
+  const finalPrice = Math.max(0, Number(originalPrice) * (1 - clampedPercent / 100));
+  return [
+    'SLEVA',
+    `-${formatDiscountPercent(clampedPercent)} %`,
+    formatDiscountPrice(finalPrice),
+  ].join('\n');
+}
+
 function getDefaultTextPanelText(kind) {
   if (getTextPanelKind(kind) === 'discount') {
-    return [
-      'SLEVA',
-      '-50 %',
-      '15.900 Kč',
-    ].join('\n');
+    return buildDiscountText(15000, 50);
   }
   if (getTextPanelKind(kind) === 'donors') return '';
   return 'Textová tabulka';
@@ -3318,6 +3357,8 @@ function createTextPanel({
   fontSize = 58,
   fontWeight = 850,
   textAlign = 'center',
+  discountOriginalPrice = null,
+  discountPercent = null,
   wallNormal = null,
 } = {}) {
   const labelCanvas = document.createElement('canvas');
@@ -3369,6 +3410,8 @@ function createTextPanel({
     fontSize,
     fontWeight,
     textAlign,
+    discountOriginalPrice,
+    discountPercent,
     wallNormal,
   };
   updateTextPanelGeometry(textPanelData);
@@ -3755,6 +3798,8 @@ function addSavedTextPanels() {
       fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 58,
       fontWeight: Number.isFinite(config.fontWeight) ? config.fontWeight : 850,
       textAlign: ['left', 'center', 'right'].includes(config.textAlign) ? config.textAlign : 'center',
+      discountOriginalPrice: Number.isFinite(config.discountOriginalPrice) ? config.discountOriginalPrice : null,
+      discountPercent: Number.isFinite(config.discountPercent) ? config.discountPercent : null,
       wallNormal: Array.isArray(config.wallNormal) && config.wallNormal.length === 3
         ? new THREE.Vector3(...config.wallNormal)
         : null,
@@ -4716,8 +4761,10 @@ function applyTextPanelKindDefaults({ force = false } = {}) {
     textPanelAlignInput.value = 'center';
     textPanelBgColorInput.value = '#ffc400';
     textPanelTextColorInput.value = '#d60000';
+    discountOriginalPriceInput.value = '15000';
+    discountPercentInput.value = '50';
     if (!textPanelTextInput.value.trim() || force) {
-      textPanelTextInput.value = getDefaultTextPanelText('discount');
+      textPanelTextInput.value = buildDiscountText(15000, 50);
     }
   } else if (kind === 'plain') {
     textPanelWidthCmInput.value = '120';
@@ -4731,6 +4778,29 @@ function applyTextPanelKindDefaults({ force = false } = {}) {
       textPanelTextInput.value = getDefaultTextPanelText('plain');
     }
   }
+}
+
+function getDiscountConfigFromInputs() {
+  const originalPrice = parseDiscountPrice(discountOriginalPriceInput.value || '15000');
+  const discountPercent = THREE.MathUtils.clamp(Number(discountPercentInput.value) || 0, 0, 95);
+  return {
+    originalPrice,
+    discountPercent,
+    text: buildDiscountText(originalPrice, discountPercent),
+  };
+}
+
+function syncDiscountTextFromCalculator({ updateSelected = true } = {}) {
+  if (getTextPanelKind(textPanelKindInput.value) !== 'discount') return;
+  const discountConfig = getDiscountConfigFromInputs();
+  textPanelTextInput.value = discountConfig.text;
+  if (!updateSelected || !selectedTextPanel) return;
+  selectedTextPanel.kind = 'discount';
+  selectedTextPanel.text = discountConfig.text;
+  selectedTextPanel.discountOriginalPrice = discountConfig.originalPrice;
+  selectedTextPanel.discountPercent = discountConfig.discountPercent;
+  selectedTextPanel.panel.renderOrder = 14;
+  redrawTextPanel(selectedTextPanel);
 }
 
 function getDonorRowsFromEditor() {
@@ -4832,6 +4902,7 @@ function syncTextPanelPanel() {
   textPanelTitle.textContent = selectedTextPanel ? 'Vybraná tabulka' : 'Nová tabulka';
   const selectedKind = getTextPanelKind(selectedTextPanel?.kind ?? textPanelKindInput.value);
   textPanelDonorTools.classList.toggle('visible', selectedKind === 'donors');
+  textPanelDiscountTools.classList.toggle('visible', selectedKind === 'discount');
   textPanelTextInput.closest('label').style.display = selectedKind === 'donors' ? 'none' : 'grid';
   textPanelTextInput.placeholder = selectedKind === 'donors'
     ? 'Každý řádek: Jméno | 500 Kč'
@@ -4858,6 +4929,19 @@ function syncTextPanelPanel() {
   const panelText = selectedTextPanel.text ?? '';
   textPanelTextInput.value = selectedKind === 'donors' && isDonorBoardPlaceholder(panelText) ? '' : panelText;
   if (selectedKind === 'donors') renderDonorEditorRows();
+  if (selectedKind === 'discount') {
+    const originalPrice = Number.isFinite(selectedTextPanel.discountOriginalPrice)
+      ? selectedTextPanel.discountOriginalPrice
+      : parseDiscountPrice(discountOriginalPriceInput.value || '15000');
+    const discountPercent = Number.isFinite(selectedTextPanel.discountPercent)
+      ? selectedTextPanel.discountPercent
+      : THREE.MathUtils.clamp(Number(discountPercentInput.value) || 50, 0, 95);
+    discountOriginalPriceInput.value = originalPrice ? String(Math.round(originalPrice)) : '';
+    discountPercentInput.value = String(Number(discountPercent.toFixed(1)));
+    if (!textPanelTextInput.value.trim()) {
+      textPanelTextInput.value = buildDiscountText(originalPrice || 15000, discountPercent);
+    }
+  }
   textPanelWidthCmInput.value = String(Math.round(selectedTextPanel.width * centimetersPerMeter));
   textPanelHeightCmInput.value = String(Math.round(selectedTextPanel.height * centimetersPerMeter));
   textPanelFontSizeInput.value = String(Math.round(selectedTextPanel.fontSize ?? 58));
@@ -4881,6 +4965,8 @@ function addTextPanelFromWall() {
     textPanelStatus.textContent = 'Namiř tečku na stěnu nebo nad dveře a zkus to znovu.';
     return false;
   }
+  const kind = getTextPanelKind(textPanelKindInput.value);
+  const discountConfig = kind === 'discount' ? getDiscountConfigFromInputs() : null;
   selectedTextPanel = createTextPanel({
     x: placement.point.x,
     y: placement.point.y,
@@ -4888,15 +4974,17 @@ function addTextPanelFromWall() {
     ry: placement.ry,
     width: placement.width,
     height: placement.height,
-    text: textPanelTextInput.value.trim().length
+    text: discountConfig?.text ?? (textPanelTextInput.value.trim().length
       ? textPanelTextInput.value
-      : getDefaultTextPanelText(textPanelKindInput.value),
+      : getDefaultTextPanelText(textPanelKindInput.value)),
     bgColor: textPanelBgColorInput.value,
     textColor: textPanelTextColorInput.value,
-    kind: getTextPanelKind(textPanelKindInput.value),
+    kind,
     fontSize: Number(textPanelFontSizeInput.value),
     fontWeight: Number(textPanelFontWeightInput.value),
     textAlign: textPanelAlignInput.value,
+    discountOriginalPrice: discountConfig?.originalPrice ?? null,
+    discountPercent: discountConfig?.discountPercent ?? null,
     wallNormal: placement.normal.clone(),
   });
   movingSelectedTextPanel = false;
@@ -4935,18 +5023,23 @@ function removeSelectedTextPanel() {
 function updateSelectedTextPanel() {
   if (!selectedTextPanel) return;
   const { width, height } = getTextPanelSizeFromInputs();
+  const kind = getTextPanelKind(textPanelKindInput.value);
+  const discountConfig = kind === 'discount' ? getDiscountConfigFromInputs() : null;
   selectedTextPanel.width = width;
   selectedTextPanel.height = height;
-  selectedTextPanel.text = getTextPanelKind(textPanelKindInput.value) === 'donors' && isDonorBoardPlaceholder(textPanelTextInput.value)
+  selectedTextPanel.text = discountConfig?.text ?? (kind === 'donors' && isDonorBoardPlaceholder(textPanelTextInput.value)
     ? ''
-    : textPanelTextInput.value;
+    : textPanelTextInput.value);
   selectedTextPanel.bgColor = textPanelBgColorInput.value;
   selectedTextPanel.textColor = textPanelTextColorInput.value;
-  selectedTextPanel.kind = getTextPanelKind(textPanelKindInput.value);
+  selectedTextPanel.kind = kind;
   selectedTextPanel.fontSize = Number(textPanelFontSizeInput.value);
   selectedTextPanel.fontWeight = Number(textPanelFontWeightInput.value);
   selectedTextPanel.textAlign = textPanelAlignInput.value;
+  selectedTextPanel.discountOriginalPrice = discountConfig?.originalPrice ?? null;
+  selectedTextPanel.discountPercent = discountConfig?.discountPercent ?? null;
   selectedTextPanel.panel.renderOrder = selectedTextPanel.kind === 'discount' ? 14 : 10;
+  if (discountConfig) textPanelTextInput.value = discountConfig.text;
   syncTextPanelPanel();
   updateTextPanelGeometry(selectedTextPanel);
   redrawTextPanel(selectedTextPanel);
@@ -5793,10 +5886,21 @@ textPanelKindInput.addEventListener('change', () => {
   } else if (nextKind === 'discount' && !textPanelTextInput.value.trim()) {
     textPanelTextInput.value = getDefaultTextPanelText('discount');
   }
+  if (nextKind === 'discount') {
+    syncDiscountTextFromCalculator({ updateSelected: Boolean(selectedTextPanel) });
+  }
   if (nextKind === 'donors') {
     textPanelTextInput.placeholder = 'Každý řádek: Jméno | 500 Kč';
   }
   syncTextPanelPanel();
+});
+[discountOriginalPriceInput, discountPercentInput].forEach((input) => {
+  input.addEventListener('input', () => {
+    syncDiscountTextFromCalculator({ updateSelected: Boolean(selectedTextPanel) });
+  });
+  input.addEventListener('change', () => {
+    syncDiscountTextFromCalculator({ updateSelected: Boolean(selectedTextPanel) });
+  });
 });
 [
   textPanelKindInput,

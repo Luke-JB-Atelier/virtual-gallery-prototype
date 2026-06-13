@@ -395,7 +395,8 @@ body,
   font: inherit;
 }
 
-#text-panel-donor-tools {
+#text-panel-donor-tools,
+#text-panel-discount-tools {
   display: none;
   gap: 6px;
   padding: 8px;
@@ -404,14 +405,21 @@ body,
   background: rgba(255, 229, 184, 0.07);
 }
 
-#text-panel-donor-tools.visible {
+#text-panel-donor-tools.visible,
+#text-panel-discount-tools.visible {
   display: grid;
 }
 
-#text-panel-donor-tools .donor-hint {
+#text-panel-donor-tools .donor-hint,
+#text-panel-discount-tools .discount-hint {
   color: rgba(255, 255, 255, 0.58);
   font-size: 11px;
   line-height: 1.25;
+}
+
+#text-panel-discount-tools label {
+  gap: 4px;
+  margin: 0;
 }
 
 #text-panel-donor-tools .donor-grid-header,
