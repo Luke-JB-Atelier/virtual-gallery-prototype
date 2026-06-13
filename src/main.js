@@ -16,6 +16,10 @@ const actionDialogClose = document.querySelector('#action-dialog-close');
 const mobileControls = document.querySelector('#mobile-controls');
 const moveStick = document.querySelector('#move-stick');
 const moveStickKnob = document.querySelector('#move-stick-knob');
+const toggleGalleryEditor = document.querySelector('#toggle-gallery-editor');
+const galleryPanel = document.querySelector('#gallery-panel');
+const galleryTitle = document.querySelector('#gallery-title');
+const galleryStatus = document.querySelector('#gallery-status');
 const toggleLightEditor = document.querySelector('#toggle-light-editor');
 const lightPanel = document.querySelector('#light-panel');
 const lightTitle = document.querySelector('#light-title');
@@ -3549,6 +3553,7 @@ let moveOriginalTransform = null;
 let swapSourcePainting = null;
 
 function syncEditorToggleState() {
+  toggleGalleryEditor.classList.toggle('active', galleryPanel.classList.contains('visible'));
   toggleLightEditor.classList.toggle('active', lightPanel.classList.contains('visible'));
   toggleArtEditor.classList.toggle('active', artPanel.classList.contains('visible'));
   togglePedestalEditor.classList.toggle('active', pedestalPanel.classList.contains('visible'));
@@ -5260,10 +5265,12 @@ function saveGalleryFromEditor() {
   ensurePaintingLights();
   saveLightingState();
   const saved = saveGalleryState();
-  artTitle.textContent = saved ? 'Galerie uložená' : 'Uložení se nepovedlo';
-  artStatus.textContent = saved
+  galleryPanel.classList.add('visible');
+  galleryTitle.textContent = saved ? 'Galerie uložená' : 'Uložení se nepovedlo';
+  galleryStatus.textContent = saved
     ? `Uloženo ${editablePaintings.length} obrazů a ${displayTextPanels.length} tabulek. Změny zůstanou po zavření a znovu otevření téhle stránky v tomto prohlížeči.`
     : 'Prohlížeč odmítl uložit data. To se může stát u velkých vložených obrázků.';
+  syncEditorToggleState();
 }
 
 function serializePublicGalleryConfig() {
@@ -5293,8 +5300,10 @@ function exportGalleryFromEditor() {
   link.remove();
   URL.revokeObjectURL(link.href);
 
-  artTitle.textContent = 'Galerie exportovaná';
-  artStatus.textContent = 'Stáhl se JSON se světly, obrazy, podstavci a textovými tabulkami. Ten pak můžeme vložit do kódu pro veřejnou verzi.';
+  galleryPanel.classList.add('visible');
+  galleryTitle.textContent = 'Galerie exportovaná';
+  galleryStatus.textContent = 'Stáhl se JSON se světly, obrazy, podstavci a textovými tabulkami. Ten pak můžeme vložit do kódu pro veřejnou verzi.';
+  syncEditorToggleState();
 }
 
 function resetLocalGalleryFromEditor() {
@@ -5304,8 +5313,10 @@ function resetLocalGalleryFromEditor() {
   } catch {
     // Embedded browser storage can be unavailable.
   }
-  artTitle.textContent = 'Lokální úpravy smazané';
-  artStatus.textContent = 'Po znovunačtení se otevře čistá verze z GitHubu.';
+  galleryPanel.classList.add('visible');
+  galleryTitle.textContent = 'Lokální úpravy smazané';
+  galleryStatus.textContent = 'Po znovunačtení se otevře čistá verze z GitHubu.';
+  syncEditorToggleState();
   window.setTimeout(() => {
     window.location.href = `${window.location.origin}${window.location.pathname}?edit=1&github=1`;
   }, 450);
@@ -5330,6 +5341,7 @@ function selectEditableFromCrosshair() {
   if (target.lightData) {
     clearSelectedEditable('light');
     selectedLightIndex = ceilingLights.indexOf(target.lightData);
+    galleryPanel.classList.remove('visible');
     lightPanel.classList.add('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
@@ -5348,6 +5360,7 @@ function selectEditableFromCrosshair() {
       clearSelectedEditable('painting');
       selectedPainting = target.paintingData;
       swapSourcePainting = null;
+      galleryPanel.classList.remove('visible');
       artPanel.classList.add('visible');
       lightPanel.classList.remove('visible');
       pedestalPanel.classList.remove('visible');
@@ -5364,6 +5377,7 @@ function selectEditableFromCrosshair() {
     clearSelectedEditable('painting');
     selectedPainting = target.paintingData;
     movingSelectedPainting = false;
+    galleryPanel.classList.remove('visible');
     artPanel.classList.add('visible');
     lightPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
@@ -5379,6 +5393,7 @@ function selectEditableFromCrosshair() {
     clearSelectedEditable('pedestal');
     selectedPedestal = target.pedestalData;
     movingSelectedPedestal = false;
+    galleryPanel.classList.remove('visible');
     pedestalPanel.classList.add('visible');
     artPanel.classList.remove('visible');
     lightPanel.classList.remove('visible');
@@ -5392,6 +5407,7 @@ function selectEditableFromCrosshair() {
     clearSelectedEditable('textPanel');
     selectedTextPanel = target.textPanelData;
     movingSelectedTextPanel = false;
+    galleryPanel.classList.remove('visible');
     textPanelPanel.classList.add('visible');
     artPanel.classList.remove('visible');
     lightPanel.classList.remove('visible');
@@ -5831,10 +5847,25 @@ roomLightPublicPowerInput.addEventListener('input', () => {
   showRoomLightControl();
 });
 
+toggleGalleryEditor.addEventListener('click', () => {
+  galleryPanel.classList.toggle('visible');
+  if (galleryPanel.classList.contains('visible')) {
+    clearSelectedEditable('gallery');
+    lightPanel.classList.remove('visible');
+    artPanel.classList.remove('visible');
+    pedestalPanel.classList.remove('visible');
+    textPanelPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
+    artPreview.visible = false;
+  }
+  syncEditorToggleState();
+});
+
 toggleLightEditor.addEventListener('click', () => {
   lightPanel.classList.toggle('visible');
   if (lightPanel.classList.contains('visible')) {
     clearSelectedEditable('light');
+    galleryPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
@@ -5943,6 +5974,7 @@ toggleArtEditor.addEventListener('click', () => {
   artPanel.classList.toggle('visible');
   if (artPanel.classList.contains('visible')) {
     clearSelectedEditable('painting');
+    galleryPanel.classList.remove('visible');
     lightPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
@@ -5958,6 +5990,7 @@ togglePedestalEditor.addEventListener('click', () => {
   pedestalPanel.classList.toggle('visible');
   if (pedestalPanel.classList.contains('visible')) {
     clearSelectedEditable('pedestal');
+    galleryPanel.classList.remove('visible');
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
@@ -5972,6 +6005,7 @@ toggleTextPanelEditor.addEventListener('click', () => {
   textPanelPanel.classList.toggle('visible');
   if (textPanelPanel.classList.contains('visible')) {
     clearSelectedEditable('textPanel');
+    galleryPanel.classList.remove('visible');
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
@@ -5986,6 +6020,7 @@ toggleAudioEditor.addEventListener('click', () => {
   audioPanel.classList.toggle('visible');
   if (audioPanel.classList.contains('visible')) {
     clearSelectedEditable('audio');
+    galleryPanel.classList.remove('visible');
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
@@ -6714,6 +6749,7 @@ function isMobileUiTouchTarget(target) {
     '#move-stick',
     '#audio-toggle',
     '#room-light-control',
+    '#gallery-editor',
     '#light-editor',
     '#art-editor',
     '#pedestal-editor',
@@ -6891,6 +6927,16 @@ function updateAutoRoomLights(delta) {
 
 function updateArtworkBrightness(delta) {
   const currentRoomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
+  const getMainRoomLightBrightness = (position) => {
+    const roomIndex = getRoomIndexForPosition(position.x, position.z);
+    const roomLight = autoRoomLights[roomIndex];
+    const roomPower = roomLightState.enabled ? (roomLight?.currentPower ?? 0) : 0;
+    const powerRatio = roomLightState.power > 0
+      ? THREE.MathUtils.clamp(roomPower / roomLightState.power, 0, 1)
+      : 0;
+    return THREE.MathUtils.lerp(0.018, 1, powerRatio);
+  };
+
   editablePaintings.forEach((paintingData) => {
     const lightData = paintingData.artSpot;
     const lightRoomIndex = lightData?.roomIndex ?? getRoomIndexForPosition(paintingData.group.position.x, paintingData.group.position.z);
@@ -6913,19 +6959,22 @@ function updateArtworkBrightness(delta) {
 
   displayPedestals.forEach((pedestalData) => {
     if (pedestalData.type !== 'easel' || !pedestalData.easelCanvasMaterials?.length) return;
-    const pedestalRoomIndex = getRoomIndexForPosition(pedestalData.group.position.x, pedestalData.group.position.z);
-    const roomLight = autoRoomLights[pedestalRoomIndex];
-    const roomPower = roomLightState.enabled ? (roomLight?.currentPower ?? 0) : 0;
-    const powerRatio = roomLightState.power > 0
-      ? THREE.MathUtils.clamp(roomPower / roomLightState.power, 0, 1)
-      : 0;
-    const targetBrightness = THREE.MathUtils.lerp(0.018, 1, powerRatio);
+    const targetBrightness = getMainRoomLightBrightness(pedestalData.group.position);
     const currentBrightness = pedestalData.canvasDisplayBrightness ?? targetBrightness;
     const nextBrightness = THREE.MathUtils.lerp(currentBrightness, targetBrightness, 1 - Math.pow(0.0003, delta));
     pedestalData.canvasDisplayBrightness = nextBrightness;
     pedestalData.easelCanvasMaterials.forEach((material) => {
       material.color.setScalar(nextBrightness);
     });
+  });
+
+  displayTextPanels.forEach((textPanelData) => {
+    if (!textPanelData.panel?.material?.color) return;
+    const targetBrightness = getMainRoomLightBrightness(textPanelData.group.position);
+    const currentBrightness = textPanelData.panel.userData.displayBrightness ?? targetBrightness;
+    const nextBrightness = THREE.MathUtils.lerp(currentBrightness, targetBrightness, 1 - Math.pow(0.0003, delta));
+    textPanelData.panel.userData.displayBrightness = nextBrightness;
+    textPanelData.panel.material.color.setScalar(nextBrightness);
   });
 }
 

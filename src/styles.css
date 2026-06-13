@@ -193,6 +193,7 @@ body,
   opacity: 0;
 }
 
+#gallery-editor,
 #light-editor,
 #art-editor,
 #pedestal-editor,
@@ -204,9 +205,11 @@ body,
   color: rgba(255, 255, 255, 0.86);
   font-size: 12px;
   max-width: min(340px, calc(100vw - 28px));
+  z-index: 20;
 }
 
 .viewer-mode #light-editor,
+.viewer-mode #gallery-editor,
 .viewer-mode #art-editor,
 .viewer-mode #pedestal-editor,
 .viewer-mode #text-panel-editor,
@@ -214,19 +217,24 @@ body,
   display: none;
 }
 
-#light-editor {
+#gallery-editor {
   top: 14px;
   --editor-top: 14px;
 }
 
-#art-editor {
+#light-editor {
   top: 58px;
   --editor-top: 58px;
 }
 
-#pedestal-editor {
+#art-editor {
   top: 102px;
   --editor-top: 102px;
+}
+
+#pedestal-editor {
+  top: 146px;
+  --editor-top: 146px;
 }
 
 #audio-editor {
@@ -241,11 +249,25 @@ body,
   --editor-top: 14px;
 }
 
+#gallery-editor:has(#gallery-panel.visible),
+#light-editor:has(#light-panel.visible),
+#art-editor:has(#art-panel.visible),
+#pedestal-editor:has(#pedestal-panel.visible),
+#audio-editor:has(#audio-panel.visible) {
+  z-index: 30;
+}
+
+#text-panel-editor:has(#text-panel-panel.visible) {
+  z-index: 30;
+}
+
+#toggle-gallery-editor,
 #toggle-light-editor,
 #toggle-art-editor,
 #toggle-pedestal-editor,
 #toggle-text-panel-editor,
 #toggle-audio-editor,
+#gallery-panel button,
 #light-panel button,
 #art-panel button,
 #pedestal-panel button,
@@ -258,11 +280,13 @@ body,
   cursor: pointer;
 }
 
+#toggle-gallery-editor:hover,
 #toggle-light-editor:hover,
 #toggle-art-editor:hover,
 #toggle-pedestal-editor:hover,
 #toggle-text-panel-editor:hover,
 #toggle-audio-editor:hover,
+#gallery-panel button:hover,
 #light-panel button:hover,
 #art-panel button:hover,
 #pedestal-panel button:hover,
@@ -270,6 +294,7 @@ body,
   background: rgba(28, 30, 32, 0.82);
 }
 
+#toggle-gallery-editor.active,
 #toggle-light-editor.active,
 #toggle-art-editor.active,
 #toggle-pedestal-editor.active,
@@ -287,27 +312,44 @@ body,
   box-shadow: inset 3px 0 0 rgba(255, 206, 96, 0.86);
 }
 
+#gallery-panel,
+#light-panel,
+#art-panel,
+#pedestal-panel,
+#audio-panel {
+  position: fixed;
+  left: 152px;
+  top: 14px;
+  width: min(320px, calc(100vw - 180px));
+  max-height: calc(100dvh - 28px - env(safe-area-inset-bottom));
+  margin-top: 0;
+  z-index: 31;
+}
+
+#text-panel-panel {
+  width: min(320px, calc(100vw - 28px));
+}
+
+#gallery-panel,
 #light-panel,
 #art-panel,
 #pedestal-panel,
 #text-panel-panel,
 #audio-panel {
   display: none;
-  width: min(270px, calc(100vw - 28px));
-  max-height: max(180px, calc(100dvh - var(--editor-top) - 68px - env(safe-area-inset-bottom)));
   overflow-y: auto;
   scrollbar-gutter: stable;
-  margin-top: 8px;
   padding: 9px 9px 34px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
-  background: rgba(9, 10, 11, 0.72);
+  background: rgba(9, 10, 11, 0.9);
   backdrop-filter: blur(8px);
   overscroll-behavior: contain;
 }
 
 #text-panel-panel {
-  width: min(320px, calc(100vw - 28px));
+  max-height: max(180px, calc(100dvh - var(--editor-top) - 68px - env(safe-area-inset-bottom)));
+  margin-top: 8px;
 }
 
 #text-panel-size-value {
@@ -316,6 +358,7 @@ body,
   font-weight: 700;
 }
 
+#gallery-panel.visible,
 #light-panel.visible,
 #art-panel.visible,
 #pedestal-panel.visible,
@@ -325,6 +368,7 @@ body,
   gap: 8px;
 }
 
+#gallery-title,
 #light-title,
 #art-title,
 #pedestal-title,
@@ -334,6 +378,7 @@ body,
   font-weight: 700;
 }
 
+#gallery-status,
 #pedestal-status,
 #text-panel-status,
 #art-status {
@@ -342,6 +387,7 @@ body,
   line-height: 1.25;
 }
 
+#gallery-panel .editor-buttons,
 #art-panel .editor-buttons,
 #pedestal-panel .editor-buttons,
 #text-panel-panel .editor-buttons {
@@ -350,6 +396,7 @@ body,
   gap: 6px;
 }
 
+#gallery-panel .editor-buttons button,
 #art-panel .editor-buttons button,
 #pedestal-panel .editor-buttons button,
 #text-panel-panel .editor-buttons button {
@@ -360,12 +407,11 @@ body,
   white-space: normal;
 }
 
-#art-panel .editor-buttons #save-art,
-#art-panel .editor-buttons #export-art,
-#art-panel .editor-buttons #reset-local-art {
+#gallery-panel .editor-buttons #reset-local-art {
   grid-column: 1 / -1;
 }
 
+#gallery-panel label,
 #light-panel label,
 #art-panel label,
 #pedestal-panel label,
@@ -389,6 +435,7 @@ body,
   width: auto;
 }
 
+#gallery-panel input,
 #light-panel input,
 #art-panel input,
 #art-panel input[type="text"],
