@@ -31,7 +31,7 @@ Vystup pro staticky web je ve slozce `dist`.
 
 ## Hudba
 
-Jazzove skladby jsou v `public/audio/jazz/`. Verejna galerie je ma pripravene jako zapnute, ale prohlizec je realne spusti az po prvnim kliknuti, tapnuti nebo stisku `W` ve scene. V editoru panel `Hudba` uklada hlasitost do exportovaneho JSONu.
+Vybrana skladba galerie je v `public/audio/medievil/crystal-cave.mp3`. Verejna galerie ji ma pripravenou jako zapnutou, ale prohlizec ji realne spusti az po prvnim kliknuti, tapnuti nebo stisku `W` ve scene. V editoru panel `Hudba` uklada hlasitost do exportovaneho JSONu.
 
 ## Ukladani galerie
 

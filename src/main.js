@@ -261,10 +261,8 @@ function publicAssetPath(path) {
   return `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
 }
 
-const jazzPlaylist = [
-  'audio/jazz/waveloom-jazz-bar-516749.mp3',
-  'audio/jazz/waveloom-jazz-cafe-516774.mp3',
-  'audio/jazz/waveloom-jazz-restaurant-516751.mp3',
+const galleryPlaylist = [
+  'audio/medievil/crystal-cave.mp3',
 ].map(publicAssetPath);
 
 const room = new THREE.Group();
@@ -5511,7 +5509,7 @@ galleryAudio.volume = 1;
 let audioContext = null;
 let audioSourceNode = null;
 let audioMasterGain = null;
-let currentJazzTrackIndex = 0;
+let currentGalleryTrackIndex = 0;
 let galleryAudioRequested = !editorMode;
 const audioPosition = new THREE.Vector3();
 const audioDirection = new THREE.Vector3();
@@ -5550,7 +5548,7 @@ function setPannerOrientation(panner, direction) {
 function updateAudioToggle() {
   if (!audioToggle) return;
   const playing = !galleryAudio.paused && galleryAudioRequested;
-  audioToggle.textContent = galleryAudioRequested || playing ? 'Vypnout jazz' : 'Zapnout jazz';
+  audioToggle.textContent = galleryAudioRequested || playing ? 'Vypnout hudbu' : 'Zapnout hudbu';
   audioToggle.classList.toggle('playing', playing);
 }
 
@@ -5560,12 +5558,12 @@ function applyAudioVolume() {
   }
 }
 
-function getJazzTrackUrl(index) {
-  return new URL(jazzPlaylist[index], window.location.href).href;
+function getGalleryTrackUrl(index) {
+  return new URL(galleryPlaylist[index], window.location.href).href;
 }
 
 function initGalleryAudio() {
-  if (!jazzPlaylist.length || audioContext) return;
+  if (!galleryPlaylist.length || audioContext) return;
 
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextCtor) {
@@ -5602,9 +5600,9 @@ function initGalleryAudio() {
   });
 }
 
-async function playCurrentJazzTrack() {
-  if (!jazzPlaylist.length) return;
-  const trackUrl = getJazzTrackUrl(currentJazzTrackIndex);
+async function playCurrentGalleryTrack() {
+  if (!galleryPlaylist.length) return;
+  const trackUrl = getGalleryTrackUrl(currentGalleryTrackIndex);
   if (galleryAudio.src !== trackUrl) {
     galleryAudio.src = trackUrl;
   }
@@ -5620,16 +5618,16 @@ async function playCurrentJazzTrack() {
   updateAudioToggle();
 }
 
-function playNextJazzTrack() {
-  currentJazzTrackIndex = (currentJazzTrackIndex + 1) % jazzPlaylist.length;
-  galleryAudio.src = getJazzTrackUrl(currentJazzTrackIndex);
+function playNextGalleryTrack() {
+  currentGalleryTrackIndex = (currentGalleryTrackIndex + 1) % galleryPlaylist.length;
+  galleryAudio.src = getGalleryTrackUrl(currentGalleryTrackIndex);
   if (galleryAudioRequested) {
-    playCurrentJazzTrack();
+    playCurrentGalleryTrack();
   }
 }
 
 function toggleGalleryAudio() {
-  if (!jazzPlaylist.length) return;
+  if (!galleryPlaylist.length) return;
   initGalleryAudio();
   if (!audioContext) return;
 
@@ -5640,14 +5638,14 @@ function toggleGalleryAudio() {
     return;
   }
 
-  playCurrentJazzTrack();
+  playCurrentGalleryTrack();
 }
 
 function tryStartRequestedAudio() {
   if (!galleryAudioRequested || !galleryAudio.paused) return;
   initGalleryAudio();
   if (!audioContext) return;
-  playCurrentJazzTrack();
+  playCurrentGalleryTrack();
 }
 
 function updateGalleryAudioListener() {
@@ -5675,7 +5673,7 @@ function updateGalleryAudioListener() {
   }
 }
 
-galleryAudio.addEventListener('ended', playNextJazzTrack);
+galleryAudio.addEventListener('ended', playNextGalleryTrack);
 audioToggle?.addEventListener('click', toggleGalleryAudio);
 window.addEventListener('pointerdown', (event) => {
   if (event.target instanceof Element && event.target.closest('#audio-toggle, #light-editor, #art-editor, #pedestal-editor, #text-panel-editor, #audio-editor')) {
@@ -7101,11 +7099,11 @@ window.__galleryDebug = () => ({
     text: String(textPanelData.text ?? '').slice(0, 80),
   })),
   audio: {
-    tracks: jazzPlaylist.length,
+    tracks: galleryPlaylist.length,
     speakers: audioSpeakers.length,
     requested: galleryAudioRequested,
     paused: galleryAudio.paused,
-    currentTrack: jazzPlaylist[currentJazzTrackIndex] ?? null,
+    currentTrack: galleryPlaylist[currentGalleryTrackIndex] ?? null,
   },
   rendererInfo: {
     mobilePerformanceMode,
