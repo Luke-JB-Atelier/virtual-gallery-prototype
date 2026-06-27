@@ -1198,6 +1198,21 @@ function normalizePedestalStickers(stickers) {
     }));
 }
 
+function normalizePedestalActionZones(zones) {
+  if (!Array.isArray(zones)) return [];
+  return zones
+    .filter((zone) => zone && typeof zone.url === 'string' && zone.url.trim())
+    .map((zone) => ({
+      label: typeof zone.label === 'string' && zone.label.trim() ? zone.label.trim() : 'Otevřít odkaz',
+      url: zone.url.trim(),
+      x: THREE.MathUtils.clamp(Number(zone.x) || 0, -0.5, 0.5),
+      y: THREE.MathUtils.clamp(Number(zone.y) || 0, -0.5, 0.5),
+      width: THREE.MathUtils.clamp(Number(zone.width) || 0.16, 0.04, 1),
+      height: THREE.MathUtils.clamp(Number(zone.height) || 0.16, 0.04, 1),
+      shape: zone.shape === 'circle' ? 'circle' : 'rect',
+    }));
+}
+
 function createPedestalStickerContent(pedestalWidth, pedestalDepth, pedestalHeight, pedestalType, sticker) {
   if (!sticker?.imageSrc) return null;
   const stickerWidth = THREE.MathUtils.clamp(Number(sticker.width) || 0.42, 0.08, Math.max(0.08, pedestalWidth * 0.96));
@@ -1308,17 +1323,20 @@ function createFlatCapContent(pedestalWidth, pedestalDepth, pedestalHeight, cont
 function normalizePedestalContent(content) {
   if (!content) return null;
   const stickers = normalizePedestalStickers(content.stickers);
+  const actionZones = normalizePedestalActionZones(content.actionZones);
   if (['bowler-hat', 'flat-cap', 'coins'].includes(content.type)) {
     return {
       ...content,
       type: 'coins',
       scale: Number.isFinite(content.scale) ? content.scale : 1.18,
       stickers,
+      actionZones,
     };
   }
   return {
     ...content,
     stickers,
+    actionZones,
   };
 }
 
@@ -1516,6 +1534,31 @@ function createEaselCanvas(canvasWidth, canvasHeight, imageSrc = '') {
   return group;
 }
 
+function addEaselActionZones(canvasGroup, canvasWidth, canvasHeight, actionZones) {
+  normalizePedestalActionZones(actionZones).forEach((zone) => {
+    const zoneWidth = Math.max(0.04, canvasWidth * zone.width);
+    const zoneHeight = Math.max(0.04, canvasHeight * zone.height);
+    const geometry = zone.shape === 'circle'
+      ? new THREE.CircleGeometry(Math.min(zoneWidth, zoneHeight) / 2, 32)
+      : new THREE.PlaneGeometry(zoneWidth, zoneHeight);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(zone.x * canvasWidth, zone.y * canvasHeight, 0.031);
+    mesh.renderOrder = 30;
+    mesh.userData.pedestalAction = {
+      label: zone.label,
+      url: zone.url,
+    };
+    canvasGroup.add(mesh);
+  });
+}
+
 function createPleinAirEasel(width, depth, height, content = {}) {
   const group = new THREE.Group();
   const sticker = normalizePedestalStickers(content?.stickers)[0] ?? null;
@@ -1595,6 +1638,7 @@ function createPleinAirEasel(width, depth, height, content = {}) {
   const canvasGroup = createEaselCanvas(canvasWidth, canvasHeight, sticker?.imageSrc ?? '');
   canvasGroup.position.set(canvasX, canvasCenterY, frontZ * 0.36);
   canvasGroup.rotation.x = THREE.MathUtils.degToRad(-8);
+  addEaselActionZones(canvasGroup, canvasWidth, canvasHeight, content?.actionZones);
   group.add(canvasGroup);
   group.userData.canvasFrontMaterials = canvasGroup.userData.canvasFrontMaterials ?? [];
 
@@ -5419,6 +5463,7 @@ function selectEditableFromCrosshair() {
 }
 
 const paintingActionMaxDistance = 2.2;
+const pedestalActionMaxDistance = 2.7;
 
 function hideActionDialog() {
   actionDialog.hidden = true;
@@ -5471,12 +5516,15 @@ actionDialog.addEventListener('mousedown', (event) => {
 function openPaintingActionFromCrosshair() {
   const target = getEditableTargetFromCrosshair();
   const paintingData = target?.paintingData;
-  const actionUrl = paintingData?.actionUrl?.trim();
+  const pedestalAction = target?.pedestalAction;
+  const actionUrl = (pedestalAction?.url ?? paintingData?.actionUrl)?.trim();
   if (!actionUrl) return false;
   const cameraPosition = new THREE.Vector3();
   camera.getWorldPosition(cameraPosition);
-  if (cameraPosition.distanceTo(paintingData.group.position) > paintingActionMaxDistance) {
-    status.textContent = 'Přijď blíž k obrazu';
+  const actionPosition = paintingData?.group.position ?? target?.pedestalData?.group.position;
+  const actionMaxDistance = pedestalAction ? pedestalActionMaxDistance : paintingActionMaxDistance;
+  if (actionPosition && cameraPosition.distanceTo(actionPosition) > actionMaxDistance) {
+    status.textContent = pedestalAction ? 'Přijď blíž k plakátu' : 'Přijď blíž k obrazu';
     return true;
   }
   if (actionUrl.startsWith('copy:')) {
@@ -5495,6 +5543,7 @@ function openPaintingActionFromCrosshair() {
     return true;
   }
   window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+  if (pedestalAction?.label) status.textContent = pedestalAction.label;
   return true;
 }
 
@@ -6989,9 +7038,14 @@ function updateCrosshairAndEditors(delta) {
     interactionUpdateTimer = editorMode ? editorInteractionUpdateInterval : viewerInteractionUpdateInterval;
   }
   const isPaintingTarget = Boolean(hoveredEditable?.paintingData);
+  const isPedestalActionTarget = Boolean(hoveredEditable?.pedestalAction);
   const isAnyEditableTarget = Boolean(hoveredEditable?.lightData || hoveredEditable?.paintingData || hoveredEditable?.pedestalData || hoveredEditable?.textPanelData);
-  crosshair.classList.toggle('target', editorMode && isAnyEditableTarget);
-  crosshair.classList.toggle('viewer-hidden', !editorMode && isPaintingTarget);
+  crosshair.classList.toggle('target', (editorMode && isAnyEditableTarget) || (!editorMode && isPedestalActionTarget));
+  crosshair.classList.toggle('viewer-hidden', !editorMode && isPaintingTarget && !isPedestalActionTarget);
+  if (!editorMode && isPedestalActionTarget && shouldRefreshHover) {
+    const label = hoveredEditable.pedestalAction.label || 'Otevřít odkaz';
+    status.textContent = `${label} - klikni pro otevření`;
+  }
   if (movingSelectedPedestal && selectedPedestal) {
     const placement = getFloorPlacement({ usePointer: true });
     if (placement) {
