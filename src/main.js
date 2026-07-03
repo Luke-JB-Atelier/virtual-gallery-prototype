@@ -89,6 +89,8 @@ const buildTopViewButton = document.querySelector('#build-top-view');
 const buildResetViewButton = document.querySelector('#build-reset-view');
 const buildAddRoomButton = document.querySelector('#build-add-room');
 const buildRemoveRoomButton = document.querySelector('#build-remove-room');
+const buildApplyButton = document.querySelector('#build-apply');
+const buildOriginalButton = document.querySelector('#build-original');
 const buildGridSizeInput = document.querySelector('#build-grid-size');
 const buildRoomWidthInput = document.querySelector('#build-room-width');
 const buildRoomDepthInput = document.querySelector('#build-room-depth');
@@ -523,6 +525,44 @@ const galleryRooms = [
   { id: 'future-1', centerX: -sideRoomStep, centerZ: roomStep, hasRightDoor: true, hasLeftDoor: true },
   { id: 'future-2', centerX: -sideRoomStep * 2, centerZ: roomStep, hasRightDoor: true },
 ];
+let buildArchitectureApplied = false;
+let activeBuildRoomLayouts = null;
+
+function getRoomWidth(roomConfig = null) {
+  return Number.isFinite(roomConfig?.width) ? roomConfig.width : roomWidth;
+}
+
+function getRoomDepth(roomConfig = null) {
+  return Number.isFinite(roomConfig?.depth) ? roomConfig.depth : roomDepth;
+}
+
+function getRoomHeight(roomConfig = null) {
+  return Number.isFinite(roomConfig?.height) ? roomConfig.height : roomHeight;
+}
+
+function getActiveGalleryRooms() {
+  return activeBuildRoomLayouts?.length ? activeBuildRoomLayouts : galleryRooms;
+}
+
+function getRoomBounds(roomConfig, margin = 0) {
+  const width = getRoomWidth(roomConfig);
+  const depth = getRoomDepth(roomConfig);
+  return {
+    minX: roomConfig.centerX - width / 2 + margin,
+    maxX: roomConfig.centerX + width / 2 - margin,
+    minZ: roomConfig.centerZ - depth / 2 + margin,
+    maxZ: roomConfig.centerZ + depth / 2 - margin,
+  };
+}
+
+function pointInsideRoom(roomConfig, x, z, margin = 0) {
+  const bounds = getRoomBounds(roomConfig, margin);
+  return x >= bounds.minX && x <= bounds.maxX && z >= bounds.minZ && z <= bounds.maxZ;
+}
+
+function findRoomLayoutForPoint(point, margin = -0.08) {
+  return getActiveGalleryRooms().find((roomConfig) => pointInsideRoom(roomConfig, point.x, point.z, margin));
+}
 
 function addRoomFloorAndCeiling(centerX, centerZ) {
   const floorMesh = plane(roomWidth, roomDepth, floorMaterial, [centerX, 0, centerZ], [-Math.PI / 2, 0, 0], 24);
@@ -1908,7 +1948,14 @@ addRectangularRoomWalls(galleryRooms[4]);
 addFutureWingBarrier();
 addCornerSpeakers();
 
-const navigationSpaces = [
+const baseArchitectureObjects = [...room.children];
+const baseWallMeshes = [...wallMeshes];
+const dynamicArchitectureGroup = new THREE.Group();
+dynamicArchitectureGroup.visible = false;
+room.add(dynamicArchitectureGroup);
+const dynamicWallMeshes = [];
+
+let navigationSpaces = [
   { minX: x0, maxX: x1, minZ: galleryMinZ, maxZ: roomDepth / 2, padZMin: 1, padZMax: 0 },
   { minX: doorLeftX, maxX: doorRightX, minZ: roomDepth / 2, maxZ: roomStep - roomDepth / 2, isConnector: true },
   { minX: x0, maxX: x1, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
@@ -2302,34 +2349,64 @@ const trackSpecs = {
 
 function getTrackPosition(trackId, trackPosition, roomIndex = 0) {
   const spec = trackSpecs[trackId] ?? trackSpecs.back;
-  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
-  const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
+  const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
+  const centerX = roomConfig?.centerX ?? 0;
+  const centerZ = roomConfig?.centerZ ?? 0;
+  const width = getRoomWidth(roomConfig);
+  const depth = getRoomDepth(roomConfig);
+  const height = getRoomHeight(roomConfig);
+  const dynamicSpec = {
+    ...spec,
+    fixed: spec.id === 'back' ? -depth / 2 + 1.05
+      : spec.id === 'front' ? depth / 2 - 1.05
+        : spec.id === 'left' ? -width / 2 + 0.85
+          : spec.id === 'right' ? width / 2 - 0.85
+            : spec.fixed,
+    min: spec.axis === 'x' && !spec.custom ? -width / 2 + 0.65
+      : spec.axis === 'z' && !spec.custom ? -depth / 2 + 0.8
+        : spec.min,
+    max: spec.axis === 'x' && !spec.custom ? width / 2 - 0.65
+      : spec.axis === 'z' && !spec.custom ? depth / 2 - 0.8
+        : spec.max,
+  };
   const t = THREE.MathUtils.clamp(trackPosition, 0, 1);
-  const along = THREE.MathUtils.lerp(spec.min, spec.max, t);
+  const along = THREE.MathUtils.lerp(dynamicSpec.min, dynamicSpec.max, t);
   return new THREE.Vector3(
-    spec.axis === 'x' ? centerX + along : centerX + spec.fixed,
-    roomHeight - 0.14,
-    spec.axis === 'z' ? centerZ + along : centerZ + spec.fixed,
+    dynamicSpec.axis === 'x' ? centerX + along : centerX + dynamicSpec.fixed,
+    height - 0.14,
+    dynamicSpec.axis === 'z' ? centerZ + along : centerZ + dynamicSpec.fixed,
   );
 }
 
 function getTrackPositionRatio(trackId, position, roomIndex = 0) {
   const spec = trackSpecs[trackId] ?? trackSpecs.back;
-  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
-  const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
+  const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
+  const centerX = roomConfig?.centerX ?? 0;
+  const centerZ = roomConfig?.centerZ ?? 0;
+  const width = getRoomWidth(roomConfig);
+  const depth = getRoomDepth(roomConfig);
+  const min = spec.axis === 'x' && !spec.custom ? -width / 2 + 0.65
+    : spec.axis === 'z' && !spec.custom ? -depth / 2 + 0.8
+      : spec.min;
+  const max = spec.axis === 'x' && !spec.custom ? width / 2 - 0.65
+    : spec.axis === 'z' && !spec.custom ? depth / 2 - 0.8
+      : spec.max;
   const along = spec.axis === 'x' ? position.x - centerX : position.z - centerZ;
-  return THREE.MathUtils.clamp((along - spec.min) / (spec.max - spec.min), 0, 1);
+  return THREE.MathUtils.clamp((along - min) / (max - min), 0, 1);
 }
 
 function chooseTrackForTarget(targetPoint) {
   const roomIndex = getRoomIndexForPosition(targetPoint.x, targetPoint.z);
-  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
-  const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
+  const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
+  const centerX = roomConfig?.centerX ?? 0;
+  const centerZ = roomConfig?.centerZ ?? 0;
+  const width = getRoomWidth(roomConfig);
+  const depth = getRoomDepth(roomConfig);
   const distances = [
-    { id: 'back', distance: Math.abs(targetPoint.z - (centerZ - roomDepth / 2)) },
-    { id: 'front', distance: Math.abs(targetPoint.z - (centerZ + roomDepth / 2)) },
-    { id: 'left', distance: Math.abs(targetPoint.x - (centerX - roomWidth / 2)) },
-    { id: 'right', distance: Math.abs(targetPoint.x - (centerX + roomWidth / 2)) },
+    { id: 'back', distance: Math.abs(targetPoint.z - (centerZ - depth / 2)) },
+    { id: 'front', distance: Math.abs(targetPoint.z - (centerZ + depth / 2)) },
+    { id: 'left', distance: Math.abs(targetPoint.x - (centerX - width / 2)) },
+    { id: 'right', distance: Math.abs(targetPoint.x - (centerX + width / 2)) },
   ];
   distances.sort((a, b) => a.distance - b.distance);
   return distances[0].id;
@@ -2346,8 +2423,9 @@ function scoreTrackForTarget(spec, targetPoint, centerX, centerZ) {
 
 function chooseCustomTrackForTarget(targetPoint) {
   const roomIndex = getRoomIndexForPosition(targetPoint.x, targetPoint.z);
-  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
-  const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
+  const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
+  const centerX = roomConfig?.centerX ?? 0;
+  const centerZ = roomConfig?.centerZ ?? 0;
   const customTracks = Object.values(trackSpecs).filter((spec) => spec.custom);
   customTracks.sort((first, second) => (
     scoreTrackForTarget(first, targetPoint, centerX, centerZ)
@@ -2357,9 +2435,12 @@ function chooseCustomTrackForTarget(targetPoint) {
 }
 
 function getRoomIndexForPosition(x, z) {
+  const activeRooms = getActiveGalleryRooms();
+  const containingIndex = activeRooms.findIndex((galleryRoom) => pointInsideRoom(galleryRoom, x, z, 0));
+  if (containingIndex >= 0) return containingIndex;
   let bestIndex = 0;
   let bestDistance = Infinity;
-  galleryRooms.forEach((galleryRoom, index) => {
+  activeRooms.forEach((galleryRoom, index) => {
     const distance = (x - galleryRoom.centerX) ** 2 + (z - galleryRoom.centerZ) ** 2;
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -3930,6 +4011,7 @@ let buildModeActive = false;
 let buildSavedView = null;
 let selectedBuildRoomIndex = 0;
 let draggingBuildHandle = null;
+let selectedBuildEdge = null;
 let buildGridSize = buildGridDefaultSize;
 const buildGroup = new THREE.Group();
 const buildGridHelper = new THREE.GridHelper(64, 128, 0x4c6f8f, 0x25313a);
@@ -3994,6 +4076,7 @@ function loadBuildLayout() {
     const parsed = JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null');
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.rooms)) return createDefaultBuildLayout();
     buildGridSize = THREE.MathUtils.clamp(Number(parsed.gridSize) || buildGridDefaultSize, 0.25, 1);
+    buildArchitectureApplied = Boolean(parsed.applied);
     return parsed.rooms.map(normalizeBuildRoom);
   } catch {
     return createDefaultBuildLayout();
@@ -4007,11 +4090,204 @@ function saveBuildLayout() {
     localStorage.setItem(buildLayoutStorageKey, JSON.stringify({
       version: 1,
       gridSize: buildGridSize,
+      applied: buildArchitectureApplied,
       rooms: buildRooms,
     }));
   } catch {
     // Build planning data is optional.
   }
+}
+
+function disposeObjectTree(object) {
+  object.traverse((child) => {
+    child.geometry?.dispose?.();
+    if (Array.isArray(child.material)) {
+      child.material.forEach((material) => material.dispose?.());
+    }
+  });
+}
+
+function resetDynamicArchitecture() {
+  dynamicWallMeshes.length = 0;
+  while (dynamicArchitectureGroup.children.length) {
+    const child = dynamicArchitectureGroup.children[0];
+    dynamicArchitectureGroup.remove(child);
+    disposeObjectTree(child);
+  }
+}
+
+function addDynamicMesh(mesh, isWall = false) {
+  mesh.userData.dynamicArchitecture = true;
+  dynamicArchitectureGroup.add(mesh);
+  if (isWall) dynamicWallMeshes.push(mesh);
+  return mesh;
+}
+
+function addDynamicPlane(width, height, material, position, rotation, segments = 1) {
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height, segments, segments), material);
+  mesh.position.set(...position);
+  mesh.rotation.set(...rotation);
+  return addDynamicMesh(mesh);
+}
+
+function addDynamicWall(width, height, position, rotation, segments = 18) {
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height, segments, segments), wallMaterial);
+  mesh.position.set(...position);
+  mesh.rotation.set(...rotation);
+  addSurfaceEdgeDarkening(mesh, width, height);
+  return addDynamicMesh(mesh, true);
+}
+
+function addDynamicTrim(length, position, rotationY) {
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(length, 0.045, 0.055), wallTrimMaterial);
+  trim.position.set(...position);
+  trim.rotation.y = rotationY;
+  trim.castShadow = true;
+  trim.receiveShadow = true;
+  return addDynamicMesh(trim);
+}
+
+function addDynamicWallSegment(startX, startZ, endX, endZ, height) {
+  const dx = endX - startX;
+  const dz = endZ - startZ;
+  const length = Math.hypot(dx, dz);
+  if (length <= 0.05) return null;
+  const rotationY = Math.atan2(-dz, dx);
+  const centerY = height / 2;
+  const wall = addDynamicWall(length, height, [(startX + endX) / 2, centerY, (startZ + endZ) / 2], [0, rotationY, 0], 12);
+  addDynamicTrim(length, [(startX + endX) / 2, 0.035, (startZ + endZ) / 2], rotationY);
+  addDynamicTrim(length, [(startX + endX) / 2, height - 0.035, (startZ + endZ) / 2], rotationY);
+  return wall;
+}
+
+function addDynamicRoomArchitecture(roomConfig) {
+  const width = getRoomWidth(roomConfig);
+  const depth = getRoomDepth(roomConfig);
+  const height = getRoomHeight(roomConfig);
+  const leftX = roomConfig.centerX - width / 2;
+  const rightX = roomConfig.centerX + width / 2;
+  const backZ = roomConfig.centerZ - depth / 2;
+  const frontZ = roomConfig.centerZ + depth / 2;
+  const floorMesh = addDynamicPlane(width, depth, floorMaterial, [roomConfig.centerX, 0, roomConfig.centerZ], [-Math.PI / 2, 0, 0], 24);
+  addFloorEdgeDarkening(floorMesh, width, depth);
+  addDynamicPlane(width, depth, ceilingMaterial, [roomConfig.centerX, height, roomConfig.centerZ], [Math.PI / 2, 0, 0], 1);
+  addDynamicWallSegment(leftX, backZ, rightX, backZ, height);
+  addDynamicWallSegment(leftX, frontZ, rightX, frontZ, height);
+  addDynamicWallSegment(leftX, backZ, leftX, frontZ, height);
+  addDynamicWallSegment(rightX, backZ, rightX, frontZ, height);
+}
+
+function createNavigationSpacesFromBuildRooms() {
+  return buildRooms.map((roomConfig) => ({
+    minX: roomConfig.centerX - roomConfig.width / 2,
+    maxX: roomConfig.centerX + roomConfig.width / 2,
+    minZ: roomConfig.centerZ - roomConfig.depth / 2,
+    maxZ: roomConfig.centerZ + roomConfig.depth / 2,
+    padZMin: 0,
+    padZMax: 0,
+  }));
+}
+
+function clampPointIntoBuildRooms(point, margin = 0.42) {
+  let closest = null;
+  let closestDistance = Infinity;
+  buildRooms.forEach((roomConfig) => {
+    const bounds = getRoomBounds(roomConfig, margin);
+    const x = THREE.MathUtils.clamp(point.x, bounds.minX, bounds.maxX);
+    const z = THREE.MathUtils.clamp(point.z, bounds.minZ, bounds.maxZ);
+    const distance = (point.x - x) ** 2 + (point.z - z) ** 2;
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closest = { x, z, roomConfig };
+    }
+  });
+  if (!closest) return null;
+  point.x = closest.x;
+  point.z = closest.z;
+  return closest.roomConfig;
+}
+
+function preserveEditableObjectsInsideBuildRooms() {
+  displayPedestals.forEach((pedestalData) => {
+    clampPointIntoBuildRooms(pedestalData.group.position, 0.48);
+  });
+  ceilingLights.forEach((lightData) => {
+    const roomConfig = clampPointIntoBuildRooms(lightData.position, 0.62);
+    if (roomConfig) {
+      lightData.roomIndex = buildRooms.indexOf(roomConfig);
+      lightData.position.y = Math.min(lightData.position.y, getRoomHeight(roomConfig) - 0.14);
+      if (!lightData.targetPoint) {
+        lightData.targetPoint = new THREE.Vector3(lightData.position.x, Math.max(0.85, getRoomHeight(roomConfig) * 0.55), lightData.position.z);
+      }
+      lightData.targetPoint.y = Math.min(lightData.targetPoint.y, getRoomHeight(roomConfig) - 0.55);
+      updateCeilingLight(lightData);
+    }
+  });
+  editablePaintings.forEach((paintingData) => {
+    const roomConfig = findRoomLayoutForPoint(paintingData.group.position);
+    if (roomConfig) {
+      paintingData.group.position.y = Math.min(paintingData.group.position.y, getRoomHeight(roomConfig) - 0.24);
+    }
+  });
+  displayTextPanels.forEach((textPanelData) => {
+    const roomConfig = findRoomLayoutForPoint(textPanelData.group.position);
+    if (roomConfig) {
+      textPanelData.group.position.y = Math.min(textPanelData.group.position.y, getRoomHeight(roomConfig) - 0.12);
+    }
+  });
+  constrainToGallery(body.position, 0.55, body.position.clone());
+  markEditableRaycastObjectsDirty();
+}
+
+function applyBuildLayoutToGallery({ persist = true } = {}) {
+  buildArchitectureApplied = true;
+  activeBuildRoomLayouts = buildRooms.map((roomConfig, index) => ({
+    ...normalizeBuildRoom(roomConfig, index),
+    label: roomConfig.label,
+  }));
+  baseArchitectureObjects.forEach((object) => {
+    object.visible = false;
+  });
+  resetDynamicArchitecture();
+  buildRooms.forEach(addDynamicRoomArchitecture);
+  dynamicArchitectureGroup.visible = true;
+  wallMeshes.length = 0;
+  wallMeshes.push(...dynamicWallMeshes);
+  navigationSpaces = createNavigationSpacesFromBuildRooms();
+  preserveEditableObjectsInsideBuildRooms();
+  if (persist) saveBuildLayout();
+  syncBuildPanel();
+  setBuildStatus('Stavba je použitá ve 3D galerii. Objekty zůstaly zachované a podlahové věci jsou přicvaknuté dovnitř místností.');
+}
+
+function restoreOriginalArchitecture({ persist = true } = {}) {
+  buildArchitectureApplied = false;
+  activeBuildRoomLayouts = null;
+  baseArchitectureObjects.forEach((object) => {
+    object.visible = true;
+  });
+  resetDynamicArchitecture();
+  dynamicArchitectureGroup.visible = false;
+  wallMeshes.length = 0;
+  wallMeshes.push(...baseWallMeshes);
+  navigationSpaces = [
+    { minX: x0, maxX: x1, minZ: galleryMinZ, maxZ: roomDepth / 2, padZMin: 1, padZMax: 0 },
+    { minX: doorLeftX, maxX: doorRightX, minZ: roomDepth / 2, maxZ: roomStep - roomDepth / 2, isConnector: true },
+    { minX: x0, maxX: x1, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
+    { minX: doorLeftX, maxX: doorRightX, minZ: roomStep + roomDepth / 2, maxZ: roomStep * 2 - roomDepth / 2, isConnector: true },
+    { minX: x0, maxX: x1, minZ: roomStep * 2 - roomDepth / 2, maxZ: galleryMaxZ, padZMin: 0, padZMax: 1 },
+    { minX: -sideRoomStep + roomWidth / 2 - 1, maxX: x0 + 1, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
+    { minX: -sideRoomStep - roomWidth / 2, maxX: -sideRoomStep + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
+    ...(editorMode ? [
+      { minX: -sideRoomStep * 2 + roomWidth / 2 - 1, maxX: -sideRoomStep - roomWidth / 2 + 1, minZ: roomStep - doorway.width / 2, maxZ: roomStep + doorway.width / 2, isConnector: true },
+      { minX: -sideRoomStep * 2 - roomWidth / 2, maxX: -sideRoomStep * 2 + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
+    ] : []),
+  ];
+  constrainToGallery(body.position, 0.55, body.position.clone());
+  markEditableRaycastObjectsDirty();
+  if (persist) saveBuildLayout();
+  syncBuildPanel();
+  setBuildStatus('Vrácený původní skelet galerie. Stavební plán zůstává uložený pro další úpravy.');
 }
 
 function snapBuildValue(value) {
@@ -4086,7 +4362,7 @@ function renderBuildLayout() {
 function syncBuildPanel() {
   const roomConfig = buildRooms[selectedBuildRoomIndex];
   if (!roomConfig) return;
-  if (buildTitle) buildTitle.textContent = `Stavba: ${roomConfig.label}`;
+  if (buildTitle) buildTitle.textContent = `Stavba: ${roomConfig.label}${buildArchitectureApplied ? ' (použito)' : ''}`;
   if (buildGridSizeInput) buildGridSizeInput.value = String(buildGridSize);
   if (buildRoomWidthInput) buildRoomWidthInput.value = String(Number(roomConfig.width.toFixed(2)));
   if (buildRoomDepthInput) buildRoomDepthInput.value = String(Number(roomConfig.depth.toFixed(2)));
@@ -4104,7 +4380,12 @@ function updateSelectedBuildRoomFromInputs() {
   saveBuildLayout();
   renderBuildLayout();
   syncBuildPanel();
-  setBuildStatus('Rozměry jsou uložené do stavebního plánu. Přepočet skutečných zdí přijde v další vrstvě.');
+  if (buildArchitectureApplied) {
+    applyBuildLayoutToGallery({ persist: false });
+    saveBuildLayout();
+  } else {
+    setBuildStatus('Rozměry jsou uložené do stavebního plánu. Klikni na Použít stavbu pro přestavění 3D galerie.');
+  }
 }
 
 function getBuildPointerHit(event) {
@@ -4180,6 +4461,7 @@ function beginBuildDrag(event) {
   const index = hit.object.userData.buildRoomIndex;
   if (Number.isInteger(index)) selectBuildRoom(index);
   if (hit.object.userData.buildEdge) {
+    selectedBuildEdge = hit.object.userData.buildEdge;
     draggingBuildHandle = {
       roomIndex: selectedBuildRoomIndex,
       edge: hit.object.userData.buildEdge,
@@ -4225,7 +4507,12 @@ function finishBuildDrag() {
   if (!draggingBuildHandle) return false;
   draggingBuildHandle = null;
   saveBuildLayout();
-  setBuildStatus('Hrana upravená. Plán je uložený lokálně.');
+  if (buildArchitectureApplied) {
+    applyBuildLayoutToGallery({ persist: false });
+    saveBuildLayout();
+  } else {
+    setBuildStatus('Hrana upravená. Plán je uložený lokálně.');
+  }
   return true;
 }
 
@@ -4240,6 +4527,7 @@ function addBuildRoom() {
   };
   buildRooms.push(roomConfig);
   selectBuildRoom(buildRooms.length - 1);
+  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
   saveBuildLayout();
   setBuildStatus('Nová místnost přidaná do půdorysu.');
 }
@@ -4248,14 +4536,45 @@ function removeSelectedBuildRoom() {
   if (buildRooms.length <= 1) return;
   buildRooms.splice(selectedBuildRoomIndex, 1);
   selectedBuildRoomIndex = Math.min(selectedBuildRoomIndex, buildRooms.length - 1);
+  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
   saveBuildLayout();
   renderBuildLayout();
   syncBuildPanel();
   setBuildStatus('Místnost smazaná ze stavebního plánu.');
 }
 
+function resizeSelectedBuildEdge(direction) {
+  const roomConfig = buildRooms[selectedBuildRoomIndex];
+  if (!roomConfig) return false;
+  const edge = selectedBuildEdge ?? 'front';
+  const delta = buildGridSize * direction;
+  const minSize = 2;
+  if (edge === 'left') {
+    roomConfig.centerX -= delta / 2;
+    roomConfig.width = Math.max(minSize, snapBuildValue(roomConfig.width + delta));
+  } else if (edge === 'right') {
+    roomConfig.centerX += delta / 2;
+    roomConfig.width = Math.max(minSize, snapBuildValue(roomConfig.width + delta));
+  } else if (edge === 'back') {
+    roomConfig.centerZ -= delta / 2;
+    roomConfig.depth = Math.max(minSize, snapBuildValue(roomConfig.depth + delta));
+  } else {
+    roomConfig.centerZ += delta / 2;
+    roomConfig.depth = Math.max(minSize, snapBuildValue(roomConfig.depth + delta));
+  }
+  renderBuildLayout();
+  syncBuildPanel();
+  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
+  saveBuildLayout();
+  setBuildStatus(`Hrana ${edge} upravená kolečkem po mřížce ${buildGridSize} m.`);
+  return true;
+}
+
 renderBuildLayout();
 syncBuildPanel();
+if (buildArchitectureApplied) {
+  applyBuildLayoutToGallery({ persist: false });
+}
 
 function getCenterRaycaster() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -4318,28 +4637,25 @@ function getWallPlacement({ usePointer = false } = {}) {
   }
   const axis = Math.abs(normal.x) > Math.abs(normal.z) ? 'z' : 'x';
   const { width, height, aspect } = getArtworkSizeFromInputs();
-  const roomLayout = galleryRooms.find(({ centerX, centerZ }) => (
-    hit.point.x >= centerX - roomWidth / 2 - 0.08
-    && hit.point.x <= centerX + roomWidth / 2 + 0.08
-    && hit.point.z >= centerZ - roomDepth / 2 - 0.08
-    && hit.point.z <= centerZ + roomDepth / 2 + 0.08
-  ));
+  const roomLayout = findRoomLayoutForPoint(hit.point);
   if (!roomLayout) return null;
   const playerRoomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
-  const playerRoom = galleryRooms[playerRoomIndex];
+  const playerRoom = getActiveGalleryRooms()[playerRoomIndex];
   if (playerRoom && roomLayout.id !== playerRoom.id && hit.distance > nearbyCrossRoomTargetDistance) {
     return null;
   }
 
-  const onBackWall = Math.abs(hit.point.z - (roomLayout.centerZ - roomDepth / 2)) < 0.12;
-  const onFrontWall = Math.abs(hit.point.z - (roomLayout.centerZ + roomDepth / 2)) < 0.12;
+  const roomLayoutDepth = getRoomDepth(roomLayout);
+  const roomLayoutHeight = getRoomHeight(roomLayout);
+  const onBackWall = Math.abs(hit.point.z - (roomLayout.centerZ - roomLayoutDepth / 2)) < 0.12;
+  const onFrontWall = Math.abs(hit.point.z - (roomLayout.centerZ + roomLayoutDepth / 2)) < 0.12;
   const doorClearance = doorway.width / 2 + width / 2 + 0.28;
   if (((onBackWall && roomLayout.hasBackDoor) || (onFrontWall && roomLayout.hasFrontDoor)) && Math.abs(hit.point.x - roomLayout.centerX) < doorClearance) {
     return null;
   }
 
   const centerY = artFreeModeInput.checked
-    ? clampArtworkCenterY(height, hit.point.y)
+    ? THREE.MathUtils.clamp(hit.point.y, 0.75, roomLayoutHeight - 0.45)
     : Number(artHeightInput.value);
   const offset = artFreeModeInput.checked ? 0 : Number(artOffsetXInput.value);
   const point = hit.point.clone();
@@ -4349,7 +4665,7 @@ function getWallPlacement({ usePointer = false } = {}) {
   } else {
     point.z += offset;
   }
-  point.y = clampArtworkCenterY(height, centerY);
+  point.y = THREE.MathUtils.clamp(centerY, 0.75 + height / 2, roomLayoutHeight - 0.2 - height / 2);
   point.addScaledVector(normal, 0.065);
 
   let ry = 0;
@@ -4373,22 +4689,17 @@ function getTextPanelPlacement({ usePointer = false } = {}) {
   if (normal.dot(cameraPosition.clone().sub(hit.point)) < 0) {
     normal.negate();
   }
-  const roomLayout = galleryRooms.find(({ centerX, centerZ }) => (
-    hit.point.x >= centerX - roomWidth / 2 - 0.08
-    && hit.point.x <= centerX + roomWidth / 2 + 0.08
-    && hit.point.z >= centerZ - roomDepth / 2 - 0.08
-    && hit.point.z <= centerZ + roomDepth / 2 + 0.08
-  ));
+  const roomLayout = findRoomLayoutForPoint(hit.point);
   if (!roomLayout) return null;
   const playerRoomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
-  const playerRoom = galleryRooms[playerRoomIndex];
+  const playerRoom = getActiveGalleryRooms()[playerRoomIndex];
   if (playerRoom && roomLayout.id !== playerRoom.id && hit.distance > nearbyCrossRoomTargetDistance) {
     return null;
   }
 
   const { width, height } = getTextPanelSizeFromInputs();
   const point = hit.point.clone();
-  point.y = THREE.MathUtils.clamp(point.y, 0.55 + height / 2, roomHeight - 0.24 - height / 2);
+  point.y = THREE.MathUtils.clamp(point.y, 0.55 + height / 2, getRoomHeight(roomLayout) - 0.24 - height / 2);
   point.addScaledVector(normal, 0.071);
 
   let ry = 0;
@@ -4427,12 +4738,7 @@ function getDiscountStickerSurfaceMeshes(excludeTextPanel = null) {
 }
 
 function getRoomLayoutForPoint(point) {
-  return galleryRooms.find(({ centerX, centerZ }) => (
-    point.x >= centerX - roomWidth / 2 - 0.08
-    && point.x <= centerX + roomWidth / 2 + 0.08
-    && point.z >= centerZ - roomDepth / 2 - 0.08
-    && point.z <= centerZ + roomDepth / 2 + 0.08
-  ));
+  return findRoomLayoutForPoint(point);
 }
 
 function getDiscountStickerPlacement({ usePointer = false, excludeTextPanel = null } = {}) {
@@ -4450,14 +4756,14 @@ function getDiscountStickerPlacement({ usePointer = false, excludeTextPanel = nu
   const roomLayout = getRoomLayoutForPoint(hit.point);
   if (!roomLayout) return null;
   const playerRoomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
-  const playerRoom = galleryRooms[playerRoomIndex];
+  const playerRoom = getActiveGalleryRooms()[playerRoomIndex];
   if (playerRoom && roomLayout.id !== playerRoom.id && hit.distance > nearbyCrossRoomTargetDistance) {
     return null;
   }
 
   const { width, height } = getTextPanelSizeFromInputs();
   const point = hit.point.clone();
-  point.y = THREE.MathUtils.clamp(point.y, 0.2, roomHeight - 0.08);
+  point.y = THREE.MathUtils.clamp(point.y, 0.2, getRoomHeight(roomLayout) - 0.08);
   point.addScaledVector(normal, 0.042);
 
   return {
@@ -6086,16 +6392,20 @@ function addLightFromView() {
 
   const targetPoint = worldPosition.add(viewDirection.multiplyScalar(4.2));
   const roomIndex = getRoomIndexForPosition(body.position.x, body.position.z);
-  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
-  const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
-  targetPoint.x = centerX + THREE.MathUtils.clamp(targetPoint.x - centerX, -roomWidth / 2 + 0.45, roomWidth / 2 - 0.45);
-  targetPoint.y = THREE.MathUtils.clamp(targetPoint.y, 0.85, roomHeight - 0.55);
-  targetPoint.z = centerZ + THREE.MathUtils.clamp(targetPoint.z - centerZ, -roomDepth / 2 + 0.1, roomDepth / 2 - 0.1);
+  const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
+  const centerX = roomConfig?.centerX ?? 0;
+  const centerZ = roomConfig?.centerZ ?? 0;
+  const width = getRoomWidth(roomConfig);
+  const depth = getRoomDepth(roomConfig);
+  const height = getRoomHeight(roomConfig);
+  targetPoint.x = centerX + THREE.MathUtils.clamp(targetPoint.x - centerX, -width / 2 + 0.45, width / 2 - 0.45);
+  targetPoint.y = THREE.MathUtils.clamp(targetPoint.y, 0.85, height - 0.55);
+  targetPoint.z = centerZ + THREE.MathUtils.clamp(targetPoint.z - centerZ, -depth / 2 + 0.1, depth / 2 - 0.1);
 
   const position = new THREE.Vector3(
-    centerX + THREE.MathUtils.clamp((targetPoint.x - centerX) * 0.72, -roomWidth / 2 + 0.55, roomWidth / 2 - 0.55),
-    roomHeight - 0.14,
-    centerZ + THREE.MathUtils.clamp((targetPoint.z - centerZ) * 0.58, -roomDepth / 2 + 0.75, roomDepth / 2 - 0.75),
+    centerX + THREE.MathUtils.clamp((targetPoint.x - centerX) * 0.72, -width / 2 + 0.55, width / 2 - 0.55),
+    height - 0.14,
+    centerZ + THREE.MathUtils.clamp((targetPoint.z - centerZ) * 0.58, -depth / 2 + 0.75, depth / 2 - 0.75),
   );
   const kind = lightKindInput.value === 'painting' ? 'painting' : 'display';
   const trackId = kind === 'display' ? chooseCustomTrackForTarget(targetPoint) : chooseTrackForTarget(targetPoint);
@@ -6458,6 +6768,8 @@ buildTopViewButton.addEventListener('click', enterBuildTopView);
 buildResetViewButton.addEventListener('click', exitBuildTopView);
 buildAddRoomButton.addEventListener('click', addBuildRoom);
 buildRemoveRoomButton.addEventListener('click', removeSelectedBuildRoom);
+buildApplyButton.addEventListener('click', () => applyBuildLayoutToGallery());
+buildOriginalButton.addEventListener('click', () => restoreOriginalArchitecture());
 [buildGridSizeInput, buildRoomWidthInput, buildRoomDepthInput, buildRoomHeightInput].forEach((input) => {
   input.addEventListener('input', updateSelectedBuildRoomFromInputs);
   input.addEventListener('change', updateSelectedBuildRoomFromInputs);
@@ -7031,6 +7343,11 @@ canvas.addEventListener('mousedown', (event) => {
 });
 
 canvas.addEventListener('wheel', (event) => {
+  if (buildModeActive) {
+    event.preventDefault();
+    resizeSelectedBuildEdge(event.deltaY < 0 ? 1 : -1);
+    return;
+  }
   if (roomLightControl.classList.contains('visible')) {
     event.preventDefault();
     adjustRoomLightPowerFromWheel(event);
