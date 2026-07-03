@@ -197,6 +197,7 @@ body,
 #light-editor,
 #art-editor,
 #pedestal-editor,
+#build-editor,
 #text-panel-editor,
 #audio-editor {
   position: fixed;
@@ -212,6 +213,7 @@ body,
 .viewer-mode #gallery-editor,
 .viewer-mode #art-editor,
 .viewer-mode #pedestal-editor,
+.viewer-mode #build-editor,
 .viewer-mode #text-panel-editor,
 .viewer-mode #audio-editor {
   display: none;
@@ -242,6 +244,11 @@ body,
   --editor-top: 190px;
 }
 
+#build-editor {
+  top: 234px;
+  --editor-top: 234px;
+}
+
 #text-panel-editor {
   left: auto;
   right: 14px;
@@ -257,6 +264,10 @@ body,
   z-index: 30;
 }
 
+#build-editor:has(#build-panel.visible) {
+  z-index: 30;
+}
+
 #text-panel-editor:has(#text-panel-panel.visible) {
   z-index: 30;
 }
@@ -265,12 +276,14 @@ body,
 #toggle-light-editor,
 #toggle-art-editor,
 #toggle-pedestal-editor,
+#toggle-build-editor,
 #toggle-text-panel-editor,
 #toggle-audio-editor,
 #gallery-panel button,
 #light-panel button,
 #art-panel button,
 #pedestal-panel button,
+#build-panel button,
 #text-panel-panel button {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 6px;
@@ -284,12 +297,14 @@ body,
 #toggle-light-editor:hover,
 #toggle-art-editor:hover,
 #toggle-pedestal-editor:hover,
+#toggle-build-editor:hover,
 #toggle-text-panel-editor:hover,
 #toggle-audio-editor:hover,
 #gallery-panel button:hover,
 #light-panel button:hover,
 #art-panel button:hover,
 #pedestal-panel button:hover,
+#build-panel button:hover,
 #text-panel-panel button:hover {
   background: rgba(28, 30, 32, 0.82);
 }
@@ -298,6 +313,7 @@ body,
 #toggle-light-editor.active,
 #toggle-art-editor.active,
 #toggle-pedestal-editor.active,
+#toggle-build-editor.active,
 #toggle-text-panel-editor.active,
 #toggle-audio-editor.active {
   border-color: rgba(255, 206, 96, 0.72);
@@ -316,6 +332,7 @@ body,
 #light-panel,
 #art-panel,
 #pedestal-panel,
+#build-panel,
 #audio-panel {
   position: fixed;
   left: 152px;
@@ -334,6 +351,7 @@ body,
 #light-panel,
 #art-panel,
 #pedestal-panel,
+#build-panel,
 #text-panel-panel,
 #audio-panel {
   display: none;
@@ -362,6 +380,7 @@ body,
 #light-panel.visible,
 #art-panel.visible,
 #pedestal-panel.visible,
+#build-panel.visible,
 #text-panel-panel.visible,
 #audio-panel.visible {
   display: grid;
@@ -372,6 +391,7 @@ body,
 #light-title,
 #art-title,
 #pedestal-title,
+#build-title,
 #text-panel-title,
 #audio-title {
   color: rgba(255, 229, 184, 0.92);
@@ -380,6 +400,7 @@ body,
 
 #gallery-status,
 #pedestal-status,
+#build-status,
 #text-panel-status,
 #art-status {
   color: rgba(255, 255, 255, 0.64);
@@ -390,6 +411,7 @@ body,
 #gallery-panel .editor-buttons,
 #art-panel .editor-buttons,
 #pedestal-panel .editor-buttons,
+#build-panel .editor-buttons,
 #text-panel-panel .editor-buttons {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -399,6 +421,7 @@ body,
 #gallery-panel .editor-buttons button,
 #art-panel .editor-buttons button,
 #pedestal-panel .editor-buttons button,
+#build-panel .editor-buttons button,
 #text-panel-panel .editor-buttons button {
   min-height: 30px;
   padding: 6px 7px;
@@ -415,6 +438,7 @@ body,
 #light-panel label,
 #art-panel label,
 #pedestal-panel label,
+#build-panel label,
 #text-panel-panel label,
 #audio-panel label {
   display: grid;
@@ -442,6 +466,7 @@ body,
 #art-panel select,
 #pedestal-panel input,
 #pedestal-panel select,
+#build-panel input,
 #text-panel-panel input,
 #text-panel-panel select,
 #text-panel-panel textarea,
@@ -454,6 +479,7 @@ body,
 #light-panel select,
 #pedestal-panel input[type="number"],
 #pedestal-panel select,
+#build-panel input[type="number"],
 #text-panel-donor-tools input[type="text"],
 #text-panel-panel input[type="number"],
 #text-panel-panel select,
@@ -568,6 +594,7 @@ body,
 #light-panel button:disabled,
 #art-panel button:disabled,
 #pedestal-panel button:disabled,
+#build-panel button:disabled,
 #text-panel-panel button:disabled {
   opacity: 0.45;
   cursor: default;

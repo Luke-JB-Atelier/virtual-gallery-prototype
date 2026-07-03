@@ -125,6 +125,23 @@
           <label>Výška na čele (cm) <input id="pedestal-sticker-offset-y-cm" type="number" min="8" max="180" step="1" value="55" /></label>
         </div>
       </section>
+      <section id="build-editor">
+        <button id="toggle-build-editor" type="button">Stavba</button>
+        <div id="build-panel">
+          <div id="build-title">Stavební mód</div>
+          <div id="build-status">Půdorys je první stavební vrstva: vyber místnost a tahej za hrany.</div>
+          <div class="editor-buttons">
+            <button id="build-top-view" type="button">Půdorys</button>
+            <button id="build-reset-view" type="button">3D pohled</button>
+            <button id="build-add-room" type="button">Přidat místnost</button>
+            <button id="build-remove-room" type="button">Smazat místnost</button>
+          </div>
+          <label>Mřížka (m) <input id="build-grid-size" type="range" min="0.25" max="1" step="0.25" value="0.5" /></label>
+          <label>Šířka místnosti (m) <input id="build-room-width" type="number" min="2" max="24" step="0.5" value="9" /></label>
+          <label>Hloubka místnosti (m) <input id="build-room-depth" type="number" min="2" max="28" step="0.5" value="12" /></label>
+          <label>Výška stropu (m) <input id="build-room-height" type="number" min="2.2" max="7" step="0.1" value="3.4" /></label>
+        </div>
+      </section>
       <section id="text-panel-editor">
         <button id="toggle-text-panel-editor" type="button">Tabulky</button>
         <div id="text-panel-panel">

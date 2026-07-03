@@ -81,6 +81,18 @@ const pedestalStickerWidthCmInput = document.querySelector('#pedestal-sticker-wi
 const pedestalStickerHeightCmInput = document.querySelector('#pedestal-sticker-height-cm');
 const pedestalStickerOffsetXCmInput = document.querySelector('#pedestal-sticker-offset-x-cm');
 const pedestalStickerOffsetYCmInput = document.querySelector('#pedestal-sticker-offset-y-cm');
+const toggleBuildEditor = document.querySelector('#toggle-build-editor');
+const buildPanel = document.querySelector('#build-panel');
+const buildTitle = document.querySelector('#build-title');
+const buildStatus = document.querySelector('#build-status');
+const buildTopViewButton = document.querySelector('#build-top-view');
+const buildResetViewButton = document.querySelector('#build-reset-view');
+const buildAddRoomButton = document.querySelector('#build-add-room');
+const buildRemoveRoomButton = document.querySelector('#build-remove-room');
+const buildGridSizeInput = document.querySelector('#build-grid-size');
+const buildRoomWidthInput = document.querySelector('#build-room-width');
+const buildRoomDepthInput = document.querySelector('#build-room-depth');
+const buildRoomHeightInput = document.querySelector('#build-room-height');
 const toggleTextPanelEditor = document.querySelector('#toggle-text-panel-editor');
 const textPanelPanel = document.querySelector('#text-panel-panel');
 const textPanelTitle = document.querySelector('#text-panel-title');
@@ -3599,6 +3611,7 @@ function syncEditorToggleState() {
   toggleLightEditor.classList.toggle('active', lightPanel.classList.contains('visible'));
   toggleArtEditor.classList.toggle('active', artPanel.classList.contains('visible'));
   togglePedestalEditor.classList.toggle('active', pedestalPanel.classList.contains('visible'));
+  toggleBuildEditor.classList.toggle('active', buildPanel.classList.contains('visible'));
   toggleTextPanelEditor.classList.toggle('active', textPanelPanel.classList.contains('visible'));
   toggleAudioEditor.classList.toggle('active', audioPanel.classList.contains('visible'));
   toggleArtEditor.classList.toggle('has-selection', Boolean(selectedPainting));
@@ -3910,6 +3923,339 @@ function addSavedTextPanels() {
 }
 
 addSavedTextPanels();
+
+const buildLayoutStorageKey = 'virtual-gallery-build-layout-v1';
+const buildGridDefaultSize = 0.5;
+let buildModeActive = false;
+let buildSavedView = null;
+let selectedBuildRoomIndex = 0;
+let draggingBuildHandle = null;
+let buildGridSize = buildGridDefaultSize;
+const buildGroup = new THREE.Group();
+const buildGridHelper = new THREE.GridHelper(64, 128, 0x4c6f8f, 0x25313a);
+const buildRaycastObjects = [];
+const buildFloorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const buildHitPoint = new THREE.Vector3();
+const buildRoomFillMaterial = new THREE.MeshBasicMaterial({
+  color: 0x9fc7ff,
+  transparent: true,
+  opacity: 0.16,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const buildRoomSelectedMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffd36a,
+  transparent: true,
+  opacity: 0.28,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const buildHandleMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffd36a,
+  transparent: true,
+  opacity: 0.74,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const buildWallMaterial = new THREE.LineBasicMaterial({ color: 0xf7f4ea, transparent: true, opacity: 0.92 });
+const buildSelectedWallMaterial = new THREE.LineBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 1 });
+
+buildGroup.visible = false;
+buildGridHelper.position.y = 0.012;
+buildGroup.add(buildGridHelper);
+scene.add(buildGroup);
+
+function createDefaultBuildLayout() {
+  return galleryRooms.map((galleryRoom, index) => ({
+    id: galleryRoom.id ?? `room-${index + 1}`,
+    label: index < 3 ? `Místnost ${index + 1}` : `Boční místnost ${index - 2}`,
+    centerX: galleryRoom.centerX,
+    centerZ: galleryRoom.centerZ,
+    width: roomWidth,
+    depth: roomDepth,
+    height: roomHeight,
+  }));
+}
+
+function normalizeBuildRoom(roomConfig, index) {
+  return {
+    id: typeof roomConfig?.id === 'string' && roomConfig.id ? roomConfig.id : `room-${index + 1}`,
+    label: typeof roomConfig?.label === 'string' && roomConfig.label ? roomConfig.label : `Místnost ${index + 1}`,
+    centerX: Number.isFinite(roomConfig?.centerX) ? roomConfig.centerX : 0,
+    centerZ: Number.isFinite(roomConfig?.centerZ) ? roomConfig.centerZ : index * (roomDepth + corridorLength),
+    width: THREE.MathUtils.clamp(Number(roomConfig?.width) || roomWidth, 2, 24),
+    depth: THREE.MathUtils.clamp(Number(roomConfig?.depth) || roomDepth, 2, 28),
+    height: THREE.MathUtils.clamp(Number(roomConfig?.height) || roomHeight, 2.2, 7),
+  };
+}
+
+function loadBuildLayout() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null');
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.rooms)) return createDefaultBuildLayout();
+    buildGridSize = THREE.MathUtils.clamp(Number(parsed.gridSize) || buildGridDefaultSize, 0.25, 1);
+    return parsed.rooms.map(normalizeBuildRoom);
+  } catch {
+    return createDefaultBuildLayout();
+  }
+}
+
+let buildRooms = loadBuildLayout();
+
+function saveBuildLayout() {
+  try {
+    localStorage.setItem(buildLayoutStorageKey, JSON.stringify({
+      version: 1,
+      gridSize: buildGridSize,
+      rooms: buildRooms,
+    }));
+  } catch {
+    // Build planning data is optional.
+  }
+}
+
+function snapBuildValue(value) {
+  return Math.round(value / buildGridSize) * buildGridSize;
+}
+
+function setBuildStatus(text) {
+  if (buildStatus) buildStatus.textContent = text;
+}
+
+function disposeBuildRoomObject(object) {
+  object.traverse((child) => {
+    child.geometry?.dispose?.();
+    if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose?.());
+  });
+}
+
+function renderBuildLayout() {
+  buildRaycastObjects.length = 0;
+  [...buildGroup.children].forEach((child) => {
+    if (child === buildGridHelper) return;
+    buildGroup.remove(child);
+    disposeBuildRoomObject(child);
+  });
+
+  buildRooms.forEach((roomConfig, index) => {
+    const selected = index === selectedBuildRoomIndex;
+    const group = new THREE.Group();
+    const fill = new THREE.Mesh(
+      new THREE.PlaneGeometry(roomConfig.width, roomConfig.depth),
+      selected ? buildRoomSelectedMaterial : buildRoomFillMaterial,
+    );
+    fill.rotation.x = -Math.PI / 2;
+    fill.position.set(roomConfig.centerX, 0.028, roomConfig.centerZ);
+    fill.renderOrder = 40;
+    fill.userData.buildRoomIndex = index;
+    group.add(fill);
+    buildRaycastObjects.push(fill);
+
+    const halfW = roomConfig.width / 2;
+    const halfD = roomConfig.depth / 2;
+    const points = [
+      new THREE.Vector3(roomConfig.centerX - halfW, 0.05, roomConfig.centerZ - halfD),
+      new THREE.Vector3(roomConfig.centerX + halfW, 0.05, roomConfig.centerZ - halfD),
+      new THREE.Vector3(roomConfig.centerX + halfW, 0.05, roomConfig.centerZ + halfD),
+      new THREE.Vector3(roomConfig.centerX - halfW, 0.05, roomConfig.centerZ + halfD),
+    ];
+    const outline = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), selected ? buildSelectedWallMaterial : buildWallMaterial);
+    outline.renderOrder = 41;
+    group.add(outline);
+
+    [
+      ['front', roomConfig.centerX, roomConfig.centerZ + halfD, roomConfig.width, 0.18],
+      ['back', roomConfig.centerX, roomConfig.centerZ - halfD, roomConfig.width, 0.18],
+      ['left', roomConfig.centerX - halfW, roomConfig.centerZ, 0.18, roomConfig.depth],
+      ['right', roomConfig.centerX + halfW, roomConfig.centerZ, 0.18, roomConfig.depth],
+    ].forEach(([edge, x, z, width, depth]) => {
+      const handle = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), buildHandleMaterial);
+      handle.rotation.x = -Math.PI / 2;
+      handle.position.set(x, 0.082, z);
+      handle.renderOrder = 42;
+      handle.userData.buildRoomIndex = index;
+      handle.userData.buildEdge = edge;
+      group.add(handle);
+      buildRaycastObjects.push(handle);
+    });
+
+    buildGroup.add(group);
+  });
+}
+
+function syncBuildPanel() {
+  const roomConfig = buildRooms[selectedBuildRoomIndex];
+  if (!roomConfig) return;
+  if (buildTitle) buildTitle.textContent = `Stavba: ${roomConfig.label}`;
+  if (buildGridSizeInput) buildGridSizeInput.value = String(buildGridSize);
+  if (buildRoomWidthInput) buildRoomWidthInput.value = String(Number(roomConfig.width.toFixed(2)));
+  if (buildRoomDepthInput) buildRoomDepthInput.value = String(Number(roomConfig.depth.toFixed(2)));
+  if (buildRoomHeightInput) buildRoomHeightInput.value = String(Number(roomConfig.height.toFixed(2)));
+  if (buildRemoveRoomButton) buildRemoveRoomButton.disabled = buildRooms.length <= 1;
+}
+
+function updateSelectedBuildRoomFromInputs() {
+  const roomConfig = buildRooms[selectedBuildRoomIndex];
+  if (!roomConfig) return;
+  buildGridSize = THREE.MathUtils.clamp(Number(buildGridSizeInput?.value) || buildGridDefaultSize, 0.25, 1);
+  roomConfig.width = snapBuildValue(THREE.MathUtils.clamp(Number(buildRoomWidthInput?.value) || roomConfig.width, 2, 24));
+  roomConfig.depth = snapBuildValue(THREE.MathUtils.clamp(Number(buildRoomDepthInput?.value) || roomConfig.depth, 2, 28));
+  roomConfig.height = THREE.MathUtils.clamp(Number(buildRoomHeightInput?.value) || roomConfig.height, 2.2, 7);
+  saveBuildLayout();
+  renderBuildLayout();
+  syncBuildPanel();
+  setBuildStatus('Rozměry jsou uložené do stavebního plánu. Přepočet skutečných zdí přijde v další vrstvě.');
+}
+
+function getBuildPointerHit(event) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  return raycaster.intersectObjects(buildRaycastObjects, false)[0] ?? null;
+}
+
+function getBuildFloorPoint(event) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.ray.intersectPlane(buildFloorPlane, buildHitPoint);
+  return hit ? buildHitPoint.clone() : null;
+}
+
+function selectBuildRoom(index) {
+  selectedBuildRoomIndex = THREE.MathUtils.clamp(index, 0, Math.max(0, buildRooms.length - 1));
+  renderBuildLayout();
+  syncBuildPanel();
+}
+
+function enterBuildTopView() {
+  if (buildModeActive) return;
+  releaseLook();
+  buildSavedView = {
+    bodyPosition: body.position.clone(),
+    bodyYaw,
+    headYaw,
+    pitch,
+    cameraPosition: camera.position.clone(),
+  };
+  buildModeActive = true;
+  buildGroup.visible = true;
+  const minX = Math.min(...buildRooms.map((roomConfig) => roomConfig.centerX - roomConfig.width / 2));
+  const maxX = Math.max(...buildRooms.map((roomConfig) => roomConfig.centerX + roomConfig.width / 2));
+  const minZ = Math.min(...buildRooms.map((roomConfig) => roomConfig.centerZ - roomConfig.depth / 2));
+  const maxZ = Math.max(...buildRooms.map((roomConfig) => roomConfig.centerZ + roomConfig.depth / 2));
+  body.position.set((minX + maxX) / 2, 31, (minZ + maxZ) / 2);
+  body.rotation.set(0, 0, 0);
+  camera.position.set(0, 0, 0);
+  camera.rotation.order = 'YXZ';
+  camera.rotation.set(-Math.PI / 2, 0, 0);
+  crosshair.classList.add('viewer-hidden');
+  setBuildStatus('Půdorys zapnutý. Klikni místnost nebo tahej za zlaté hrany.');
+  renderBuildLayout();
+}
+
+function exitBuildTopView() {
+  if (!buildModeActive) return;
+  buildModeActive = false;
+  buildGroup.visible = false;
+  if (buildSavedView) {
+    body.position.copy(buildSavedView.bodyPosition);
+    camera.position.copy(buildSavedView.cameraPosition);
+    bodyYaw = buildSavedView.bodyYaw;
+    headYaw = buildSavedView.headYaw;
+    pitch = buildSavedView.pitch;
+    syncCameraRotation();
+  }
+  buildSavedView = null;
+  crosshair.classList.remove('viewer-hidden');
+  updateStatus();
+}
+
+function beginBuildDrag(event) {
+  if (!buildModeActive) return false;
+  const hit = getBuildPointerHit(event);
+  if (!hit) return false;
+  const index = hit.object.userData.buildRoomIndex;
+  if (Number.isInteger(index)) selectBuildRoom(index);
+  if (hit.object.userData.buildEdge) {
+    draggingBuildHandle = {
+      roomIndex: selectedBuildRoomIndex,
+      edge: hit.object.userData.buildEdge,
+    };
+    setBuildStatus('Táhni hranu po mřížce. Puštěním myši změnu uložíš.');
+  }
+  return true;
+}
+
+function updateBuildDrag(event) {
+  if (!buildModeActive || !draggingBuildHandle) return false;
+  const point = getBuildFloorPoint(event);
+  const roomConfig = buildRooms[draggingBuildHandle.roomIndex];
+  if (!point || !roomConfig) return false;
+  const minSize = 2;
+  const left = roomConfig.centerX - roomConfig.width / 2;
+  const right = roomConfig.centerX + roomConfig.width / 2;
+  const back = roomConfig.centerZ - roomConfig.depth / 2;
+  const front = roomConfig.centerZ + roomConfig.depth / 2;
+  if (draggingBuildHandle.edge === 'left') {
+    const nextLeft = Math.min(snapBuildValue(point.x), right - minSize);
+    roomConfig.centerX = (nextLeft + right) / 2;
+    roomConfig.width = right - nextLeft;
+  } else if (draggingBuildHandle.edge === 'right') {
+    const nextRight = Math.max(snapBuildValue(point.x), left + minSize);
+    roomConfig.centerX = (left + nextRight) / 2;
+    roomConfig.width = nextRight - left;
+  } else if (draggingBuildHandle.edge === 'back') {
+    const nextBack = Math.min(snapBuildValue(point.z), front - minSize);
+    roomConfig.centerZ = (nextBack + front) / 2;
+    roomConfig.depth = front - nextBack;
+  } else if (draggingBuildHandle.edge === 'front') {
+    const nextFront = Math.max(snapBuildValue(point.z), back + minSize);
+    roomConfig.centerZ = (back + nextFront) / 2;
+    roomConfig.depth = nextFront - back;
+  }
+  renderBuildLayout();
+  syncBuildPanel();
+  return true;
+}
+
+function finishBuildDrag() {
+  if (!draggingBuildHandle) return false;
+  draggingBuildHandle = null;
+  saveBuildLayout();
+  setBuildStatus('Hrana upravená. Plán je uložený lokálně.');
+  return true;
+}
+
+function addBuildRoom() {
+  const source = buildRooms[selectedBuildRoomIndex] ?? buildRooms[0] ?? normalizeBuildRoom(null, 0);
+  const roomConfig = {
+    ...source,
+    id: `room-${Date.now()}`,
+    label: `Místnost ${buildRooms.length + 1}`,
+    centerX: snapBuildValue(source.centerX + source.width + corridorLength),
+    centerZ: snapBuildValue(source.centerZ),
+  };
+  buildRooms.push(roomConfig);
+  selectBuildRoom(buildRooms.length - 1);
+  saveBuildLayout();
+  setBuildStatus('Nová místnost přidaná do půdorysu.');
+}
+
+function removeSelectedBuildRoom() {
+  if (buildRooms.length <= 1) return;
+  buildRooms.splice(selectedBuildRoomIndex, 1);
+  selectedBuildRoomIndex = Math.min(selectedBuildRoomIndex, buildRooms.length - 1);
+  saveBuildLayout();
+  renderBuildLayout();
+  syncBuildPanel();
+  setBuildStatus('Místnost smazaná ze stavebního plánu.');
+}
+
+renderBuildLayout();
+syncBuildPanel();
 
 function getCenterRaycaster() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -5725,7 +6071,7 @@ function updateGalleryAudioListener() {
 galleryAudio.addEventListener('ended', playNextGalleryTrack);
 audioToggle?.addEventListener('click', toggleGalleryAudio);
 window.addEventListener('pointerdown', (event) => {
-  if (event.target instanceof Element && event.target.closest('#audio-toggle, #light-editor, #art-editor, #pedestal-editor, #text-panel-editor, #audio-editor')) {
+  if (event.target instanceof Element && event.target.closest('#audio-toggle, #light-editor, #art-editor, #pedestal-editor, #build-editor, #text-panel-editor, #audio-editor')) {
     return;
   }
   tryStartRequestedAudio();
@@ -5901,8 +6247,10 @@ toggleGalleryEditor.addEventListener('click', () => {
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
+    buildPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
+    exitBuildTopView();
     artPreview.visible = false;
   }
   syncEditorToggleState();
@@ -5915,8 +6263,10 @@ toggleLightEditor.addEventListener('click', () => {
     galleryPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
+    buildPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
+    exitBuildTopView();
     artPreview.visible = false;
   }
   updateLightLabels();
@@ -6024,8 +6374,10 @@ toggleArtEditor.addEventListener('click', () => {
     galleryPanel.classList.remove('visible');
     lightPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
+    buildPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
+    exitBuildTopView();
     updateLightLabels();
   }
   syncArtPanel();
@@ -6040,8 +6392,10 @@ togglePedestalEditor.addEventListener('click', () => {
     galleryPanel.classList.remove('visible');
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
+    buildPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
+    exitBuildTopView();
     artPreview.visible = false;
   }
   syncPedestalPanel();
@@ -6056,10 +6410,31 @@ toggleTextPanelEditor.addEventListener('click', () => {
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
+    buildPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
+    exitBuildTopView();
     artPreview.visible = false;
   }
   syncTextPanelPanel();
+  syncEditorToggleState();
+});
+
+toggleBuildEditor.addEventListener('click', () => {
+  buildPanel.classList.toggle('visible');
+  if (buildPanel.classList.contains('visible')) {
+    clearSelectedEditable('build');
+    galleryPanel.classList.remove('visible');
+    lightPanel.classList.remove('visible');
+    artPanel.classList.remove('visible');
+    pedestalPanel.classList.remove('visible');
+    textPanelPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
+    artPreview.visible = false;
+    syncBuildPanel();
+    enterBuildTopView();
+  } else {
+    exitBuildTopView();
+  }
   syncEditorToggleState();
 });
 
@@ -6071,10 +6446,21 @@ toggleAudioEditor.addEventListener('click', () => {
     lightPanel.classList.remove('visible');
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
+    buildPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
+    exitBuildTopView();
     artPreview.visible = false;
   }
   syncEditorToggleState();
+});
+
+buildTopViewButton.addEventListener('click', enterBuildTopView);
+buildResetViewButton.addEventListener('click', exitBuildTopView);
+buildAddRoomButton.addEventListener('click', addBuildRoom);
+buildRemoveRoomButton.addEventListener('click', removeSelectedBuildRoom);
+[buildGridSizeInput, buildRoomWidthInput, buildRoomDepthInput, buildRoomHeightInput].forEach((input) => {
+  input.addEventListener('input', updateSelectedBuildRoomFromInputs);
+  input.addEventListener('change', updateSelectedBuildRoomFromInputs);
 });
 
 audioVolumeInput.addEventListener('input', () => {
@@ -6420,6 +6806,9 @@ function syncCameraRotation() {
 }
 
 function resetView() {
+  if (buildModeActive) {
+    exitBuildTopView();
+  }
   body.position.set(0, eyeHeight, 2.4);
   currentEyeHeight = eyeHeight;
   verticalVelocity = 0;
@@ -6501,6 +6890,16 @@ document.addEventListener('keydown', (event) => {
     return;
   }
 
+  if (buildModeActive) {
+    if (event.code === 'Escape') {
+      event.preventDefault();
+      buildPanel.classList.remove('visible');
+      exitBuildTopView();
+      syncEditorToggleState();
+    }
+    return;
+  }
+
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC', 'Space'].includes(event.code)) {
     event.preventDefault();
     if (event.code === 'KeyW') {
@@ -6551,6 +6950,12 @@ function updateFallbackTurn(event) {
 }
 
 canvas.addEventListener('mousedown', (event) => {
+  if (buildModeActive) {
+    event.preventDefault();
+    if (event.button === 0) beginBuildDrag(event);
+    return;
+  }
+
   if (event.button === 2) {
     event.preventDefault();
     if (openPaintingActionFromCrosshair()) {
@@ -6687,6 +7092,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 
 window.addEventListener('mouseup', () => {
+  if (finishBuildDrag()) return;
   if (pointerLocked) return;
   if (draggingLook || fallbackTurning) disableLook();
 });
@@ -6719,6 +7125,10 @@ document.addEventListener('visibilitychange', () => {
 
 window.addEventListener('mousemove', (event) => {
   if (isTouchDevice) return;
+  if (buildModeActive) {
+    updateBuildDrag(event);
+    return;
+  }
   if (!pointerLocked) {
     rememberCanvasPointer(event);
   }
@@ -6878,6 +7288,7 @@ const right = new THREE.Vector3();
 const movement = new THREE.Vector3();
 
 function updateMovement(delta) {
+  if (buildModeActive) return;
   const previousPosition = body.position.clone();
 
   if (teleportOutOfClosedFutureWing()) return;
@@ -7143,6 +7554,19 @@ window.__galleryDebug = () => ({
   },
   displayPedestals: displayPedestals.length,
   displayTextPanels: displayTextPanels.length,
+  buildMode: {
+    active: buildModeActive,
+    selectedRoomIndex: selectedBuildRoomIndex,
+    gridSize: buildGridSize,
+    rooms: buildRooms.map((roomConfig) => ({
+      id: roomConfig.id,
+      width: Number(roomConfig.width.toFixed(2)),
+      depth: Number(roomConfig.depth.toFixed(2)),
+      height: Number(roomConfig.height.toFixed(2)),
+      centerX: Number(roomConfig.centerX.toFixed(2)),
+      centerZ: Number(roomConfig.centerZ.toFixed(2)),
+    })),
+  },
   textPanelDetails: displayTextPanels.map((textPanelData) => ({
     width: Number(textPanelData.width.toFixed(3)),
     height: Number(textPanelData.height.toFixed(3)),
