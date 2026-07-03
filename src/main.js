@@ -4160,10 +4160,115 @@ function addDynamicWallSegment(startX, startZ, endX, endZ, height) {
   return wall;
 }
 
-function addDynamicRoomArchitecture(roomConfig) {
+function addDynamicWallWithOpenings(startX, startZ, endX, endZ, height, openings = []) {
+  const horizontal = Math.abs(endZ - startZ) < 0.01;
+  const sortedOpenings = openings
+    .map((opening) => ({
+      center: horizontal ? opening.x : opening.z,
+      width: opening.width ?? doorway.width,
+    }))
+    .sort((first, second) => first.center - second.center);
+  let cursor = horizontal ? Math.min(startX, endX) : Math.min(startZ, endZ);
+  const end = horizontal ? Math.max(startX, endX) : Math.max(startZ, endZ);
+  sortedOpenings.forEach((opening) => {
+    const gapStart = THREE.MathUtils.clamp(opening.center - opening.width / 2, cursor, end);
+    const gapEnd = THREE.MathUtils.clamp(opening.center + opening.width / 2, cursor, end);
+    if (gapStart - cursor > 0.05) {
+      if (horizontal) {
+        addDynamicWallSegment(cursor, startZ, gapStart, startZ, height);
+      } else {
+        addDynamicWallSegment(startX, cursor, startX, gapStart, height);
+      }
+    }
+    cursor = Math.max(cursor, gapEnd);
+  });
+  if (end - cursor > 0.05) {
+    if (horizontal) {
+      addDynamicWallSegment(cursor, startZ, end, startZ, height);
+    } else {
+      addDynamicWallSegment(startX, cursor, startX, end, height);
+    }
+  }
+}
+
+function getOpeningBucket(openingsByRoom, roomId, side) {
+  if (!openingsByRoom.has(roomId)) {
+    openingsByRoom.set(roomId, { back: [], front: [], left: [], right: [] });
+  }
+  return openingsByRoom.get(roomId)[side];
+}
+
+function getBuildRoomConnections(rooms) {
+  const openingsByRoom = new Map();
+  const connectors = [];
+  rooms.forEach((firstRoom, firstIndex) => {
+    const firstBounds = getRoomBounds(firstRoom);
+    rooms.slice(firstIndex + 1).forEach((secondRoom) => {
+      const secondBounds = getRoomBounds(secondRoom);
+      const overlapMinX = Math.max(firstBounds.minX, secondBounds.minX);
+      const overlapMaxX = Math.min(firstBounds.maxX, secondBounds.maxX);
+      const overlapMinZ = Math.max(firstBounds.minZ, secondBounds.minZ);
+      const overlapMaxZ = Math.min(firstBounds.maxZ, secondBounds.maxZ);
+      const overlapX = overlapMaxX - overlapMinX;
+      const overlapZ = overlapMaxZ - overlapMinZ;
+      const verticalGapForward = secondBounds.minZ - firstBounds.maxZ;
+      const verticalGapBackward = firstBounds.minZ - secondBounds.maxZ;
+      const horizontalGapRight = secondBounds.minX - firstBounds.maxX;
+      const horizontalGapLeft = firstBounds.minX - secondBounds.maxX;
+
+      if (overlapX >= doorway.width && verticalGapForward <= corridorLength * 1.8) {
+        const x = THREE.MathUtils.clamp((overlapMinX + overlapMaxX) / 2, firstBounds.minX + doorway.width / 2, firstBounds.maxX - doorway.width / 2);
+        getOpeningBucket(openingsByRoom, firstRoom.id, 'front').push({ x });
+        getOpeningBucket(openingsByRoom, secondRoom.id, 'back').push({ x });
+        connectors.push({ axis: 'z', x, minZ: firstBounds.maxZ, maxZ: secondBounds.minZ });
+      } else if (overlapX >= doorway.width && verticalGapBackward <= corridorLength * 1.8) {
+        const x = THREE.MathUtils.clamp((overlapMinX + overlapMaxX) / 2, firstBounds.minX + doorway.width / 2, firstBounds.maxX - doorway.width / 2);
+        getOpeningBucket(openingsByRoom, firstRoom.id, 'back').push({ x });
+        getOpeningBucket(openingsByRoom, secondRoom.id, 'front').push({ x });
+        connectors.push({ axis: 'z', x, minZ: secondBounds.maxZ, maxZ: firstBounds.minZ });
+      } else if (overlapZ >= doorway.width && horizontalGapRight <= corridorLength * 1.8) {
+        const z = THREE.MathUtils.clamp((overlapMinZ + overlapMaxZ) / 2, firstBounds.minZ + doorway.width / 2, firstBounds.maxZ - doorway.width / 2);
+        getOpeningBucket(openingsByRoom, firstRoom.id, 'right').push({ z });
+        getOpeningBucket(openingsByRoom, secondRoom.id, 'left').push({ z });
+        connectors.push({ axis: 'x', z, minX: firstBounds.maxX, maxX: secondBounds.minX });
+      } else if (overlapZ >= doorway.width && horizontalGapLeft <= corridorLength * 1.8) {
+        const z = THREE.MathUtils.clamp((overlapMinZ + overlapMaxZ) / 2, firstBounds.minZ + doorway.width / 2, firstBounds.maxZ - doorway.width / 2);
+        getOpeningBucket(openingsByRoom, firstRoom.id, 'left').push({ z });
+        getOpeningBucket(openingsByRoom, secondRoom.id, 'right').push({ z });
+        connectors.push({ axis: 'x', z, minX: secondBounds.maxX, maxX: firstBounds.minX });
+      }
+    });
+  });
+  return { openingsByRoom, connectors };
+}
+
+function addDynamicConnectorArchitecture(connector) {
+  if (connector.axis === 'z') {
+    const depth = connector.maxZ - connector.minZ;
+    if (depth <= 0.05) return;
+    const centerZ = (connector.minZ + connector.maxZ) / 2;
+    const floorMesh = addDynamicPlane(doorway.width, depth, floorMaterial, [connector.x, 0.004, centerZ], [-Math.PI / 2, 0, 0], 8);
+    addFloorEdgeDarkening(floorMesh, doorway.width, depth);
+    addDynamicPlane(doorway.width, depth, ceilingMaterial, [connector.x, doorway.height + 0.5, centerZ], [Math.PI / 2, 0, 0], 1);
+    addDynamicWallSegment(connector.x - doorway.width / 2, connector.minZ, connector.x - doorway.width / 2, connector.maxZ, doorway.height);
+    addDynamicWallSegment(connector.x + doorway.width / 2, connector.minZ, connector.x + doorway.width / 2, connector.maxZ, doorway.height);
+    return;
+  }
+  const width = connector.maxX - connector.minX;
+  if (width <= 0.05) return;
+  const centerX = (connector.minX + connector.maxX) / 2;
+  const floorMesh = addDynamicPlane(width, doorway.width, floorMaterial, [centerX, 0.004, connector.z], [-Math.PI / 2, 0, 0], 8);
+  addFloorEdgeDarkening(floorMesh, width, doorway.width);
+  addDynamicPlane(width, doorway.width, ceilingMaterial, [centerX, doorway.height + 0.5, connector.z], [Math.PI / 2, 0, 0], 1);
+  addDynamicWallSegment(connector.minX, connector.z - doorway.width / 2, connector.maxX, connector.z - doorway.width / 2, doorway.height);
+  addDynamicWallSegment(connector.minX, connector.z + doorway.width / 2, connector.maxX, connector.z + doorway.width / 2, doorway.height);
+}
+
+function addDynamicRoomArchitecture(roomConfig, openingsByRoom = new Map()) {
   const width = getRoomWidth(roomConfig);
   const depth = getRoomDepth(roomConfig);
   const height = getRoomHeight(roomConfig);
+  const openings = openingsByRoom.get(roomConfig.id) ?? { back: [], front: [], left: [], right: [] };
   const leftX = roomConfig.centerX - width / 2;
   const rightX = roomConfig.centerX + width / 2;
   const backZ = roomConfig.centerZ - depth / 2;
@@ -4171,21 +4276,41 @@ function addDynamicRoomArchitecture(roomConfig) {
   const floorMesh = addDynamicPlane(width, depth, floorMaterial, [roomConfig.centerX, 0, roomConfig.centerZ], [-Math.PI / 2, 0, 0], 24);
   addFloorEdgeDarkening(floorMesh, width, depth);
   addDynamicPlane(width, depth, ceilingMaterial, [roomConfig.centerX, height, roomConfig.centerZ], [Math.PI / 2, 0, 0], 1);
-  addDynamicWallSegment(leftX, backZ, rightX, backZ, height);
-  addDynamicWallSegment(leftX, frontZ, rightX, frontZ, height);
-  addDynamicWallSegment(leftX, backZ, leftX, frontZ, height);
-  addDynamicWallSegment(rightX, backZ, rightX, frontZ, height);
+  addDynamicWallWithOpenings(leftX, backZ, rightX, backZ, height, openings.back);
+  addDynamicWallWithOpenings(leftX, frontZ, rightX, frontZ, height, openings.front);
+  addDynamicWallWithOpenings(leftX, backZ, leftX, frontZ, height, openings.left);
+  addDynamicWallWithOpenings(rightX, backZ, rightX, frontZ, height, openings.right);
 }
 
 function createNavigationSpacesFromBuildRooms() {
-  return buildRooms.map((roomConfig) => ({
+  const { connectors } = getBuildRoomConnections(buildRooms);
+  return [
+    ...buildRooms.map((roomConfig) => ({
     minX: roomConfig.centerX - roomConfig.width / 2,
     maxX: roomConfig.centerX + roomConfig.width / 2,
     minZ: roomConfig.centerZ - roomConfig.depth / 2,
     maxZ: roomConfig.centerZ + roomConfig.depth / 2,
     padZMin: 0,
     padZMax: 0,
-  }));
+    })),
+    ...connectors.filter((connector) => (
+      connector.axis === 'z' ? connector.maxZ - connector.minZ > 0.05 : connector.maxX - connector.minX > 0.05
+    )).map((connector) => connector.axis === 'z'
+      ? {
+        minX: connector.x - doorway.width / 2,
+        maxX: connector.x + doorway.width / 2,
+        minZ: connector.minZ,
+        maxZ: connector.maxZ,
+        isConnector: true,
+      }
+      : {
+        minX: connector.minX,
+        maxX: connector.maxX,
+        minZ: connector.z - doorway.width / 2,
+        maxZ: connector.z + doorway.width / 2,
+        isConnector: true,
+      }),
+  ];
 }
 
 function clampPointIntoBuildRooms(point, margin = 0.42) {
@@ -4249,7 +4374,9 @@ function applyBuildLayoutToGallery({ persist = true } = {}) {
     object.visible = false;
   });
   resetDynamicArchitecture();
-  buildRooms.forEach(addDynamicRoomArchitecture);
+  const { openingsByRoom, connectors } = getBuildRoomConnections(buildRooms);
+  buildRooms.forEach((roomConfig) => addDynamicRoomArchitecture(roomConfig, openingsByRoom));
+  connectors.forEach(addDynamicConnectorArchitecture);
   dynamicArchitectureGroup.visible = true;
   wallMeshes.length = 0;
   wallMeshes.push(...dynamicWallMeshes);
@@ -4573,7 +4700,12 @@ function resizeSelectedBuildEdge(direction) {
 renderBuildLayout();
 syncBuildPanel();
 if (buildArchitectureApplied) {
-  applyBuildLayoutToGallery({ persist: false });
+  try {
+    applyBuildLayoutToGallery({ persist: false });
+  } catch (error) {
+    console.warn('Saved build layout could not be applied. Restoring original gallery shell.', error);
+    restoreOriginalArchitecture({ persist: true });
+  }
 }
 
 function getCenterRaycaster() {
