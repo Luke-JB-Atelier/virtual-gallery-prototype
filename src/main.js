@@ -4365,26 +4365,34 @@ function preserveEditableObjectsInsideBuildRooms() {
 }
 
 function applyBuildLayoutToGallery({ persist = true } = {}) {
-  buildArchitectureApplied = true;
-  activeBuildRoomLayouts = buildRooms.map((roomConfig, index) => ({
-    ...normalizeBuildRoom(roomConfig, index),
-    label: roomConfig.label,
-  }));
-  baseArchitectureObjects.forEach((object) => {
-    object.visible = false;
-  });
-  resetDynamicArchitecture();
-  const { openingsByRoom, connectors } = getBuildRoomConnections(buildRooms);
-  buildRooms.forEach((roomConfig) => addDynamicRoomArchitecture(roomConfig, openingsByRoom));
-  connectors.forEach(addDynamicConnectorArchitecture);
-  dynamicArchitectureGroup.visible = true;
-  wallMeshes.length = 0;
-  wallMeshes.push(...dynamicWallMeshes);
-  navigationSpaces = createNavigationSpacesFromBuildRooms();
-  preserveEditableObjectsInsideBuildRooms();
-  if (persist) saveBuildLayout();
-  syncBuildPanel();
-  setBuildStatus('Stavba je použitá ve 3D galerii. Objekty zůstaly zachované a podlahové věci jsou přicvaknuté dovnitř místností.');
+  try {
+    buildArchitectureApplied = true;
+    activeBuildRoomLayouts = buildRooms.map((roomConfig, index) => ({
+      ...normalizeBuildRoom(roomConfig, index),
+      label: roomConfig.label,
+    }));
+    baseArchitectureObjects.forEach((object) => {
+      object.visible = false;
+    });
+    resetDynamicArchitecture();
+    const { openingsByRoom, connectors } = getBuildRoomConnections(buildRooms);
+    buildRooms.forEach((roomConfig) => addDynamicRoomArchitecture(roomConfig, openingsByRoom));
+    connectors.forEach(addDynamicConnectorArchitecture);
+    if (!dynamicWallMeshes.length) {
+      throw new Error('Build layout generated no walls.');
+    }
+    dynamicArchitectureGroup.visible = true;
+    wallMeshes.length = 0;
+    wallMeshes.push(...dynamicWallMeshes);
+    navigationSpaces = createNavigationSpacesFromBuildRooms();
+    preserveEditableObjectsInsideBuildRooms();
+    if (persist) saveBuildLayout();
+    syncBuildPanel();
+    setBuildStatus('Stavba je použitá ve 3D galerii. Objekty zůstaly zachované a podlahové věci jsou přicvaknuté dovnitř místností.');
+  } catch (error) {
+    console.warn('Build layout failed. Restoring original gallery shell.', error);
+    restoreOriginalArchitecture({ persist: true });
+  }
 }
 
 function restoreOriginalArchitecture({ persist = true } = {}) {
@@ -4699,14 +4707,6 @@ function resizeSelectedBuildEdge(direction) {
 
 renderBuildLayout();
 syncBuildPanel();
-if (buildArchitectureApplied) {
-  try {
-    applyBuildLayoutToGallery({ persist: false });
-  } catch (error) {
-    console.warn('Saved build layout could not be applied. Restoring original gallery shell.', error);
-    restoreOriginalArchitecture({ persist: true });
-  }
-}
 
 function getCenterRaycaster() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -6335,6 +6335,15 @@ const body = new THREE.Object3D();
 body.position.set(0, 1.68, 2.4);
 scene.add(body);
 body.add(camera);
+
+if (buildArchitectureApplied) {
+  try {
+    applyBuildLayoutToGallery({ persist: false });
+  } catch (error) {
+    console.warn('Saved build layout could not be applied. Restoring original gallery shell.', error);
+    restoreOriginalArchitecture({ persist: true });
+  }
+}
 
 const galleryAudio = new Audio();
 galleryAudio.preload = 'auto';
