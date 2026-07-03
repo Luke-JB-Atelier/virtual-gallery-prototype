@@ -4076,7 +4076,7 @@ function loadBuildLayout() {
     const parsed = JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null');
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.rooms)) return createDefaultBuildLayout();
     buildGridSize = THREE.MathUtils.clamp(Number(parsed.gridSize) || buildGridDefaultSize, 0.25, 1);
-    buildArchitectureApplied = Boolean(parsed.applied);
+    buildArchitectureApplied = false;
     return parsed.rooms.map(normalizeBuildRoom);
   } catch {
     return createDefaultBuildLayout();
@@ -4090,7 +4090,7 @@ function saveBuildLayout() {
     localStorage.setItem(buildLayoutStorageKey, JSON.stringify({
       version: 1,
       gridSize: buildGridSize,
-      applied: buildArchitectureApplied,
+      applied: false,
       rooms: buildRooms,
     }));
   } catch {
@@ -4365,34 +4365,10 @@ function preserveEditableObjectsInsideBuildRooms() {
 }
 
 function applyBuildLayoutToGallery({ persist = true } = {}) {
-  try {
-    buildArchitectureApplied = true;
-    activeBuildRoomLayouts = buildRooms.map((roomConfig, index) => ({
-      ...normalizeBuildRoom(roomConfig, index),
-      label: roomConfig.label,
-    }));
-    baseArchitectureObjects.forEach((object) => {
-      object.visible = false;
-    });
-    resetDynamicArchitecture();
-    const { openingsByRoom, connectors } = getBuildRoomConnections(buildRooms);
-    buildRooms.forEach((roomConfig) => addDynamicRoomArchitecture(roomConfig, openingsByRoom));
-    connectors.forEach(addDynamicConnectorArchitecture);
-    if (!dynamicWallMeshes.length) {
-      throw new Error('Build layout generated no walls.');
-    }
-    dynamicArchitectureGroup.visible = true;
-    wallMeshes.length = 0;
-    wallMeshes.push(...dynamicWallMeshes);
-    navigationSpaces = createNavigationSpacesFromBuildRooms();
-    preserveEditableObjectsInsideBuildRooms();
-    if (persist) saveBuildLayout();
-    syncBuildPanel();
-    setBuildStatus('Stavba je použitá ve 3D galerii. Objekty zůstaly zachované a podlahové věci jsou přicvaknuté dovnitř místností.');
-  } catch (error) {
-    console.warn('Build layout failed. Restoring original gallery shell.', error);
-    restoreOriginalArchitecture({ persist: true });
-  }
+  restoreOriginalArchitecture({ persist: false });
+  saveBuildLayout();
+  syncBuildPanel();
+  setBuildStatus('Stavební plán je uložený jen jako návrh. 3D galerie zůstává v původním stabilním skeletu.');
 }
 
 function restoreOriginalArchitecture({ persist = true } = {}) {
@@ -4519,7 +4495,7 @@ function updateSelectedBuildRoomFromInputs() {
     applyBuildLayoutToGallery({ persist: false });
     saveBuildLayout();
   } else {
-    setBuildStatus('Rozměry jsou uložené do stavebního plánu. Klikni na Použít stavbu pro přestavění 3D galerie.');
+    setBuildStatus('Rozměry jsou uložené do stavebního plánu. 3D galerie zatím zůstává beze změny.');
   }
 }
 
@@ -6337,12 +6313,7 @@ scene.add(body);
 body.add(camera);
 
 if (buildArchitectureApplied) {
-  try {
-    applyBuildLayoutToGallery({ persist: false });
-  } catch (error) {
-    console.warn('Saved build layout could not be applied. Restoring original gallery shell.', error);
-    restoreOriginalArchitecture({ persist: true });
-  }
+  restoreOriginalArchitecture({ persist: true });
 }
 
 const galleryAudio = new Audio();
@@ -6882,7 +6853,7 @@ toggleBuildEditor.addEventListener('click', () => {
     audioPanel.classList.remove('visible');
     artPreview.visible = false;
     syncBuildPanel();
-    enterBuildTopView();
+    setBuildStatus('Stavební mód je otevřený. Půdorys zapneš tlačítkem Půdorys.');
   } else {
     exitBuildTopView();
   }
