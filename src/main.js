@@ -91,7 +91,6 @@ const buildResetViewButton = document.querySelector('#build-reset-view');
 const buildAddRoomButton = document.querySelector('#build-add-room');
 const buildRemoveRoomButton = document.querySelector('#build-remove-room');
 const buildApplyButton = document.querySelector('#build-apply');
-const buildApplyBetaButton = document.querySelector('#build-apply-beta');
 const buildOriginalButton = document.querySelector('#build-original');
 const buildClearSelectionButton = document.querySelector('#build-clear-selection');
 const buildGridSizeInput = document.querySelector('#build-grid-size');
@@ -2465,6 +2464,31 @@ const trackSpecs = {
   'inner-b-right': { id: 'inner-b-right', axis: 'z', fixedAxis: 'x', fixed: roomWidth / 2 - 2.45, min: -roomDepth / 2 + 2.85, max: roomDepth / 2 - 2.85, custom: true },
 };
 
+function resolveTrackSpecForRoom(spec, roomConfig) {
+  const width = getRoomWidth(roomConfig);
+  const depth = getRoomDepth(roomConfig);
+  if (!spec.custom) {
+    return {
+      ...spec,
+      fixed: spec.id === 'back' ? -depth / 2 + 1.05
+        : spec.id === 'front' ? depth / 2 - 1.05
+          : spec.id === 'left' ? -width / 2 + 0.85
+            : spec.id === 'right' ? width / 2 - 0.85
+              : spec.fixed,
+      min: spec.axis === 'x' ? -width / 2 + 0.65 : -depth / 2 + 0.8,
+      max: spec.axis === 'x' ? width / 2 - 0.65 : depth / 2 - 0.8,
+    };
+  }
+  const alongScale = spec.axis === 'x' ? width / roomWidth : depth / roomDepth;
+  const fixedScale = spec.axis === 'x' ? depth / roomDepth : width / roomWidth;
+  return {
+    ...spec,
+    fixed: spec.fixed * fixedScale,
+    min: spec.min * alongScale,
+    max: spec.max * alongScale,
+  };
+}
+
 function getTrackPosition(trackId, trackPosition, roomIndex = 0) {
   const spec = trackSpecs[trackId] ?? trackSpecs.back;
   const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
@@ -2473,20 +2497,7 @@ function getTrackPosition(trackId, trackPosition, roomIndex = 0) {
   const width = getRoomWidth(roomConfig);
   const depth = getRoomDepth(roomConfig);
   const height = getRoomHeight(roomConfig);
-  const dynamicSpec = {
-    ...spec,
-    fixed: spec.id === 'back' ? -depth / 2 + 1.05
-      : spec.id === 'front' ? depth / 2 - 1.05
-        : spec.id === 'left' ? -width / 2 + 0.85
-          : spec.id === 'right' ? width / 2 - 0.85
-            : spec.fixed,
-    min: spec.axis === 'x' && !spec.custom ? -width / 2 + 0.65
-      : spec.axis === 'z' && !spec.custom ? -depth / 2 + 0.8
-        : spec.min,
-    max: spec.axis === 'x' && !spec.custom ? width / 2 - 0.65
-      : spec.axis === 'z' && !spec.custom ? depth / 2 - 0.8
-        : spec.max,
-  };
+  const dynamicSpec = resolveTrackSpecForRoom(spec, roomConfig);
   const t = THREE.MathUtils.clamp(trackPosition, 0, 1);
   const along = THREE.MathUtils.lerp(dynamicSpec.min, dynamicSpec.max, t);
   return new THREE.Vector3(
@@ -2501,16 +2512,9 @@ function getTrackPositionRatio(trackId, position, roomIndex = 0) {
   const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
   const centerX = roomConfig?.centerX ?? 0;
   const centerZ = roomConfig?.centerZ ?? 0;
-  const width = getRoomWidth(roomConfig);
-  const depth = getRoomDepth(roomConfig);
-  const min = spec.axis === 'x' && !spec.custom ? -width / 2 + 0.65
-    : spec.axis === 'z' && !spec.custom ? -depth / 2 + 0.8
-      : spec.min;
-  const max = spec.axis === 'x' && !spec.custom ? width / 2 - 0.65
-    : spec.axis === 'z' && !spec.custom ? depth / 2 - 0.8
-      : spec.max;
+  const dynamicSpec = resolveTrackSpecForRoom(spec, roomConfig);
   const along = spec.axis === 'x' ? position.x - centerX : position.z - centerZ;
-  return THREE.MathUtils.clamp((along - min) / (max - min), 0, 1);
+  return THREE.MathUtils.clamp((along - dynamicSpec.min) / Math.max(0.001, dynamicSpec.max - dynamicSpec.min), 0, 1);
 }
 
 function chooseTrackForTarget(targetPoint) {
@@ -2572,24 +2576,37 @@ function getRoomIndexForZ(z) {
   return getRoomIndexForPosition(0, z);
 }
 
-function createTrack(spec, centerX = 0, centerZ = 0) {
-  const length = spec.max - spec.min;
-  const geometry = spec.axis === 'x'
+const baseTrackMeshes = [];
+
+function createTrack(spec, roomConfig, { dynamic = false } = {}) {
+  const resolvedSpec = resolveTrackSpecForRoom(spec, roomConfig);
+  const centerX = roomConfig?.centerX ?? 0;
+  const centerZ = roomConfig?.centerZ ?? 0;
+  const height = getRoomHeight(roomConfig);
+  const length = Math.max(0.05, resolvedSpec.max - resolvedSpec.min);
+  const geometry = resolvedSpec.axis === 'x'
     ? new THREE.BoxGeometry(length, 0.035, 0.08)
     : new THREE.BoxGeometry(0.08, 0.035, length);
   const mesh = new THREE.Mesh(geometry, trackMaterial);
-  const center = (spec.min + spec.max) / 2;
+  const center = (resolvedSpec.min + resolvedSpec.max) / 2;
   mesh.position.set(
-    spec.axis === 'x' ? centerX + center : centerX + spec.fixed,
-    trackHeight,
-    spec.axis === 'z' ? centerZ + center : centerZ + spec.fixed,
+    resolvedSpec.axis === 'x' ? centerX + center : centerX + resolvedSpec.fixed,
+    height - 0.055,
+    resolvedSpec.axis === 'z' ? centerZ + center : centerZ + resolvedSpec.fixed,
   );
-  room.add(mesh);
+  if (dynamic) {
+    addDynamicMesh(mesh);
+  } else {
+    room.add(mesh);
+    baseTrackMeshes.push(mesh);
+  }
 }
 
-galleryRooms.forEach(({ centerX, centerZ }) => {
-  Object.values(trackSpecs).forEach((spec) => createTrack(spec, centerX, centerZ));
-});
+function createRoomTracks(roomConfig, options = {}) {
+  Object.values(trackSpecs).forEach((spec) => createTrack(spec, roomConfig, options));
+}
+
+galleryRooms.forEach((roomConfig) => createRoomTracks(roomConfig));
 
 const ceilingLights = [];
 let selectedLightIndex = 0;
@@ -4453,7 +4470,7 @@ function loadBuildLayout() {
     const parsed = JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null');
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.rooms)) return createDefaultBuildLayout();
     buildGridSize = THREE.MathUtils.clamp(Number(parsed.gridSize) || buildGridDefaultSize, 0.25, 1);
-    buildArchitectureApplied = false;
+    buildArchitectureApplied = Boolean(parsed.applied);
     return parsed.rooms.map(normalizeBuildRoom);
   } catch {
     return createDefaultBuildLayout();
@@ -4547,7 +4564,7 @@ function commitBuildRoomChange(index, nextRoom, successMessage) {
   syncBuildPanel();
   saveBuildLayout();
   if (buildArchitectureApplied) {
-    applyBuildLayoutToGallery({ persist: false, beta: true });
+    applyBuildLayoutToGallery({ persist: false });
     saveBuildLayout();
   }
   if (successMessage) setBuildStatus(successMessage);
@@ -4584,7 +4601,7 @@ function saveBuildLayout() {
     localStorage.setItem(buildLayoutStorageKey, JSON.stringify({
       version: 1,
       gridSize: buildGridSize,
-      applied: false,
+      applied: buildArchitectureApplied,
       rooms: buildRooms,
     }));
   } catch {
@@ -4858,18 +4875,7 @@ function preserveEditableObjectsInsideBuildRooms() {
   markEditableRaycastObjectsDirty();
 }
 
-function saveBuildPlanOnly() {
-  saveBuildLayout();
-  syncBuildPanel();
-  renderBuildPreview();
-  setBuildStatus('Stavební plán je uložený jen jako návrh. 3D galerie zůstává v původním stabilním skeletu.');
-}
-
-function applyBuildLayoutToGallery({ persist = true, beta = false } = {}) {
-  if (!beta) {
-    saveBuildPlanOnly();
-    return;
-  }
+function applyBuildLayoutToGallery({ persist = true } = {}) {
   restoreOriginalArchitecture({ persist: false });
   const normalizedRooms = buildRooms.map((roomConfig, index) => normalizeBuildRoom(roomConfig, index));
   const { openingsByRoom, connectors } = getBuildRoomConnections(normalizedRooms);
@@ -4878,9 +4884,13 @@ function applyBuildLayoutToGallery({ persist = true, beta = false } = {}) {
   baseArchitectureObjects.forEach((object) => {
     object.visible = false;
   });
+  baseTrackMeshes.forEach((mesh) => {
+    mesh.visible = false;
+  });
   resetDynamicArchitecture();
   dynamicArchitectureGroup.visible = true;
   normalizedRooms.forEach((roomConfig) => addDynamicRoomArchitecture(roomConfig, openingsByRoom));
+  normalizedRooms.forEach((roomConfig) => createRoomTracks(roomConfig, { dynamic: true }));
   connectors.forEach(addDynamicConnectorArchitecture);
   wallMeshes.length = 0;
   wallMeshes.push(...dynamicWallMeshes);
@@ -4889,7 +4899,7 @@ function applyBuildLayoutToGallery({ persist = true, beta = false } = {}) {
   if (persist) saveBuildLayout();
   renderBuildPreview();
   syncBuildPanel();
-  setBuildStatus('Beta stavba použita: návrh je teď zobrazený jako dynamické stěny. Původní skelet vrátíš tlačítkem Původní skelet.', 'warning');
+  setBuildStatus('Stavba uložená do galerie. Stěny, průchody a stropní lišty jsou přepočítané podle návrhu.');
 }
 
 function restoreOriginalArchitecture({ persist = true } = {}) {
@@ -4897,6 +4907,9 @@ function restoreOriginalArchitecture({ persist = true } = {}) {
   activeBuildRoomLayouts = null;
   baseArchitectureObjects.forEach((object) => {
     object.visible = true;
+  });
+  baseTrackMeshes.forEach((mesh) => {
+    mesh.visible = true;
   });
   resetDynamicArchitecture();
   dynamicArchitectureGroup.visible = false;
@@ -5274,7 +5287,7 @@ function finishBuildDrag() {
   draggingBuildHandle = null;
   saveBuildLayout();
   if (buildArchitectureApplied) {
-    applyBuildLayoutToGallery({ persist: false, beta: true });
+    applyBuildLayoutToGallery({ persist: false });
     saveBuildLayout();
   } else {
     setBuildStatus('Hrana upravená. Plán je uložený lokálně.');
@@ -5294,7 +5307,7 @@ function addBuildRoom() {
   };
   buildRooms.push(roomConfig);
   selectBuildRoom(buildRooms.length - 1);
-  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false, beta: true });
+  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
   saveBuildLayout();
   setBuildStatus('Nová místnost přidaná do půdorysu.');
 }
@@ -5303,7 +5316,7 @@ function removeSelectedBuildRoom() {
   if (buildRooms.length <= 1) return;
   buildRooms.splice(selectedBuildRoomIndex, 1);
   selectedBuildRoomIndex = Math.min(selectedBuildRoomIndex, buildRooms.length - 1);
-  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false, beta: true });
+  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
   saveBuildLayout();
   renderBuildLayout();
   syncBuildPanel();
@@ -6964,7 +6977,7 @@ scene.add(body);
 body.add(camera);
 
 if (buildArchitectureApplied) {
-  restoreOriginalArchitecture({ persist: true });
+  applyBuildLayoutToGallery({ persist: false });
 }
 
 const galleryAudio = new Audio();
@@ -7544,7 +7557,6 @@ buildResetViewButton.addEventListener('click', exitBuildTopView);
 buildAddRoomButton.addEventListener('click', addBuildRoom);
 buildRemoveRoomButton.addEventListener('click', removeSelectedBuildRoom);
 buildApplyButton.addEventListener('click', () => applyBuildLayoutToGallery());
-buildApplyBetaButton.addEventListener('click', () => applyBuildLayoutToGallery({ beta: true }));
 buildOriginalButton.addEventListener('click', () => restoreOriginalArchitecture());
 buildClearSelectionButton.addEventListener('click', clearBuildSelection);
 buildWallInButton.addEventListener('click', () => moveSelectedConstructionWall(-1));
