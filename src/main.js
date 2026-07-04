@@ -4187,6 +4187,97 @@ function refreshConstructionAttachments() {
 
 refreshConstructionAttachments();
 
+function getConstructionWallById(wallId) {
+  return constructionModel.walls.find((wall) => wall.id === wallId) ?? null;
+}
+
+function getWallSideLabel(side) {
+  return {
+    back: 'zadní',
+    front: 'přední',
+    left: 'levá',
+    right: 'pravá',
+  }[side] ?? side;
+}
+
+function getRoomLabelById(roomId) {
+  return constructionModel.rooms.find((roomConfig) => roomConfig.id === roomId)?.label ?? roomId;
+}
+
+function clearSelectedWallHighlight() {
+  while (selectedWallHighlightGroup.children.length) {
+    const child = selectedWallHighlightGroup.children[0];
+    selectedWallHighlightGroup.remove(child);
+    child.geometry?.dispose?.();
+  }
+}
+
+function renderSelectedWallHighlight() {
+  clearSelectedWallHighlight();
+  const wall = getConstructionWallById(selectedConstructionWallId);
+  if (!wall) return;
+  const geometry = new THREE.PlaneGeometry(wall.length, wall.height);
+  const highlight = new THREE.Mesh(geometry, selectedWallHighlightMaterial);
+  const outlineGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-wall.length / 2, -wall.height / 2, 0.004),
+    new THREE.Vector3(wall.length / 2, -wall.height / 2, 0.004),
+    new THREE.Vector3(wall.length / 2, wall.height / 2, 0.004),
+    new THREE.Vector3(-wall.length / 2, wall.height / 2, 0.004),
+  ]);
+  const outline = new THREE.LineLoop(outlineGeometry, selectedWallOutlineMaterial);
+  const offset = 0.035;
+  const normal = wall.normal;
+  const centerAlong = (wall.min + wall.max) / 2;
+  const x = wall.axis === 'x' ? centerAlong : wall.fixed + normal.x * offset;
+  const z = wall.axis === 'z' ? centerAlong : wall.fixed + normal.z * offset;
+  const rotationY = Math.abs(normal.x) > Math.abs(normal.z)
+    ? (normal.x > 0 ? Math.PI / 2 : -Math.PI / 2)
+    : (normal.z > 0 ? 0 : Math.PI);
+  highlight.position.set(x, wall.height / 2, z);
+  highlight.rotation.y = rotationY;
+  outline.position.copy(highlight.position);
+  outline.rotation.copy(highlight.rotation);
+  selectedWallHighlightGroup.add(highlight, outline);
+}
+
+function selectConstructionWall(wallId) {
+  selectedConstructionWallId = wallId;
+  renderSelectedWallHighlight();
+  const wall = getConstructionWallById(wallId);
+  if (!wall) {
+    setBuildStatus('Stěna není vybraná.');
+    return;
+  }
+  setBuildStatus(`Vybraná stěna: ${getRoomLabelById(wall.roomId)} - ${getWallSideLabel(wall.side)} strana. Délka ${wall.length.toFixed(2)} m, výška ${wall.height.toFixed(2)} m.`);
+}
+
+function getConstructionWallHitFromPointer(event) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(wallMeshes, false)[0];
+  if (!hit) return null;
+  const cameraPosition = new THREE.Vector3();
+  camera.getWorldPosition(cameraPosition);
+  const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+  if (normal.dot(cameraPosition.clone().sub(hit.point)) < 0) {
+    normal.negate();
+  }
+  const attachment = getWallAttachmentForSurface(hit.point, normal);
+  return attachment?.wallId ? { wallId: attachment.wallId, hit, attachment } : null;
+}
+
+function selectConstructionWallFromPointer(event) {
+  const result = getConstructionWallHitFromPointer(event);
+  if (!result) {
+    setBuildStatus('Klikni na stěnu galerie pro výběr. Fyzická stavba se zatím nemění.');
+    return false;
+  }
+  selectConstructionWall(result.wallId);
+  return true;
+}
+
 const buildLayoutStorageKey = 'virtual-gallery-build-layout-v1';
 const buildGridDefaultSize = 0.5;
 let buildModeActive = false;
@@ -4194,9 +4285,11 @@ let buildSavedView = null;
 let selectedBuildRoomIndex = 0;
 let draggingBuildHandle = null;
 let selectedBuildEdge = null;
+let selectedConstructionWallId = null;
 let buildGridSize = buildGridDefaultSize;
 const buildGroup = new THREE.Group();
 const buildGridHelper = new THREE.GridHelper(64, 128, 0x4c6f8f, 0x25313a);
+const selectedWallHighlightGroup = new THREE.Group();
 const buildRaycastObjects = [];
 const buildFloorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const buildHitPoint = new THREE.Vector3();
@@ -4223,11 +4316,24 @@ const buildHandleMaterial = new THREE.MeshBasicMaterial({
 });
 const buildWallMaterial = new THREE.LineBasicMaterial({ color: 0xf7f4ea, transparent: true, opacity: 0.92 });
 const buildSelectedWallMaterial = new THREE.LineBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 1 });
+const selectedWallHighlightMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffd36a,
+  transparent: true,
+  opacity: 0.24,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const selectedWallOutlineMaterial = new THREE.LineBasicMaterial({
+  color: 0xffd36a,
+  transparent: true,
+  opacity: 0.95,
+});
 
 buildGroup.visible = false;
 buildGridHelper.position.y = 0.012;
 buildGroup.add(buildGridHelper);
 scene.add(buildGroup);
+room.add(selectedWallHighlightGroup);
 
 function createDefaultBuildLayout() {
   return galleryRooms.map((galleryRoom, index) => ({
@@ -7035,9 +7141,14 @@ toggleBuildEditor.addEventListener('click', () => {
     audioPanel.classList.remove('visible');
     artPreview.visible = false;
     syncBuildPanel();
-    setBuildStatus('Stavební mód je otevřený. Půdorys zapneš tlačítkem Půdorys.');
+    renderSelectedWallHighlight();
+    setBuildStatus(selectedConstructionWallId
+      ? 'Stavební mód je otevřený. Vybraná stěna je zvýrazněná; půdorys zapneš tlačítkem Půdorys.'
+      : 'Stavební mód je otevřený. Klikni myší na stěnu pro výběr; půdorys zapneš tlačítkem Půdorys.');
   } else {
     exitBuildTopView();
+    selectedConstructionWallId = null;
+    clearSelectedWallHighlight();
   }
   syncEditorToggleState();
 });
@@ -7559,6 +7670,12 @@ canvas.addEventListener('mousedown', (event) => {
   if (buildModeActive) {
     event.preventDefault();
     if (event.button === 0) beginBuildDrag(event);
+    return;
+  }
+
+  if (buildPanel.classList.contains('visible') && event.button === 0 && !isTouchDevice) {
+    event.preventDefault();
+    selectConstructionWallFromPointer(event);
     return;
   }
 
@@ -8185,6 +8302,7 @@ window.__galleryDebug = () => ({
   buildMode: {
     active: buildModeActive,
     selectedRoomIndex: selectedBuildRoomIndex,
+    selectedWallId: selectedConstructionWallId,
     gridSize: buildGridSize,
     rooms: buildRooms.map((roomConfig) => ({
       id: roomConfig.id,
