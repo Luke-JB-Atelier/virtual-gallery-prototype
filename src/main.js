@@ -574,7 +574,7 @@ function createBaseConstructionModel() {
   const rooms = galleryRooms.map((roomConfig, index) => ({
     id: roomConfig.id,
     index,
-    label: index < 3 ? `Místnost ${index + 1}` : `Boční místnost ${index - 2}`,
+    label: `Místnost ${index + 1}`,
     centerX: roomConfig.centerX,
     centerZ: roomConfig.centerZ,
     width: roomWidth,
@@ -1856,6 +1856,7 @@ function createDisplayPedestal({
   height = 1.1,
   type = 'pillar',
   content = null,
+  roomAttachment = null,
 } = {}) {
   const group = new THREE.Group();
   group.position.set(x, 0, z);
@@ -1939,6 +1940,7 @@ function createDisplayPedestal({
     type,
     content: resolvedContent,
     easelCanvasMaterials,
+    roomAttachment,
   };
   group.userData.pedestalData = pedestalData;
   group.traverse((child) => {
@@ -2127,6 +2129,7 @@ const closedFutureWingBounds = {
 
 function isInsideClosedFutureWing(position) {
   return !editorMode
+    && !buildArchitectureApplied
     && position.x >= closedFutureWingBounds.minX
     && position.x <= closedFutureWingBounds.maxX
     && position.z >= closedFutureWingBounds.minZ
@@ -2134,7 +2137,7 @@ function isInsideClosedFutureWing(position) {
 }
 
 function getNavigationBounds(space, margin) {
-  const xInset = space.isConnector ? margin * 0.35 : margin;
+  const xInset = space.isConnector ? 0 : margin;
   const zMinInset = (space.padZMin ?? 0) * margin;
   const zMaxInset = (space.padZMax ?? 0) * margin;
   return {
@@ -3027,6 +3030,7 @@ function serializeGalleryState() {
       depth: Number(pedestalData.depth.toFixed(4)),
       height: Number(pedestalData.height.toFixed(4)),
       content: pedestalData.content ?? null,
+      roomAttachment: serializeRoomAttachment(pedestalData.roomAttachment),
     })),
     textPanels: displayTextPanels.map((textPanelData) => ({
       x: Number(textPanelData.group.position.x.toFixed(4)),
@@ -3816,6 +3820,25 @@ function serializeWallAttachment(attachment) {
   };
 }
 
+function normalizeRoomAttachmentConfig(attachment) {
+  if (!attachment || typeof attachment.roomId !== 'string') return null;
+  return {
+    roomId: attachment.roomId,
+    xRatio: THREE.MathUtils.clamp(Number(attachment.xRatio) || 0.5, 0, 1),
+    zRatio: THREE.MathUtils.clamp(Number(attachment.zRatio) || 0.5, 0, 1),
+  };
+}
+
+function serializeRoomAttachment(attachment) {
+  const normalized = normalizeRoomAttachmentConfig(attachment);
+  if (!normalized) return null;
+  return {
+    roomId: normalized.roomId,
+    xRatio: Number(normalized.xRatio.toFixed(4)),
+    zRatio: Number(normalized.zRatio.toFixed(4)),
+  };
+}
+
 function createPaintingFromConfig(config, fallbackArtwork = {}, index = 0) {
   const aspect = Number.isFinite(config.aspect) && config.aspect > 0
     ? config.aspect
@@ -4164,6 +4187,7 @@ function addSavedDisplayPedestals() {
       height: config.height,
       type: config.type ?? 'pillar',
       content: config.content ?? null,
+      roomAttachment: normalizeRoomAttachmentConfig(config.roomAttachment),
     });
   });
 }
@@ -4259,6 +4283,86 @@ function getSurfacePositionFromWallAttachment(attachment, fallbackOffset = 0.065
   };
 }
 
+function getRoomAttachmentForFloorObject(point) {
+  const roomConfig = findRoomLayoutForPoint(point, 0);
+  if (!roomConfig) return null;
+  const bounds = getRoomBounds(roomConfig);
+  return {
+    roomId: roomConfig.id,
+    xRatio: Number(THREE.MathUtils.clamp((point.x - bounds.minX) / Math.max(0.001, bounds.maxX - bounds.minX), 0, 1).toFixed(4)),
+    zRatio: Number(THREE.MathUtils.clamp((point.z - bounds.minZ) / Math.max(0.001, bounds.maxZ - bounds.minZ), 0, 1).toFixed(4)),
+  };
+}
+
+function getNearestRoomAttachmentForFloorObject(point, margin = 0.48) {
+  const activeRooms = getActiveGalleryRooms();
+  let closest = null;
+  let closestDistance = Infinity;
+  activeRooms.forEach((roomConfig) => {
+    const bounds = getRoomBounds(roomConfig, margin);
+    const x = THREE.MathUtils.clamp(point.x, bounds.minX, bounds.maxX);
+    const z = THREE.MathUtils.clamp(point.z, bounds.minZ, bounds.maxZ);
+    const distance = (point.x - x) ** 2 + (point.z - z) ** 2;
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closest = { roomConfig, point: new THREE.Vector3(x, 0, z) };
+    }
+  });
+  if (!closest) return null;
+  const bounds = getRoomBounds(closest.roomConfig);
+  return {
+    roomId: closest.roomConfig.id,
+    xRatio: Number(THREE.MathUtils.clamp((closest.point.x - bounds.minX) / Math.max(0.001, bounds.maxX - bounds.minX), 0, 1).toFixed(4)),
+    zRatio: Number(THREE.MathUtils.clamp((closest.point.z - bounds.minZ) / Math.max(0.001, bounds.maxZ - bounds.minZ), 0, 1).toFixed(4)),
+  };
+}
+
+function getFloorPositionFromRoomAttachment(attachment, objectRadius = 0.45) {
+  if (!attachment?.roomId) return null;
+  const roomConfig = getActiveGalleryRooms().find((item) => item.id === attachment.roomId) ?? null;
+  if (!roomConfig) return null;
+  const bounds = getRoomBounds(roomConfig, objectRadius);
+  if (bounds.minX > bounds.maxX || bounds.minZ > bounds.maxZ) return null;
+  return {
+    point: new THREE.Vector3(
+      THREE.MathUtils.lerp(bounds.minX, bounds.maxX, THREE.MathUtils.clamp(attachment.xRatio ?? 0.5, 0, 1)),
+      0,
+      THREE.MathUtils.lerp(bounds.minZ, bounds.maxZ, THREE.MathUtils.clamp(attachment.zRatio ?? 0.5, 0, 1)),
+    ),
+    roomConfig,
+  };
+}
+
+function getPedestalFloorRadius(pedestalData) {
+  return Math.max(0.42, Math.max(pedestalData.width ?? 0.72, pedestalData.depth ?? 0.72) / 2 + 0.18);
+}
+
+function refreshPedestalRoomAttachments() {
+  displayPedestals.forEach((pedestalData) => {
+    pedestalData.roomAttachment = getRoomAttachmentForFloorObject(pedestalData.group.position)
+      ?? pedestalData.roomAttachment
+      ?? getNearestRoomAttachmentForFloorObject(pedestalData.group.position, getPedestalFloorRadius(pedestalData));
+  });
+}
+
+function reattachPedestalsToRooms() {
+  displayPedestals.forEach((pedestalData) => {
+    const placement = getFloorPositionFromRoomAttachment(pedestalData.roomAttachment, getPedestalFloorRadius(pedestalData));
+    if (!placement) {
+      clampPointIntoBuildRooms(pedestalData.group.position, getPedestalFloorRadius(pedestalData));
+      pedestalData.roomAttachment = getRoomAttachmentForFloorObject(pedestalData.group.position)
+        ?? getNearestRoomAttachmentForFloorObject(pedestalData.group.position, getPedestalFloorRadius(pedestalData))
+        ?? pedestalData.roomAttachment
+        ?? null;
+      return;
+    }
+    pedestalData.group.position.x = placement.point.x;
+    pedestalData.group.position.z = placement.point.z;
+    pedestalData.roomAttachment = getRoomAttachmentForFloorObject(pedestalData.group.position) ?? pedestalData.roomAttachment;
+  });
+  markEditableRaycastObjectsDirty();
+}
+
 function reattachGroupToWall(group, attachment, fallbackOffset = 0.065) {
   const placement = getSurfacePositionFromWallAttachment(attachment, fallbackOffset);
   if (!placement) return false;
@@ -4327,6 +4431,17 @@ function refreshConstructionAttachments() {
     attachments.push({
       id: `switch:${index}`,
       kind: 'switch',
+      ...attachment,
+    });
+  });
+  displayPedestals.forEach((pedestalData, index) => {
+    const attachment = getRoomAttachmentForFloorObject(pedestalData.group.position)
+      ?? pedestalData.roomAttachment
+      ?? getNearestRoomAttachmentForFloorObject(pedestalData.group.position, getPedestalFloorRadius(pedestalData));
+    pedestalData.roomAttachment = attachment;
+    attachments.push({
+      id: `pedestal:${index}`,
+      kind: pedestalData.type ?? 'pedestal',
       ...attachment,
     });
   });
@@ -4600,7 +4715,7 @@ room.add(selectedWallHighlightGroup);
 function createDefaultBuildLayout() {
   return galleryRooms.map((galleryRoom, index) => ({
     id: galleryRoom.id ?? `room-${index + 1}`,
-    label: index < 3 ? `Místnost ${index + 1}` : `Boční místnost ${index - 2}`,
+    label: `Místnost ${index + 1}`,
     centerX: galleryRoom.centerX,
     centerZ: galleryRoom.centerZ,
     width: roomWidth,
@@ -4632,7 +4747,7 @@ function normalizeBuildRoom(roomConfig, index) {
       ? canonicalRoom.id
       : typeof roomConfig?.id === 'string' && roomConfig.id ? roomConfig.id : `room-${index + 1}`,
     label: canonicalRoom && (legacyFirstRoomId || !roomConfig?.customBuildRoom)
-      ? (index < 3 ? `Místnost ${index + 1}` : `Boční místnost ${index - 2}`)
+      ? `Místnost ${index + 1}`
       : typeof roomConfig?.label === 'string' && roomConfig.label ? roomConfig.label : `Místnost ${index + 1}`,
     centerX: Number.isFinite(roomConfig?.centerX) ? roomConfig.centerX : 0,
     centerZ: Number.isFinite(roomConfig?.centerZ) ? roomConfig.centerZ : index * (roomDepth + corridorLength),
@@ -5121,10 +5236,10 @@ function addDynamicRoomArchitecture(roomConfig, openingsByRoom = new Map()) {
   addDynamicWallWithOpenings(rightX, backZ, rightX, frontZ, height, openings.right);
 }
 
-function createNavigationSpacesFromBuildRooms() {
-  const { connectors } = getBuildRoomConnections(buildRooms);
+function createNavigationSpacesFromBuildRooms(rooms = buildRooms) {
+  const { connectors } = getBuildRoomConnections(rooms);
   return [
-    ...buildRooms.map((roomConfig) => ({
+    ...rooms.map((roomConfig) => ({
     minX: roomConfig.centerX - roomConfig.width / 2,
     maxX: roomConfig.centerX + roomConfig.width / 2,
     minZ: roomConfig.centerZ - roomConfig.depth / 2,
@@ -5138,13 +5253,13 @@ function createNavigationSpacesFromBuildRooms() {
       ? {
         minX: connector.x - doorway.width / 2,
         maxX: connector.x + doorway.width / 2,
-        minZ: connector.minZ,
-        maxZ: connector.maxZ,
+        minZ: connector.minZ - 0.62,
+        maxZ: connector.maxZ + 0.62,
         isConnector: true,
       }
       : {
-        minX: connector.minX,
-        maxX: connector.maxX,
+        minX: connector.minX - 0.62,
+        maxX: connector.maxX + 0.62,
         minZ: connector.z - doorway.width / 2,
         maxZ: connector.z + doorway.width / 2,
         isConnector: true,
@@ -5172,9 +5287,6 @@ function clampPointIntoBuildRooms(point, margin = 0.42) {
 }
 
 function preserveEditableObjectsInsideBuildRooms() {
-  displayPedestals.forEach((pedestalData) => {
-    clampPointIntoBuildRooms(pedestalData.group.position, 0.48);
-  });
   ceilingLights.forEach((lightData) => {
     const roomConfig = clampPointIntoBuildRooms(lightData.position, 0.62);
     if (roomConfig) {
@@ -5205,7 +5317,10 @@ function preserveEditableObjectsInsideBuildRooms() {
 
 function applyBuildLayoutToGallery({ persist = true } = {}) {
   const restoringAppliedLayout = buildArchitectureApplied && !activeBuildRoomLayouts;
-  if (!restoringAppliedLayout) refreshConstructionAttachments();
+  if (!restoringAppliedLayout) {
+    refreshConstructionAttachments();
+    refreshPedestalRoomAttachments();
+  }
   restoreOriginalArchitecture({ persist: false, reattach: false });
   const normalizedRooms = buildRooms.map((roomConfig, index) => normalizeBuildRoom(roomConfig, index));
   const { openingsByRoom, connectors } = getBuildRoomConnections(normalizedRooms);
@@ -5225,10 +5340,12 @@ function applyBuildLayoutToGallery({ persist = true } = {}) {
   connectors.forEach(addDynamicConnectorArchitecture);
   wallMeshes.length = 0;
   wallMeshes.push(...dynamicWallMeshes);
-  navigationSpaces = createNavigationSpacesFromBuildRooms();
+  navigationSpaces = createNavigationSpacesFromBuildRooms(normalizedRooms);
   reattachWallBoundObjects();
+  reattachPedestalsToRooms();
   preserveEditableObjectsInsideBuildRooms();
   refreshConstructionAttachments();
+  refreshPedestalRoomAttachments();
   if (persist) saveBuildLayout();
   renderBuildPreview();
   syncBuildPanel();
@@ -5236,7 +5353,10 @@ function applyBuildLayoutToGallery({ persist = true } = {}) {
 }
 
 function restoreOriginalArchitecture({ persist = true, reattach = true } = {}) {
-  if (reattach) refreshConstructionAttachments();
+  if (reattach) {
+    refreshConstructionAttachments();
+    refreshPedestalRoomAttachments();
+  }
   buildArchitectureApplied = false;
   activeBuildRoomLayouts = null;
   constructionModel = createBaseConstructionModel();
@@ -5263,9 +5383,15 @@ function restoreOriginalArchitecture({ persist = true, reattach = true } = {}) {
       { minX: -sideRoomStep * 2 - roomWidth / 2, maxX: -sideRoomStep * 2 + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
     ] : []),
   ];
-  if (reattach) reattachWallBoundObjects();
+  if (reattach) {
+    reattachWallBoundObjects();
+    reattachPedestalsToRooms();
+  }
   constrainToGallery(body.position, 0.55, body.position.clone());
-  if (reattach) refreshConstructionAttachments();
+  if (reattach) {
+    refreshConstructionAttachments();
+    refreshPedestalRoomAttachments();
+  }
   markEditableRaycastObjectsDirty();
   if (persist) saveBuildLayout();
   renderBuildPreview();
@@ -5881,6 +6007,7 @@ function finishBuildDrag() {
 
 function addBuildRoom() {
   const source = buildRooms[selectedBuildRoomIndex] ?? buildRooms[0] ?? normalizeBuildRoom(null, 0);
+  const sourceId = source.id;
   const roomConfig = {
     ...source,
     id: `room-${Date.now()}`,
@@ -5890,10 +6017,20 @@ function addBuildRoom() {
     centerZ: snapBuildValue(source.centerZ),
   };
   buildRooms.push(roomConfig);
+  const opening = {
+    id: `opening-${Date.now()}-new-room`,
+    fromRoomId: sourceId,
+    toRoomId: roomConfig.id,
+    fromSide: 'right',
+    toSide: 'left',
+    offsetRatio: 0.5,
+  };
+  buildOpenings.push(opening);
+  selectedBuildOpeningId = opening.id;
   selectBuildRoom(buildRooms.length - 1);
   if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
   saveBuildLayout();
-  setBuildStatus('Nová místnost přidaná do půdorysu.');
+  setBuildStatus('Nová místnost přidaná do půdorysu včetně průchodu z vybrané místnosti.');
 }
 
 function removeSelectedBuildRoom() {
@@ -6794,6 +6931,7 @@ function addPedestalFromFloor() {
     ry: bodyYaw,
     ...size,
   });
+  selectedPedestal.roomAttachment = getRoomAttachmentForFloorObject(selectedPedestal.group.position);
   movingSelectedPedestal = false;
   updatePedestalSelection();
   syncPedestalPanel();
@@ -6810,6 +6948,7 @@ function moveSelectedPedestalToFloor() {
   }
   selectedPedestal.group.position.x = placement.x;
   selectedPedestal.group.position.z = placement.z;
+  selectedPedestal.roomAttachment = getRoomAttachmentForFloorObject(selectedPedestal.group.position);
   movingSelectedPedestal = false;
   syncPedestalPanel();
   return true;
@@ -6832,6 +6971,7 @@ function updateSelectedPedestalSize() {
   const position = selectedPedestal.group.position.clone();
   const ry = selectedPedestal.group.rotation.y;
   const content = selectedPedestal.content ?? null;
+  const roomAttachment = selectedPedestal.roomAttachment ?? getRoomAttachmentForFloorObject(position);
   const type = ['pillar', 'table', 'easel'].includes(pedestalTypeInput.value) ? pedestalTypeInput.value : 'pillar';
   room.remove(selectedPedestal.group);
   const index = displayPedestals.indexOf(selectedPedestal);
@@ -6841,6 +6981,7 @@ function updateSelectedPedestalSize() {
     z: position.z,
     ry,
     content,
+    roomAttachment,
     type,
     ...size,
   });
@@ -6852,6 +6993,7 @@ function replaceSelectedPedestalContent(content) {
   const position = selectedPedestal.group.position.clone();
   const ry = selectedPedestal.group.rotation.y;
   const { width, depth, height, type } = selectedPedestal;
+  const roomAttachment = selectedPedestal.roomAttachment ?? getRoomAttachmentForFloorObject(position);
   room.remove(selectedPedestal.group);
   const index = displayPedestals.indexOf(selectedPedestal);
   if (index >= 0) displayPedestals.splice(index, 1);
@@ -6864,6 +7006,7 @@ function replaceSelectedPedestalContent(content) {
     height,
     type,
     content,
+    roomAttachment,
   });
   updatePedestalSelection();
   syncPedestalPanel();
