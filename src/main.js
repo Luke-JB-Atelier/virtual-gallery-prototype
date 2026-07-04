@@ -4371,6 +4371,20 @@ const buildPreviewSelectedLineMaterial = new THREE.LineBasicMaterial({
   opacity: 0.95,
   depthTest: false,
 });
+const buildPreviewConnectorMaterial = new THREE.MeshBasicMaterial({
+  color: 0x7ef0c1,
+  transparent: true,
+  opacity: 0.2,
+  depthWrite: false,
+  depthTest: false,
+  side: THREE.DoubleSide,
+});
+const buildPreviewConnectorLineMaterial = new THREE.LineBasicMaterial({
+  color: 0x7ef0c1,
+  transparent: true,
+  opacity: 0.88,
+  depthTest: false,
+});
 const selectedWallHighlightMaterial = new THREE.MeshBasicMaterial({
   color: 0xffd36a,
   transparent: true,
@@ -4918,12 +4932,61 @@ function addBuildPreviewWall(group, width, height, position, rotationY, selected
   group.add(outline);
 }
 
+function addBuildPreviewConnector(group, connector) {
+  const connectorHeight = doorway.height;
+  if (connector.axis === 'z') {
+    const depth = connector.maxZ - connector.minZ;
+    if (depth <= 0.05) return;
+    const centerZ = (connector.minZ + connector.maxZ) / 2;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(doorway.width, depth), buildPreviewConnectorMaterial);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(connector.x, 0.07, centerZ);
+    floor.renderOrder = 88;
+    group.add(floor);
+    addBuildPreviewWall(group, depth, connectorHeight, [connector.x - doorway.width / 2, connectorHeight / 2, centerZ], -Math.PI / 2);
+    addBuildPreviewWall(group, depth, connectorHeight, [connector.x + doorway.width / 2, connectorHeight / 2, centerZ], Math.PI / 2);
+    const topLine = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(connector.x - doorway.width / 2, connectorHeight, connector.minZ),
+      new THREE.Vector3(connector.x + doorway.width / 2, connectorHeight, connector.minZ),
+      new THREE.Vector3(connector.x + doorway.width / 2, connectorHeight, connector.maxZ),
+      new THREE.Vector3(connector.x - doorway.width / 2, connectorHeight, connector.maxZ),
+    ]), buildPreviewConnectorLineMaterial);
+    topLine.renderOrder = 89;
+    group.add(topLine);
+    return;
+  }
+
+  const width = connector.maxX - connector.minX;
+  if (width <= 0.05) return;
+  const centerX = (connector.minX + connector.maxX) / 2;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, doorway.width), buildPreviewConnectorMaterial);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(centerX, 0.07, connector.z);
+  floor.renderOrder = 88;
+  group.add(floor);
+  addBuildPreviewWall(group, width, connectorHeight, [centerX, connectorHeight / 2, connector.z - doorway.width / 2], Math.PI);
+  addBuildPreviewWall(group, width, connectorHeight, [centerX, connectorHeight / 2, connector.z + doorway.width / 2], 0);
+  const topLine = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(connector.minX, connectorHeight, connector.z - doorway.width / 2),
+    new THREE.Vector3(connector.maxX, connectorHeight, connector.z - doorway.width / 2),
+    new THREE.Vector3(connector.maxX, connectorHeight, connector.z + doorway.width / 2),
+    new THREE.Vector3(connector.minX, connectorHeight, connector.z + doorway.width / 2),
+  ]), buildPreviewConnectorLineMaterial);
+  topLine.renderOrder = 89;
+  group.add(topLine);
+}
+
 function renderBuildPreview() {
   while (buildPreviewGroup.children.length) {
     const child = buildPreviewGroup.children[0];
     buildPreviewGroup.remove(child);
     disposeBuildPreviewObject(child);
   }
+
+  const { connectors } = getBuildRoomConnections(buildRooms);
+  const connectorGroup = new THREE.Group();
+  connectors.forEach((connector) => addBuildPreviewConnector(connectorGroup, connector));
+  buildPreviewGroup.add(connectorGroup);
 
   const selectedWall = getConstructionWallById(selectedConstructionWallId);
   buildRooms.forEach((roomConfig, index) => {
