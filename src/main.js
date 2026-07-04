@@ -2625,6 +2625,9 @@ function updateLightNumberLabel(sprite, text, selected) {
 
 const trackHeight = roomHeight - 0.055;
 const trackSpecs = {
+  loop: { id: 'loop', loop: true, insetX: 0.9, insetZ: 0.95, radius: 0.86 },
+  'loop-mid': { id: 'loop-mid', loop: true, insetX: 2.05, insetZ: 2.1, radius: 0.72, custom: true },
+  'loop-inner': { id: 'loop-inner', loop: true, insetX: 3.15, insetZ: 3.2, radius: 0.58, custom: true },
   back: { id: 'back', axis: 'x', fixedAxis: 'z', fixed: -roomDepth / 2 + 1.05, min: -roomWidth / 2 + 0.65, max: roomWidth / 2 - 0.65 },
   front: { id: 'front', axis: 'x', fixedAxis: 'z', fixed: roomDepth / 2 - 1.05, min: -roomWidth / 2 + 0.65, max: roomWidth / 2 - 0.65 },
   left: { id: 'left', axis: 'z', fixedAxis: 'x', fixed: -roomWidth / 2 + 0.85, min: -roomDepth / 2 + 0.8, max: roomDepth / 2 - 0.8 },
@@ -2639,7 +2642,77 @@ const trackSpecs = {
   'inner-b-right': { id: 'inner-b-right', axis: 'z', fixedAxis: 'x', fixed: roomWidth / 2 - 2.45, min: -roomDepth / 2 + 2.85, max: roomDepth / 2 - 2.85, custom: true },
 };
 
+const visibleTrackIds = ['loop', 'loop-mid', 'loop-inner'];
+
+function isLoopTrackId(trackId) {
+  return Boolean(trackSpecs[trackId]?.loop);
+}
+
+function getLoopTrackMetrics(trackId, roomConfig) {
+  const spec = trackSpecs[trackId] ?? trackSpecs.loop;
+  const width = getRoomWidth(roomConfig);
+  const depth = getRoomDepth(roomConfig);
+  const insetX = Math.min(spec.insetX ?? 0.9, Math.max(0.35, width / 2 - 0.7));
+  const insetZ = Math.min(spec.insetZ ?? 0.95, Math.max(0.35, depth / 2 - 0.7));
+  const halfX = Math.max(0.55, width / 2 - insetX);
+  const halfZ = Math.max(0.55, depth / 2 - insetZ);
+  const radius = Math.min(spec.radius ?? 0.72, Math.max(0.18, halfX - 0.18), Math.max(0.18, halfZ - 0.18));
+  const straightX = Math.max(0.001, halfX * 2 - radius * 2);
+  const straightZ = Math.max(0.001, halfZ * 2 - radius * 2);
+  const arc = Math.PI * radius / 2;
+  const total = straightX * 2 + straightZ * 2 + arc * 4;
+  return { halfX, halfZ, radius, straightX, straightZ, arc, total };
+}
+
+function getLoopTrackLocalPoint(trackId, trackPosition, roomConfig) {
+  const { halfX, halfZ, radius, straightX, straightZ, arc, total } = getLoopTrackMetrics(trackId, roomConfig);
+  let d = THREE.MathUtils.euclideanModulo(THREE.MathUtils.clamp(trackPosition, 0, 1), 1) * total;
+  const consume = (length) => {
+    if (d <= length) return false;
+    d -= length;
+    return true;
+  };
+  if (!consume(straightX)) return new THREE.Vector2(-halfX + radius + d, -halfZ);
+  if (!consume(arc)) {
+    const a = -Math.PI / 2 + (d / arc) * Math.PI / 2;
+    return new THREE.Vector2(halfX - radius + Math.cos(a) * radius, -halfZ + radius + Math.sin(a) * radius);
+  }
+  if (!consume(straightZ)) return new THREE.Vector2(halfX, -halfZ + radius + d);
+  if (!consume(arc)) {
+    const a = 0 + (d / arc) * Math.PI / 2;
+    return new THREE.Vector2(halfX - radius + Math.cos(a) * radius, halfZ - radius + Math.sin(a) * radius);
+  }
+  if (!consume(straightX)) return new THREE.Vector2(halfX - radius - d, halfZ);
+  if (!consume(arc)) {
+    const a = Math.PI / 2 + (d / arc) * Math.PI / 2;
+    return new THREE.Vector2(-halfX + radius + Math.cos(a) * radius, halfZ - radius + Math.sin(a) * radius);
+  }
+  if (!consume(straightZ)) return new THREE.Vector2(-halfX, halfZ - radius - d);
+  const a = Math.PI + (d / arc) * Math.PI / 2;
+  return new THREE.Vector2(-halfX + radius + Math.cos(a) * radius, -halfZ + radius + Math.sin(a) * radius);
+}
+
+function getLoopTrackPositionRatio(trackId, position, roomConfig) {
+  const centerX = roomConfig?.centerX ?? 0;
+  const centerZ = roomConfig?.centerZ ?? 0;
+  const local = new THREE.Vector2(position.x - centerX, position.z - centerZ);
+  let bestRatio = 0;
+  let bestDistance = Infinity;
+  const samples = 192;
+  for (let index = 0; index < samples; index += 1) {
+    const ratio = index / samples;
+    const point = getLoopTrackLocalPoint(trackId, ratio, roomConfig);
+    const distance = point.distanceToSquared(local);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestRatio = ratio;
+    }
+  }
+  return bestRatio;
+}
+
 function resolveTrackSpecForRoom(spec, roomConfig) {
+  if (spec.loop) return spec;
   const width = getRoomWidth(roomConfig);
   const depth = getRoomDepth(roomConfig);
   if (!spec.custom) {
@@ -2665,13 +2738,15 @@ function resolveTrackSpecForRoom(spec, roomConfig) {
 }
 
 function getTrackPosition(trackId, trackPosition, roomIndex = 0) {
-  const spec = trackSpecs[trackId] ?? trackSpecs.back;
+  const spec = trackSpecs[trackId] ?? trackSpecs.loop;
   const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
   const centerX = roomConfig?.centerX ?? 0;
   const centerZ = roomConfig?.centerZ ?? 0;
-  const width = getRoomWidth(roomConfig);
-  const depth = getRoomDepth(roomConfig);
   const height = getRoomHeight(roomConfig);
+  if (spec.loop) {
+    const point = getLoopTrackLocalPoint(spec.id, trackPosition, roomConfig);
+    return new THREE.Vector3(centerX + point.x, height - 0.14, centerZ + point.y);
+  }
   const dynamicSpec = resolveTrackSpecForRoom(spec, roomConfig);
   const t = THREE.MathUtils.clamp(trackPosition, 0, 1);
   const along = THREE.MathUtils.lerp(dynamicSpec.min, dynamicSpec.max, t);
@@ -2683,33 +2758,27 @@ function getTrackPosition(trackId, trackPosition, roomIndex = 0) {
 }
 
 function getTrackPositionRatio(trackId, position, roomIndex = 0) {
-  const spec = trackSpecs[trackId] ?? trackSpecs.back;
+  const spec = trackSpecs[trackId] ?? trackSpecs.loop;
   const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
   const centerX = roomConfig?.centerX ?? 0;
   const centerZ = roomConfig?.centerZ ?? 0;
+  if (spec.loop) return getLoopTrackPositionRatio(spec.id, position, roomConfig);
   const dynamicSpec = resolveTrackSpecForRoom(spec, roomConfig);
   const along = spec.axis === 'x' ? position.x - centerX : position.z - centerZ;
   return THREE.MathUtils.clamp((along - dynamicSpec.min) / Math.max(0.001, dynamicSpec.max - dynamicSpec.min), 0, 1);
 }
 
 function chooseTrackForTarget(targetPoint) {
-  const roomIndex = getRoomIndexForPosition(targetPoint.x, targetPoint.z);
-  const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
-  const centerX = roomConfig?.centerX ?? 0;
-  const centerZ = roomConfig?.centerZ ?? 0;
-  const width = getRoomWidth(roomConfig);
-  const depth = getRoomDepth(roomConfig);
-  const distances = [
-    { id: 'back', distance: Math.abs(targetPoint.z - (centerZ - depth / 2)) },
-    { id: 'front', distance: Math.abs(targetPoint.z - (centerZ + depth / 2)) },
-    { id: 'left', distance: Math.abs(targetPoint.x - (centerX - width / 2)) },
-    { id: 'right', distance: Math.abs(targetPoint.x - (centerX + width / 2)) },
-  ];
-  distances.sort((a, b) => a.distance - b.distance);
-  return distances[0].id;
+  void targetPoint;
+  return 'loop';
 }
 
-function scoreTrackForTarget(spec, targetPoint, centerX, centerZ) {
+function scoreTrackForTarget(spec, targetPoint, centerX, centerZ, roomConfig = null) {
+  if (spec.loop) {
+    const ratio = getLoopTrackPositionRatio(spec.id, targetPoint, roomConfig);
+    const point = getLoopTrackLocalPoint(spec.id, ratio, roomConfig);
+    return (targetPoint.x - centerX - point.x) ** 2 + (targetPoint.z - centerZ - point.y) ** 2;
+  }
   const along = spec.axis === 'x' ? targetPoint.x - centerX : targetPoint.z - centerZ;
   const fixedDistance = spec.axis === 'x'
     ? Math.abs(targetPoint.z - (centerZ + spec.fixed))
@@ -2723,10 +2792,10 @@ function chooseCustomTrackForTarget(targetPoint) {
   const roomConfig = getActiveGalleryRooms()[roomIndex] ?? getActiveGalleryRooms()[0] ?? galleryRooms[0];
   const centerX = roomConfig?.centerX ?? 0;
   const centerZ = roomConfig?.centerZ ?? 0;
-  const customTracks = Object.values(trackSpecs).filter((spec) => spec.custom);
+  const customTracks = Object.values(trackSpecs).filter((spec) => spec.custom && spec.loop);
   customTracks.sort((first, second) => (
-    scoreTrackForTarget(first, targetPoint, centerX, centerZ)
-    - scoreTrackForTarget(second, targetPoint, centerX, centerZ)
+    scoreTrackForTarget(first, targetPoint, centerX, centerZ, roomConfig)
+    - scoreTrackForTarget(second, targetPoint, centerX, centerZ, roomConfig)
   ));
   return customTracks[0]?.id ?? chooseTrackForTarget(targetPoint);
 }
@@ -2754,21 +2823,34 @@ function getRoomIndexForZ(z) {
 const baseTrackMeshes = [];
 
 function createTrack(spec, roomConfig, { dynamic = false } = {}) {
-  const resolvedSpec = resolveTrackSpecForRoom(spec, roomConfig);
   const centerX = roomConfig?.centerX ?? 0;
   const centerZ = roomConfig?.centerZ ?? 0;
   const height = getRoomHeight(roomConfig);
-  const length = Math.max(0.05, resolvedSpec.max - resolvedSpec.min);
-  const geometry = resolvedSpec.axis === 'x'
-    ? new THREE.BoxGeometry(length, 0.035, 0.08)
-    : new THREE.BoxGeometry(0.08, 0.035, length);
-  const mesh = new THREE.Mesh(geometry, trackMaterial);
-  const center = (resolvedSpec.min + resolvedSpec.max) / 2;
-  mesh.position.set(
-    resolvedSpec.axis === 'x' ? centerX + center : centerX + resolvedSpec.fixed,
-    height - 0.055,
-    resolvedSpec.axis === 'z' ? centerZ + center : centerZ + resolvedSpec.fixed,
-  );
+  let mesh = null;
+  if (spec.loop) {
+    const points = [];
+    const samples = 144;
+    for (let index = 0; index < samples; index += 1) {
+      const local = getLoopTrackLocalPoint(spec.id, index / samples, roomConfig);
+      points.push(new THREE.Vector3(centerX + local.x, height - 0.055, centerZ + local.y));
+    }
+    const curve = new THREE.CatmullRomCurve3(points, true, 'centripetal');
+    const geometry = new THREE.TubeGeometry(curve, samples, 0.035, 10, true);
+    mesh = new THREE.Mesh(geometry, trackMaterial);
+  } else {
+    const resolvedSpec = resolveTrackSpecForRoom(spec, roomConfig);
+    const length = Math.max(0.05, resolvedSpec.max - resolvedSpec.min);
+    const geometry = resolvedSpec.axis === 'x'
+      ? new THREE.BoxGeometry(length, 0.035, 0.08)
+      : new THREE.BoxGeometry(0.08, 0.035, length);
+    mesh = new THREE.Mesh(geometry, trackMaterial);
+    const center = (resolvedSpec.min + resolvedSpec.max) / 2;
+    mesh.position.set(
+      resolvedSpec.axis === 'x' ? centerX + center : centerX + resolvedSpec.fixed,
+      height - 0.055,
+      resolvedSpec.axis === 'z' ? centerZ + center : centerZ + resolvedSpec.fixed,
+    );
+  }
   if (dynamic) {
     addDynamicMesh(mesh);
   } else {
@@ -2778,7 +2860,7 @@ function createTrack(spec, roomConfig, { dynamic = false } = {}) {
 }
 
 function createRoomTracks(roomConfig, options = {}) {
-  Object.values(trackSpecs).forEach((spec) => createTrack(spec, roomConfig, options));
+  visibleTrackIds.forEach((trackId) => createTrack(trackSpecs[trackId], roomConfig, options));
 }
 
 galleryRooms.forEach((roomConfig) => createRoomTracks(roomConfig));
@@ -2950,12 +3032,26 @@ function createDisplayFixture() {
   return fixture;
 }
 
-function addCeilingLight({ position, targetPoint, trackId = 'back', trackPosition, yaw = 180, pitch = -38, power = 100, color = '#fff4e8', angle = 30, roomIndex, kind = 'painting', select = true }) {
+function getLoopTrackIdForLight(trackId, kind = 'painting') {
+  if (isLoopTrackId(trackId)) return trackId;
+  if (kind === 'display') {
+    if (String(trackId).includes('inner-b')) return 'loop-inner';
+    return 'loop-mid';
+  }
+  return 'loop';
+}
+
+function addCeilingLight({ position, targetPoint, trackId = 'loop', trackPosition, yaw = 180, pitch = -38, power = 100, color = '#fff4e8', angle = 30, roomIndex, kind = 'painting', select = true }) {
   const resolvedKind = kind === 'display' ? 'display' : 'painting';
   const roomPoint = targetPoint ?? position ?? new THREE.Vector3();
   const resolvedRoomIndex = roomIndex ?? getRoomIndexForPosition(roomPoint.x ?? 0, roomPoint.z ?? 0);
-  const resolvedTrackPosition = trackPosition ?? (position ? getTrackPositionRatio(trackId, position, resolvedRoomIndex) : 0.5);
-  const resolvedPosition = getTrackPosition(trackId, resolvedTrackPosition, resolvedRoomIndex);
+  const resolvedTrackId = getLoopTrackIdForLight(trackId, resolvedKind);
+  const sourcePosition = position
+    ?? (trackPosition !== undefined ? getTrackPosition(trackId, trackPosition, resolvedRoomIndex) : null);
+  const resolvedTrackPosition = sourcePosition
+    ? getTrackPositionRatio(resolvedTrackId, sourcePosition, resolvedRoomIndex)
+    : trackPosition ?? 0.5;
+  const resolvedPosition = getTrackPosition(resolvedTrackId, resolvedTrackPosition, resolvedRoomIndex);
   const direction = targetPoint ? targetPoint.clone().sub(resolvedPosition) : directionFromAngles(yaw, pitch);
   const angles = targetPoint ? anglesFromDirection(direction) : { yaw, pitch };
   const spot = new THREE.SpotLight(color, power, 8.5, THREE.MathUtils.degToRad(angle), 0.68, 1.45);
@@ -2968,7 +3064,7 @@ function addCeilingLight({ position, targetPoint, trackId = 'back', trackPositio
   const fixture = resolvedKind === 'display' ? createDisplayFixture() : createFixture();
   const lightData = {
     position: resolvedPosition,
-    trackId,
+    trackId: resolvedTrackId,
     trackPosition: resolvedTrackPosition,
     yaw: THREE.MathUtils.clamp(angles.yaw, -180, 180),
     pitch: clampLightPitch(resolvedKind, angles.pitch),
@@ -3001,9 +3097,9 @@ function updateActiveSpotShadows(currentRoomIndex) {
   spotShadowRoomIndex = currentRoomIndex;
 
   const roomCenter = new THREE.Vector3(
-    galleryRooms[currentRoomIndex]?.centerX ?? 0,
-    roomHeight * 0.55,
-    galleryRooms[currentRoomIndex]?.centerZ ?? 0,
+    getActiveGalleryRooms()[currentRoomIndex]?.centerX ?? 0,
+    getRoomHeight(getActiveGalleryRooms()[currentRoomIndex]) * 0.55,
+    getActiveGalleryRooms()[currentRoomIndex]?.centerZ ?? 0,
   );
   const shadowedLights = new Set(
     ceilingLights
@@ -6667,19 +6763,9 @@ function getSpotPlacementForPainting(paintingData) {
   const targetPoint = paintingData.group.position.clone();
   const normal = paintingData.wallNormal ?? new THREE.Vector3(0, 0, 1).applyQuaternion(paintingData.group.quaternion);
   const roomIndex = getRoomIndexForPosition(targetPoint.x, targetPoint.z);
-  const centerX = galleryRooms[roomIndex]?.centerX ?? 0;
-  const centerZ = galleryRooms[roomIndex]?.centerZ ?? 0;
   const trackId = chooseTrackForTarget(targetPoint);
-  const trackSpec = trackSpecs[trackId] ?? trackSpecs.back;
   const position = targetPoint.clone().addScaledVector(normal, 1.35);
-  position.y = roomHeight - 0.14;
-  if (trackSpec.axis === 'x') {
-    position.z = centerZ + trackSpec.fixed;
-    position.x = centerX + THREE.MathUtils.clamp(position.x - centerX, trackSpec.min, trackSpec.max);
-  } else {
-    position.x = centerX + trackSpec.fixed;
-    position.z = centerZ + THREE.MathUtils.clamp(position.z - centerZ, trackSpec.min, trackSpec.max);
-  }
+  position.y = getRoomHeight(getActiveGalleryRooms()[roomIndex]) - 0.14;
   const trackPosition = getTrackPositionRatio(trackId, position, roomIndex);
   return { targetPoint, position, trackId, trackPosition, roomIndex };
 }
