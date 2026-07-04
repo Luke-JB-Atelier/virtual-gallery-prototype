@@ -645,6 +645,32 @@ function createBaseConstructionModel() {
 
 let constructionModel = createBaseConstructionModel();
 
+function createConstructionModelFromBuildRooms(rooms, connectors = []) {
+  const normalizedRooms = rooms.map((roomConfig, index) => normalizeBuildRoom(roomConfig, index));
+  const walls = normalizedRooms.flatMap((roomConfig) => Object.keys(wallSides).map((side) => getRoomWallDescriptor(roomConfig, side)));
+  const openings = connectors.map((connector, index) => ({
+    id: connector.id ?? `build-opening-${index + 1}`,
+    type: 'arched-corridor',
+    fromRoomId: connector.fromRoomId ?? null,
+    toRoomId: connector.toRoomId ?? null,
+    fromWallId: connector.fromRoomId && connector.fromSide ? `${connector.fromRoomId}:${connector.fromSide}` : null,
+    toWallId: connector.toRoomId && connector.toSide ? `${connector.toRoomId}:${connector.toSide}` : null,
+    axis: connector.axis,
+    centerX: connector.axis === 'z' ? connector.x : (connector.minX + connector.maxX) / 2,
+    centerZ: connector.axis === 'x' ? connector.z : (connector.minZ + connector.maxZ) / 2,
+    width: doorway.width,
+    length: connector.axis === 'z' ? Math.max(0, connector.maxZ - connector.minZ) : Math.max(0, connector.maxX - connector.minX),
+    height: doorway.height,
+  }));
+  return {
+    version: 1,
+    rooms: normalizedRooms,
+    walls,
+    openings,
+    attachments: constructionModel.attachments ?? [],
+  };
+}
+
 function getRoomWidth(roomConfig = null) {
   return Number.isFinite(roomConfig?.width) ? roomConfig.width : roomWidth;
 }
@@ -2283,6 +2309,14 @@ const roomLightSwitchToggleMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.08,
 });
 
+function directionFromRotationY(rotationY) {
+  const normalized = THREE.MathUtils.euclideanModulo(rotationY + Math.PI * 2, Math.PI * 2);
+  if (Math.abs(normalized - Math.PI / 2) < 0.01) return new THREE.Vector3(1, 0, 0);
+  if (Math.abs(normalized - Math.PI * 1.5) < 0.01) return new THREE.Vector3(-1, 0, 0);
+  if (Math.abs(normalized - Math.PI) < 0.01) return new THREE.Vector3(0, 0, -1);
+  return new THREE.Vector3(0, 0, 1);
+}
+
 function addRoomLightSwitch(position, rotationY = 0) {
   const group = new THREE.Group();
   group.position.copy(position);
@@ -2300,6 +2334,7 @@ function addRoomLightSwitch(position, rotationY = 0) {
   });
 
   room.add(group);
+  group.userData.wallAttachment = getWallAttachmentForSurface(position, directionFromRotationY(rotationY));
   roomLightSwitches.push(group);
 }
 
@@ -2966,6 +3001,7 @@ function serializeGalleryState() {
       h: Number(paintingData.h.toFixed(4)),
       aspect: Number((paintingData.aspect ?? paintingData.w / paintingData.h).toFixed(6)),
       wallNormal: paintingData.wallNormal?.toArray().map((value) => Number(value.toFixed(4))) ?? null,
+      wallAttachment: serializeWallAttachment(paintingData.wallAttachment),
       frameSize: paintingData.frameSize ?? 'medium',
       frameColor: paintingData.frameColor ?? defaultFrameColor,
       labelTitle: paintingData.labelTitle ?? '',
@@ -3003,6 +3039,7 @@ function serializeGalleryState() {
       discountOriginalPrice: Number.isFinite(textPanelData.discountOriginalPrice) ? Number(textPanelData.discountOriginalPrice.toFixed(2)) : null,
       discountPercent: Number.isFinite(textPanelData.discountPercent) ? Number(textPanelData.discountPercent.toFixed(2)) : null,
       wallNormal: textPanelData.wallNormal?.toArray().map((value) => Number(value.toFixed(4))) ?? null,
+      wallAttachment: serializeWallAttachment(textPanelData.wallAttachment),
     })),
   };
 }
@@ -3653,6 +3690,7 @@ function createTextPanel({
   discountOriginalPrice = null,
   discountPercent = null,
   wallNormal = null,
+  wallAttachment = null,
 } = {}) {
   const labelCanvas = document.createElement('canvas');
   const canvasSize = getTextPanelCanvasSize(width, height);
@@ -3706,6 +3744,7 @@ function createTextPanel({
     discountOriginalPrice,
     discountPercent,
     wallNormal,
+    wallAttachment: normalizeWallAttachmentConfig(wallAttachment),
   };
   updateTextPanelGeometry(textPanelData);
   redrawTextPanel(textPanelData);
@@ -3748,6 +3787,29 @@ function normalFromConfig(config, ry) {
   return normalFromRotationY(ry);
 }
 
+function normalizeWallAttachmentConfig(attachment) {
+  if (!attachment || typeof attachment.wallId !== 'string') return null;
+  return {
+    wallId: attachment.wallId,
+    roomId: typeof attachment.roomId === 'string' ? attachment.roomId : attachment.wallId.split(':')[0],
+    side: typeof attachment.side === 'string' ? attachment.side : attachment.wallId.split(':')[1],
+    alongRatio: THREE.MathUtils.clamp(Number(attachment.alongRatio) || 0.5, 0, 1),
+    heightRatio: THREE.MathUtils.clamp(Number(attachment.heightRatio) || 0.5, 0, 1),
+    offset: Number.isFinite(Number(attachment.offset)) ? Number(attachment.offset) : 0.065,
+  };
+}
+
+function serializeWallAttachment(attachment) {
+  const normalized = normalizeWallAttachmentConfig(attachment);
+  if (!normalized) return null;
+  return {
+    ...normalized,
+    alongRatio: Number(normalized.alongRatio.toFixed(4)),
+    heightRatio: Number(normalized.heightRatio.toFixed(4)),
+    offset: Number(normalized.offset.toFixed(4)),
+  };
+}
+
 function createPaintingFromConfig(config, fallbackArtwork = {}, index = 0) {
   const aspect = Number.isFinite(config.aspect) && config.aspect > 0
     ? config.aspect
@@ -3778,6 +3840,7 @@ function createPaintingFromConfig(config, fallbackArtwork = {}, index = 0) {
     actionUrl: config.actionUrl ?? '',
     imageSrc,
   });
+  paintingData.wallAttachment = normalizeWallAttachmentConfig(config.wallAttachment);
   paintingData.title = paintingData.labelTitle;
   return paintingData;
 }
@@ -4135,6 +4198,7 @@ function addSavedTextPanels() {
       wallNormal: Array.isArray(config.wallNormal) && config.wallNormal.length === 3
         ? new THREE.Vector3(...config.wallNormal)
         : null,
+      wallAttachment: config.wallAttachment,
     });
   });
 }
@@ -4170,6 +4234,65 @@ function getWallAttachmentForSurface(point, normal = null) {
   };
 }
 
+function getSurfacePositionFromWallAttachment(attachment, fallbackOffset = 0.065) {
+  if (!attachment?.wallId) return null;
+  const wall = getConstructionWallById(attachment.wallId);
+  if (!wall) return null;
+  const along = THREE.MathUtils.lerp(wall.min, wall.max, THREE.MathUtils.clamp(attachment.alongRatio ?? 0.5, 0, 1));
+  const y = THREE.MathUtils.clamp((attachment.heightRatio ?? 0.5) * wall.height, 0.12, wall.height - 0.08);
+  const offset = Number.isFinite(attachment.offset) ? Math.max(attachment.offset, fallbackOffset) : fallbackOffset;
+  return {
+    point: new THREE.Vector3(
+      wall.axis === 'x' ? along : wall.fixed + wall.normal.x * offset,
+      y,
+      wall.axis === 'z' ? along : wall.fixed + wall.normal.z * offset,
+    ),
+    normal: wall.normal.clone(),
+    ry: getSurfaceRotationY(wall.normal),
+    wall,
+  };
+}
+
+function reattachGroupToWall(group, attachment, fallbackOffset = 0.065) {
+  const placement = getSurfacePositionFromWallAttachment(attachment, fallbackOffset);
+  if (!placement) return false;
+  group.position.copy(placement.point);
+  group.rotation.y = placement.ry;
+  return placement;
+}
+
+function reattachWallBoundObjects() {
+  editablePaintings.forEach((paintingData) => {
+    const attachment = paintingData.wallAttachment;
+    const placement = reattachGroupToWall(paintingData.group, attachment, 0.065);
+    if (!placement) return;
+    paintingData.wallNormal = placement.normal;
+    paintingData.group.position.y = THREE.MathUtils.clamp(
+      paintingData.group.position.y,
+      0.75 + paintingData.h / 2,
+      placement.wall.height - 0.2 - paintingData.h / 2,
+    );
+    updateArtworkLabel(paintingData);
+  });
+  displayTextPanels.forEach((textPanelData) => {
+    const attachment = textPanelData.wallAttachment;
+    const placement = reattachGroupToWall(textPanelData.group, attachment, 0.071);
+    if (!placement) return;
+    textPanelData.wallNormal = placement.normal;
+    textPanelData.group.position.y = THREE.MathUtils.clamp(
+      textPanelData.group.position.y,
+      0.55 + textPanelData.height / 2,
+      placement.wall.height - 0.24 - textPanelData.height / 2,
+    );
+  });
+  roomLightSwitches.forEach((switchGroup) => {
+    const attachment = switchGroup.userData.wallAttachment;
+    const placement = reattachGroupToWall(switchGroup, attachment, 0.035);
+    if (placement) switchGroup.userData.wallAttachment = attachment;
+  });
+  markEditableRaycastObjectsDirty();
+}
+
 function refreshConstructionAttachments() {
   const attachments = [];
   editablePaintings.forEach((paintingData, index) => {
@@ -4188,6 +4311,16 @@ function refreshConstructionAttachments() {
     attachments.push({
       id: `text-panel:${index}`,
       kind: textPanelData.kind ?? 'text-panel',
+      ...attachment,
+    });
+  });
+  roomLightSwitches.forEach((switchGroup, index) => {
+    const normal = directionFromRotationY(switchGroup.rotation.y);
+    const attachment = getWallAttachmentForSurface(switchGroup.position, normal);
+    switchGroup.userData.wallAttachment = attachment;
+    attachments.push({
+      id: `switch:${index}`,
+      kind: 'switch',
       ...attachment,
     });
   });
@@ -4658,6 +4791,91 @@ function addDynamicTrim(length, position, rotationY) {
   return addDynamicMesh(trim);
 }
 
+function createArchedHeaderGeometry({ axis, fixed, center, height }) {
+  const halfWidth = doorway.width / 2;
+  const springY = doorway.height;
+  const archSegments = 36;
+  const vertices = [];
+  const uvs = [];
+  const indices = [];
+  for (let i = 0; i <= archSegments; i += 1) {
+    const theta = Math.PI - (i / archSegments) * Math.PI;
+    const across = center + Math.cos(theta) * halfWidth;
+    const archY = springY + Math.sin(theta) * halfWidth;
+    if (axis === 'x') {
+      vertices.push(across, archY, fixed, across, height, fixed);
+      uvs.push((across - center + halfWidth) / doorway.width, archY / height, (across - center + halfWidth) / doorway.width, 1);
+    } else {
+      vertices.push(fixed, archY, across, fixed, height, across);
+      uvs.push((across - center + halfWidth) / doorway.width, archY / height, (across - center + halfWidth) / doorway.width, 1);
+    }
+  }
+  for (let i = 0; i < archSegments; i += 1) {
+    const a = i * 2;
+    const b = a + 1;
+    const c = a + 2;
+    const d = a + 3;
+    indices.push(a, c, b, b, c, d);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  setGeometryColor(geometry);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function addDynamicArchedDoorHeader({ axis, fixed, center, height }) {
+  const mesh = new THREE.Mesh(createArchedHeaderGeometry({ axis, fixed, center, height }), archWallMaterial);
+  return addDynamicMesh(mesh, true);
+}
+
+function addDynamicBarrelVault(connector) {
+  const axis = connector.axis;
+  const length = axis === 'z' ? connector.maxZ - connector.minZ : connector.maxX - connector.minX;
+  if (length <= 0.05) return null;
+  const halfWidth = doorway.width / 2;
+  const springY = doorway.height;
+  const arcSegments = 18;
+  const lengthSegments = Math.max(4, Math.ceil(length * 6));
+  const vertices = [];
+  const uvs = [];
+  const indices = [];
+  for (let lengthIndex = 0; lengthIndex <= lengthSegments; lengthIndex += 1) {
+    const along = (lengthIndex / lengthSegments) * length;
+    const xBase = axis === 'x' ? connector.minX + along : connector.x;
+    const zBase = axis === 'z' ? connector.minZ + along : connector.z;
+    for (let arcIndex = 0; arcIndex <= arcSegments; arcIndex += 1) {
+      const theta = Math.PI - (arcIndex / arcSegments) * Math.PI;
+      const across = Math.cos(theta) * halfWidth;
+      const y = springY + Math.sin(theta) * halfWidth;
+      vertices.push(
+        axis === 'z' ? xBase + across : xBase,
+        y,
+        axis === 'x' ? zBase + across : zBase,
+      );
+      uvs.push(arcIndex / arcSegments, lengthIndex / lengthSegments);
+    }
+  }
+  for (let lengthIndex = 0; lengthIndex < lengthSegments; lengthIndex += 1) {
+    for (let arcIndex = 0; arcIndex < arcSegments; arcIndex += 1) {
+      const a = lengthIndex * (arcSegments + 1) + arcIndex;
+      const b = a + 1;
+      const c = a + arcSegments + 1;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  setGeometryColor(geometry);
+  geometry.computeVertexNormals();
+  return addDynamicMesh(new THREE.Mesh(geometry, archWallMaterial));
+}
+
 function addDynamicWallSegment(startX, startZ, endX, endZ, height) {
   const dx = endX - startX;
   const dz = endZ - startZ;
@@ -4684,6 +4902,14 @@ function addDynamicWallWithOpenings(startX, startZ, endX, endZ, height, openings
   sortedOpenings.forEach((opening) => {
     const gapStart = THREE.MathUtils.clamp(opening.center - opening.width / 2, cursor, end);
     const gapEnd = THREE.MathUtils.clamp(opening.center + opening.width / 2, cursor, end);
+    if (gapEnd - gapStart > 0.2) {
+      addDynamicArchedDoorHeader({
+        axis: horizontal ? 'x' : 'z',
+        fixed: horizontal ? startZ : startX,
+        center: (gapStart + gapEnd) / 2,
+        height,
+      });
+    }
     if (gapStart - cursor > 0.05) {
       if (horizontal) {
         addDynamicWallSegment(cursor, startZ, gapStart, startZ, height);
@@ -4712,41 +4938,75 @@ function getOpeningBucket(openingsByRoom, roomId, side) {
 function getBuildRoomConnections(rooms) {
   const openingsByRoom = new Map();
   const connectors = [];
-  rooms.forEach((firstRoom, firstIndex) => {
+  const connectedPairs = new Set();
+  const roomById = new Map(rooms.map((roomConfig) => [roomConfig.id, roomConfig]));
+
+  function addConnector(firstRoom, secondRoom, fromSide, toSide, pairKey = null) {
     const firstBounds = getRoomBounds(firstRoom);
+    const secondBounds = getRoomBounds(secondRoom);
+    const overlapMinX = Math.max(firstBounds.minX, secondBounds.minX);
+    const overlapMaxX = Math.min(firstBounds.maxX, secondBounds.maxX);
+    const overlapMinZ = Math.max(firstBounds.minZ, secondBounds.minZ);
+    const overlapMaxZ = Math.min(firstBounds.maxZ, secondBounds.maxZ);
+    const overlapX = overlapMaxX - overlapMinX;
+    const overlapZ = overlapMaxZ - overlapMinZ;
+    const key = pairKey ?? [firstRoom.id, secondRoom.id].sort().join('|');
+    if (connectedPairs.has(key)) return false;
+
+    if ((fromSide === 'front' && toSide === 'back') || (fromSide === 'back' && toSide === 'front')) {
+      if (overlapX < doorway.width) return false;
+      const x = THREE.MathUtils.clamp((overlapMinX + overlapMaxX) / 2, firstBounds.minX + doorway.width / 2, firstBounds.maxX - doorway.width / 2);
+      const minZ = fromSide === 'front' ? firstBounds.maxZ : secondBounds.maxZ;
+      const maxZ = fromSide === 'front' ? secondBounds.minZ : firstBounds.minZ;
+      if (maxZ - minZ <= 0.05) return false;
+      getOpeningBucket(openingsByRoom, firstRoom.id, fromSide).push({ x });
+      getOpeningBucket(openingsByRoom, secondRoom.id, toSide).push({ x });
+      connectors.push({ axis: 'z', x, minZ, maxZ, fromRoomId: firstRoom.id, toRoomId: secondRoom.id, fromSide, toSide });
+      connectedPairs.add(key);
+      return true;
+    }
+
+    if ((fromSide === 'right' && toSide === 'left') || (fromSide === 'left' && toSide === 'right')) {
+      if (overlapZ < doorway.width) return false;
+      const z = THREE.MathUtils.clamp((overlapMinZ + overlapMaxZ) / 2, firstBounds.minZ + doorway.width / 2, firstBounds.maxZ - doorway.width / 2);
+      const minX = fromSide === 'right' ? firstBounds.maxX : secondBounds.maxX;
+      const maxX = fromSide === 'right' ? secondBounds.minX : firstBounds.minX;
+      if (maxX - minX <= 0.05) return false;
+      getOpeningBucket(openingsByRoom, firstRoom.id, fromSide).push({ z });
+      getOpeningBucket(openingsByRoom, secondRoom.id, toSide).push({ z });
+      connectors.push({ axis: 'x', z, minX, maxX, fromRoomId: firstRoom.id, toRoomId: secondRoom.id, fromSide, toSide });
+      connectedPairs.add(key);
+      return true;
+    }
+    return false;
+  }
+
+  createBaseConstructionModel().openings.forEach((opening) => {
+    const firstRoom = roomById.get(opening.fromRoomId);
+    const secondRoom = roomById.get(opening.toRoomId);
+    const fromSide = opening.fromWallId?.split(':')[1];
+    const toSide = opening.toWallId?.split(':')[1];
+    if (firstRoom && secondRoom && fromSide && toSide) {
+      addConnector(firstRoom, secondRoom, fromSide, toSide, opening.id);
+    }
+  });
+
+  rooms.forEach((firstRoom, firstIndex) => {
     rooms.slice(firstIndex + 1).forEach((secondRoom) => {
+      const firstBounds = getRoomBounds(firstRoom);
       const secondBounds = getRoomBounds(secondRoom);
-      const overlapMinX = Math.max(firstBounds.minX, secondBounds.minX);
-      const overlapMaxX = Math.min(firstBounds.maxX, secondBounds.maxX);
-      const overlapMinZ = Math.max(firstBounds.minZ, secondBounds.minZ);
-      const overlapMaxZ = Math.min(firstBounds.maxZ, secondBounds.maxZ);
-      const overlapX = overlapMaxX - overlapMinX;
-      const overlapZ = overlapMaxZ - overlapMinZ;
       const verticalGapForward = secondBounds.minZ - firstBounds.maxZ;
       const verticalGapBackward = firstBounds.minZ - secondBounds.maxZ;
       const horizontalGapRight = secondBounds.minX - firstBounds.maxX;
       const horizontalGapLeft = firstBounds.minX - secondBounds.maxX;
-
-      if (overlapX >= doorway.width && verticalGapForward <= corridorLength * 1.8) {
-        const x = THREE.MathUtils.clamp((overlapMinX + overlapMaxX) / 2, firstBounds.minX + doorway.width / 2, firstBounds.maxX - doorway.width / 2);
-        getOpeningBucket(openingsByRoom, firstRoom.id, 'front').push({ x });
-        getOpeningBucket(openingsByRoom, secondRoom.id, 'back').push({ x });
-        connectors.push({ axis: 'z', x, minZ: firstBounds.maxZ, maxZ: secondBounds.minZ });
-      } else if (overlapX >= doorway.width && verticalGapBackward <= corridorLength * 1.8) {
-        const x = THREE.MathUtils.clamp((overlapMinX + overlapMaxX) / 2, firstBounds.minX + doorway.width / 2, firstBounds.maxX - doorway.width / 2);
-        getOpeningBucket(openingsByRoom, firstRoom.id, 'back').push({ x });
-        getOpeningBucket(openingsByRoom, secondRoom.id, 'front').push({ x });
-        connectors.push({ axis: 'z', x, minZ: secondBounds.maxZ, maxZ: firstBounds.minZ });
-      } else if (overlapZ >= doorway.width && horizontalGapRight <= corridorLength * 1.8) {
-        const z = THREE.MathUtils.clamp((overlapMinZ + overlapMaxZ) / 2, firstBounds.minZ + doorway.width / 2, firstBounds.maxZ - doorway.width / 2);
-        getOpeningBucket(openingsByRoom, firstRoom.id, 'right').push({ z });
-        getOpeningBucket(openingsByRoom, secondRoom.id, 'left').push({ z });
-        connectors.push({ axis: 'x', z, minX: firstBounds.maxX, maxX: secondBounds.minX });
-      } else if (overlapZ >= doorway.width && horizontalGapLeft <= corridorLength * 1.8) {
-        const z = THREE.MathUtils.clamp((overlapMinZ + overlapMaxZ) / 2, firstBounds.minZ + doorway.width / 2, firstBounds.maxZ - doorway.width / 2);
-        getOpeningBucket(openingsByRoom, firstRoom.id, 'left').push({ z });
-        getOpeningBucket(openingsByRoom, secondRoom.id, 'right').push({ z });
-        connectors.push({ axis: 'x', z, minX: secondBounds.maxX, maxX: firstBounds.minX });
+      if (verticalGapForward > 0 && verticalGapForward <= corridorLength * 1.8) {
+        addConnector(firstRoom, secondRoom, 'front', 'back');
+      } else if (verticalGapBackward > 0 && verticalGapBackward <= corridorLength * 1.8) {
+        addConnector(firstRoom, secondRoom, 'back', 'front');
+      } else if (horizontalGapRight > 0 && horizontalGapRight <= corridorLength * 1.8) {
+        addConnector(firstRoom, secondRoom, 'right', 'left');
+      } else if (horizontalGapLeft > 0 && horizontalGapLeft <= corridorLength * 1.8) {
+        addConnector(firstRoom, secondRoom, 'left', 'right');
       }
     });
   });
@@ -4760,7 +5020,7 @@ function addDynamicConnectorArchitecture(connector) {
     const centerZ = (connector.minZ + connector.maxZ) / 2;
     const floorMesh = addDynamicPlane(doorway.width, depth, floorMaterial, [connector.x, 0.004, centerZ], [-Math.PI / 2, 0, 0], 8);
     addFloorEdgeDarkening(floorMesh, doorway.width, depth);
-    addDynamicPlane(doorway.width, depth, ceilingMaterial, [connector.x, doorway.height + 0.5, centerZ], [Math.PI / 2, 0, 0], 1);
+    addDynamicBarrelVault(connector);
     addDynamicWallSegment(connector.x - doorway.width / 2, connector.minZ, connector.x - doorway.width / 2, connector.maxZ, doorway.height);
     addDynamicWallSegment(connector.x + doorway.width / 2, connector.minZ, connector.x + doorway.width / 2, connector.maxZ, doorway.height);
     return;
@@ -4770,7 +5030,7 @@ function addDynamicConnectorArchitecture(connector) {
   const centerX = (connector.minX + connector.maxX) / 2;
   const floorMesh = addDynamicPlane(width, doorway.width, floorMaterial, [centerX, 0.004, connector.z], [-Math.PI / 2, 0, 0], 8);
   addFloorEdgeDarkening(floorMesh, width, doorway.width);
-  addDynamicPlane(width, doorway.width, ceilingMaterial, [centerX, doorway.height + 0.5, connector.z], [Math.PI / 2, 0, 0], 1);
+  addDynamicBarrelVault(connector);
   addDynamicWallSegment(connector.minX, connector.z - doorway.width / 2, connector.maxX, connector.z - doorway.width / 2, doorway.height);
   addDynamicWallSegment(connector.minX, connector.z + doorway.width / 2, connector.maxX, connector.z + doorway.width / 2, doorway.height);
 }
@@ -4876,10 +5136,13 @@ function preserveEditableObjectsInsideBuildRooms() {
 }
 
 function applyBuildLayoutToGallery({ persist = true } = {}) {
-  restoreOriginalArchitecture({ persist: false });
+  const restoringAppliedLayout = buildArchitectureApplied && !activeBuildRoomLayouts;
+  if (!restoringAppliedLayout) refreshConstructionAttachments();
+  restoreOriginalArchitecture({ persist: false, reattach: false });
   const normalizedRooms = buildRooms.map((roomConfig, index) => normalizeBuildRoom(roomConfig, index));
   const { openingsByRoom, connectors } = getBuildRoomConnections(normalizedRooms);
   activeBuildRoomLayouts = normalizedRooms;
+  constructionModel = createConstructionModelFromBuildRooms(normalizedRooms, connectors);
   buildArchitectureApplied = true;
   baseArchitectureObjects.forEach((object) => {
     object.visible = false;
@@ -4895,16 +5158,20 @@ function applyBuildLayoutToGallery({ persist = true } = {}) {
   wallMeshes.length = 0;
   wallMeshes.push(...dynamicWallMeshes);
   navigationSpaces = createNavigationSpacesFromBuildRooms();
+  reattachWallBoundObjects();
   preserveEditableObjectsInsideBuildRooms();
+  refreshConstructionAttachments();
   if (persist) saveBuildLayout();
   renderBuildPreview();
   syncBuildPanel();
   setBuildStatus('Stavba uložená do galerie. Stěny, průchody a stropní lišty jsou přepočítané podle návrhu.');
 }
 
-function restoreOriginalArchitecture({ persist = true } = {}) {
+function restoreOriginalArchitecture({ persist = true, reattach = true } = {}) {
+  if (reattach) refreshConstructionAttachments();
   buildArchitectureApplied = false;
   activeBuildRoomLayouts = null;
+  constructionModel = createBaseConstructionModel();
   baseArchitectureObjects.forEach((object) => {
     object.visible = true;
   });
@@ -4928,7 +5195,9 @@ function restoreOriginalArchitecture({ persist = true } = {}) {
       { minX: -sideRoomStep * 2 - roomWidth / 2, maxX: -sideRoomStep * 2 + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
     ] : []),
   ];
+  if (reattach) reattachWallBoundObjects();
   constrainToGallery(body.position, 0.55, body.position.clone());
+  if (reattach) refreshConstructionAttachments();
   markEditableRaycastObjectsDirty();
   if (persist) saveBuildLayout();
   renderBuildPreview();
