@@ -528,6 +528,118 @@ const galleryRooms = [
 let buildArchitectureApplied = false;
 let activeBuildRoomLayouts = null;
 
+const wallSides = {
+  back: { axis: 'x', fixedAxis: 'z', normal: new THREE.Vector3(0, 0, 1) },
+  front: { axis: 'x', fixedAxis: 'z', normal: new THREE.Vector3(0, 0, -1) },
+  left: { axis: 'z', fixedAxis: 'x', normal: new THREE.Vector3(1, 0, 0) },
+  right: { axis: 'z', fixedAxis: 'x', normal: new THREE.Vector3(-1, 0, 0) },
+};
+
+function getRoomWallDescriptor(roomConfig, side) {
+  const bounds = getRoomBounds(roomConfig);
+  const sideSpec = wallSides[side];
+  const fixed = side === 'back' ? bounds.minZ
+    : side === 'front' ? bounds.maxZ
+      : side === 'left' ? bounds.minX
+        : bounds.maxX;
+  const min = sideSpec.axis === 'x' ? bounds.minX : bounds.minZ;
+  const max = sideSpec.axis === 'x' ? bounds.maxX : bounds.maxZ;
+  return {
+    id: `${roomConfig.id}:${side}`,
+    roomId: roomConfig.id,
+    side,
+    axis: sideSpec.axis,
+    fixedAxis: sideSpec.fixedAxis,
+    fixed,
+    min,
+    max,
+    length: max - min,
+    height: getRoomHeight(roomConfig),
+    normal: sideSpec.normal.clone(),
+  };
+}
+
+function createBaseConstructionModel() {
+  const rooms = galleryRooms.map((roomConfig, index) => ({
+    id: roomConfig.id,
+    index,
+    label: index < 3 ? `Místnost ${index + 1}` : `Boční místnost ${index - 2}`,
+    centerX: roomConfig.centerX,
+    centerZ: roomConfig.centerZ,
+    width: roomWidth,
+    depth: roomDepth,
+    height: roomHeight,
+  }));
+  const walls = rooms.flatMap((roomConfig) => Object.keys(wallSides).map((side) => getRoomWallDescriptor(roomConfig, side)));
+  const openings = [
+    {
+      id: 'main-to-room-2',
+      type: 'arched-corridor',
+      fromRoomId: 'main',
+      toRoomId: 'room-2',
+      fromWallId: 'main:front',
+      toWallId: 'room-2:back',
+      axis: 'z',
+      centerX: 0,
+      centerZ: (roomDepth / 2 + (roomStep - roomDepth / 2)) / 2,
+      width: doorway.width,
+      length: corridorLength,
+      height: doorway.height,
+    },
+    {
+      id: 'room-2-to-room-3',
+      type: 'arched-corridor',
+      fromRoomId: 'room-2',
+      toRoomId: 'room-3',
+      fromWallId: 'room-2:front',
+      toWallId: 'room-3:back',
+      axis: 'z',
+      centerX: 0,
+      centerZ: (roomStep + roomDepth / 2 + (roomStep * 2 - roomDepth / 2)) / 2,
+      width: doorway.width,
+      length: corridorLength,
+      height: doorway.height,
+    },
+    {
+      id: 'room-2-to-future-1',
+      type: 'arched-corridor',
+      fromRoomId: 'room-2',
+      toRoomId: 'future-1',
+      fromWallId: 'room-2:left',
+      toWallId: 'future-1:right',
+      axis: 'x',
+      centerX: (-sideRoomStep + roomWidth / 2 + -roomWidth / 2) / 2,
+      centerZ: roomStep,
+      width: doorway.width,
+      length: corridorLength,
+      height: doorway.height,
+    },
+    {
+      id: 'future-1-to-future-2',
+      type: 'arched-corridor',
+      fromRoomId: 'future-1',
+      toRoomId: 'future-2',
+      fromWallId: 'future-1:left',
+      toWallId: 'future-2:right',
+      axis: 'x',
+      centerX: (-sideRoomStep * 2 + roomWidth / 2 + (-sideRoomStep - roomWidth / 2)) / 2,
+      centerZ: roomStep,
+      width: doorway.width,
+      length: corridorLength,
+      height: doorway.height,
+    },
+  ];
+  return {
+    version: 1,
+    rooms,
+    walls,
+    openings,
+    attachments: [],
+  };
+}
+
+let constructionModel = createBaseConstructionModel();
+
 function getRoomWidth(roomConfig = null) {
   return Number.isFinite(roomConfig?.width) ? roomConfig.width : roomWidth;
 }
@@ -4004,6 +4116,76 @@ function addSavedTextPanels() {
 }
 
 addSavedTextPanels();
+
+function getWallAttachmentForSurface(point, normal = null) {
+  const normalizedNormal = normal?.clone?.().normalize?.() ?? null;
+  let bestWall = null;
+  let bestScore = Infinity;
+  constructionModel.walls.forEach((wall) => {
+    if (normalizedNormal && wall.normal.dot(normalizedNormal) < 0.72) return;
+    const fixedCoordinate = wall.fixedAxis === 'x' ? point.x : point.z;
+    const alongCoordinate = wall.axis === 'x' ? point.x : point.z;
+    const fixedDistance = Math.abs(fixedCoordinate - wall.fixed);
+    const alongOverflow = Math.max(wall.min - alongCoordinate, 0, alongCoordinate - wall.max);
+    const normalPenalty = normalizedNormal ? 1 - Math.max(0, wall.normal.dot(normalizedNormal)) : 0.35;
+    const score = fixedDistance * 8 + alongOverflow * 3 + normalPenalty;
+    if (score < bestScore) {
+      bestScore = score;
+      bestWall = wall;
+    }
+  });
+  if (!bestWall) return null;
+  const alongCoordinate = bestWall.axis === 'x' ? point.x : point.z;
+  return {
+    wallId: bestWall.id,
+    roomId: bestWall.roomId,
+    side: bestWall.side,
+    alongRatio: Number(THREE.MathUtils.clamp((alongCoordinate - bestWall.min) / Math.max(0.001, bestWall.length), 0, 1).toFixed(4)),
+    heightRatio: Number(THREE.MathUtils.clamp(point.y / Math.max(0.001, bestWall.height), 0, 1).toFixed(4)),
+    offset: Number(Math.abs((bestWall.fixedAxis === 'x' ? point.x : point.z) - bestWall.fixed).toFixed(4)),
+  };
+}
+
+function refreshConstructionAttachments() {
+  const attachments = [];
+  editablePaintings.forEach((paintingData, index) => {
+    const attachment = getWallAttachmentForSurface(paintingData.group.position, paintingData.wallNormal);
+    paintingData.wallAttachment = attachment;
+    attachments.push({
+      id: `painting:${index}`,
+      kind: 'painting',
+      title: paintingData.title ?? '',
+      ...attachment,
+    });
+  });
+  displayTextPanels.forEach((textPanelData, index) => {
+    const attachment = getWallAttachmentForSurface(textPanelData.group.position, textPanelData.wallNormal);
+    textPanelData.wallAttachment = attachment;
+    attachments.push({
+      id: `text-panel:${index}`,
+      kind: textPanelData.kind ?? 'text-panel',
+      ...attachment,
+    });
+  });
+  ceilingLights.forEach((lightData, index) => {
+    const roomIndex = lightData.roomIndex ?? getRoomIndexForPosition(lightData.position.x, lightData.position.z);
+    const roomConfig = constructionModel.rooms[roomIndex] ?? constructionModel.rooms[0] ?? null;
+    lightData.ceilingAttachment = roomConfig ? {
+      roomId: roomConfig.id,
+      trackId: lightData.trackId ?? null,
+      trackPosition: Number((lightData.trackPosition ?? 0.5).toFixed(4)),
+      heightRatio: Number(THREE.MathUtils.clamp(lightData.position.y / Math.max(0.001, roomConfig.height), 0, 1).toFixed(4)),
+    } : null;
+    attachments.push({
+      id: `ceiling-light:${index}`,
+      kind: getLightKind(lightData),
+      ...lightData.ceilingAttachment,
+    });
+  });
+  constructionModel.attachments = attachments.filter((attachment) => attachment.wallId || attachment.roomId);
+}
+
+refreshConstructionAttachments();
 
 const buildLayoutStorageKey = 'virtual-gallery-build-layout-v1';
 const buildGridDefaultSize = 0.5;
@@ -7946,6 +8128,22 @@ syncCameraRotation();
 updateStatus();
 animate();
 
+function getConstructionModelDebug() {
+  refreshConstructionAttachments();
+  const wallAttachmentCount = constructionModel.attachments.filter((attachment) => attachment.wallId).length;
+  const ceilingAttachmentCount = constructionModel.attachments.filter((attachment) => attachment.roomId && !attachment.wallId).length;
+  return {
+    version: constructionModel.version,
+    rooms: constructionModel.rooms.length,
+    walls: constructionModel.walls.length,
+    openings: constructionModel.openings.length,
+    attachments: constructionModel.attachments.length,
+    wallAttachments: wallAttachmentCount,
+    ceilingAttachments: ceilingAttachmentCount,
+    sampleAttachments: constructionModel.attachments.slice(0, 8),
+  };
+}
+
 window.__galleryDebug = () => ({
   bodyPosition: body.position.toArray(),
   movement: {
@@ -7983,6 +8181,7 @@ window.__galleryDebug = () => ({
   },
   displayPedestals: displayPedestals.length,
   displayTextPanels: displayTextPanels.length,
+  constructionModel: getConstructionModelDebug(),
   buildMode: {
     active: buildModeActive,
     selectedRoomIndex: selectedBuildRoomIndex,
