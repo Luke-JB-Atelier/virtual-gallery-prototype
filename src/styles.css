@@ -438,6 +438,21 @@ body,
   color: rgba(255, 229, 184, 0.92);
 }
 
+#build-opening-tools {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(126, 240, 193, 0.2);
+  border-radius: 7px;
+  background: rgba(126, 240, 193, 0.07);
+}
+
+#build-opening-title {
+  color: rgba(190, 255, 232, 0.94);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 #gallery-panel .editor-buttons,
 #art-panel .editor-buttons,
 #pedestal-panel .editor-buttons,
@@ -510,6 +525,7 @@ body,
 #pedestal-panel input[type="number"],
 #pedestal-panel select,
 #build-panel input[type="number"],
+#build-panel select,
 #text-panel-donor-tools input[type="text"],
 #text-panel-panel input[type="number"],
 #text-panel-panel select,

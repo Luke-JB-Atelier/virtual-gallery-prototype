@@ -100,6 +100,12 @@ const buildRoomHeightInput = document.querySelector('#build-room-height');
 const buildWallStepInput = document.querySelector('#build-wall-step');
 const buildWallInButton = document.querySelector('#build-wall-in');
 const buildWallOutButton = document.querySelector('#build-wall-out');
+const buildOpeningSelect = document.querySelector('#build-opening-select');
+const buildOpeningPositionInput = document.querySelector('#build-opening-position');
+const buildOpeningAddButton = document.querySelector('#build-opening-add');
+const buildOpeningRemoveButton = document.querySelector('#build-opening-remove');
+const buildOpeningLeftButton = document.querySelector('#build-opening-left');
+const buildOpeningRightButton = document.querySelector('#build-opening-right');
 const toggleTextPanelEditor = document.querySelector('#toggle-text-panel-editor');
 const textPanelPanel = document.querySelector('#text-panel-panel');
 const textPanelTitle = document.querySelector('#text-panel-title');
@@ -4446,6 +4452,7 @@ function selectConstructionWallFromPointer(event) {
 
 function clearBuildSelection() {
   selectedConstructionWallId = null;
+  selectedBuildOpeningId = null;
   selectedBuildRoomIndex = getCurrentBuildRoomIndex();
   clearSelectedWallHighlight();
   renderBuildLayout();
@@ -4460,6 +4467,7 @@ let buildSavedView = null;
 let selectedBuildRoomIndex = 0;
 let draggingBuildHandle = null;
 let selectedBuildEdge = null;
+let selectedBuildOpeningId = null;
 let selectedConstructionWallId = null;
 let buildGridSize = buildGridDefaultSize;
 const buildRoomMinSize = 2;
@@ -4546,6 +4554,28 @@ const buildPreviewConnectorLineMaterial = new THREE.LineBasicMaterial({
   opacity: 0.88,
   depthTest: false,
 });
+const buildPreviewSelectedConnectorMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffd36a,
+  transparent: true,
+  opacity: 0.28,
+  depthWrite: false,
+  depthTest: false,
+  side: THREE.DoubleSide,
+});
+const buildConnectorHandleMaterial = new THREE.MeshBasicMaterial({
+  color: 0x7ef0c1,
+  transparent: true,
+  opacity: 0.42,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const buildConnectorSelectedHandleMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffd36a,
+  transparent: true,
+  opacity: 0.58,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
 const selectedWallHighlightMaterial = new THREE.MeshBasicMaterial({
   color: 0xffd36a,
   transparent: true,
@@ -4579,6 +4609,21 @@ function createDefaultBuildLayout() {
   }));
 }
 
+function getWallSideFromWallId(wallId) {
+  return typeof wallId === 'string' ? wallId.split(':')[1] : null;
+}
+
+function createDefaultBuildOpenings() {
+  return createBaseConstructionModel().openings.map((opening) => ({
+    id: opening.id,
+    fromRoomId: opening.fromRoomId,
+    toRoomId: opening.toRoomId,
+    fromSide: getWallSideFromWallId(opening.fromWallId),
+    toSide: getWallSideFromWallId(opening.toWallId),
+    offsetRatio: 0.5,
+  }));
+}
+
 function normalizeBuildRoom(roomConfig, index) {
   const canonicalRoom = galleryRooms[index] ?? null;
   const legacyFirstRoomId = index === 0 && roomConfig?.id === 'room-1';
@@ -4598,6 +4643,35 @@ function normalizeBuildRoom(roomConfig, index) {
   };
 }
 
+function normalizeBuildOpening(opening, index = 0) {
+  const id = typeof opening?.id === 'string' && opening.id ? opening.id : `opening-${Date.now()}-${index}`;
+  const fromRoomId = typeof opening?.fromRoomId === 'string' ? opening.fromRoomId : '';
+  const toRoomId = typeof opening?.toRoomId === 'string' ? opening.toRoomId : '';
+  const fromSide = ['back', 'front', 'left', 'right'].includes(opening?.fromSide) ? opening.fromSide : null;
+  const toSide = ['back', 'front', 'left', 'right'].includes(opening?.toSide) ? opening.toSide : null;
+  return {
+    id,
+    fromRoomId,
+    toRoomId,
+    fromSide,
+    toSide,
+    offsetRatio: THREE.MathUtils.clamp(Number(opening?.offsetRatio) || 0.5, 0, 1),
+  };
+}
+
+function getValidBuildOpenings(openings, rooms = buildRooms) {
+  const roomIds = new Set(rooms.map((roomConfig) => roomConfig.id));
+  return openings
+    .map(normalizeBuildOpening)
+    .filter((opening) => (
+      roomIds.has(opening.fromRoomId)
+      && roomIds.has(opening.toRoomId)
+      && opening.fromRoomId !== opening.toRoomId
+      && opening.fromSide
+      && opening.toSide
+    ));
+}
+
 function loadBuildLayout() {
   try {
     const parsed = JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null');
@@ -4611,6 +4685,15 @@ function loadBuildLayout() {
 }
 
 let buildRooms = loadBuildLayout();
+let buildOpenings = (() => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null');
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.openings)) return createDefaultBuildOpenings();
+    return getValidBuildOpenings(parsed.openings, buildRooms);
+  } catch {
+    return createDefaultBuildOpenings();
+  }
+})();
 
 function getBuildRoomIndexById(roomId) {
   return buildRooms.findIndex((roomConfig) => roomConfig.id === roomId);
@@ -4692,6 +4775,7 @@ function commitBuildRoomChange(index, nextRoom, successMessage) {
     return false;
   }
   buildRooms = nextRooms;
+  buildOpenings = getValidBuildOpenings(buildOpenings, buildRooms);
   selectedBuildRoomIndex = index;
   renderBuildLayout();
   syncBuildPanel();
@@ -4736,6 +4820,7 @@ function saveBuildLayout() {
       gridSize: buildGridSize,
       applied: buildArchitectureApplied,
       rooms: buildRooms,
+      openings: buildOpenings,
     }));
   } catch {
     // Build planning data is optional.
@@ -4935,13 +5020,13 @@ function getOpeningBucket(openingsByRoom, roomId, side) {
   return openingsByRoom.get(roomId)[side];
 }
 
-function getBuildRoomConnections(rooms) {
+function getBuildRoomConnections(rooms, openings = buildOpenings) {
   const openingsByRoom = new Map();
   const connectors = [];
   const connectedPairs = new Set();
   const roomById = new Map(rooms.map((roomConfig) => [roomConfig.id, roomConfig]));
 
-  function addConnector(firstRoom, secondRoom, fromSide, toSide, pairKey = null) {
+  function addConnector(firstRoom, secondRoom, fromSide, toSide, opening = null) {
     const firstBounds = getRoomBounds(firstRoom);
     const secondBounds = getRoomBounds(secondRoom);
     const overlapMinX = Math.max(firstBounds.minX, secondBounds.minX);
@@ -4950,65 +5035,48 @@ function getBuildRoomConnections(rooms) {
     const overlapMaxZ = Math.min(firstBounds.maxZ, secondBounds.maxZ);
     const overlapX = overlapMaxX - overlapMinX;
     const overlapZ = overlapMaxZ - overlapMinZ;
-    const key = pairKey ?? [firstRoom.id, secondRoom.id].sort().join('|');
+    const key = opening?.id ?? [firstRoom.id, secondRoom.id, fromSide, toSide, connectors.length].join('|');
     if (connectedPairs.has(key)) return false;
+    const offsetRatio = THREE.MathUtils.clamp(opening?.offsetRatio ?? 0.5, 0, 1);
 
     if ((fromSide === 'front' && toSide === 'back') || (fromSide === 'back' && toSide === 'front')) {
       if (overlapX < doorway.width) return false;
-      const x = THREE.MathUtils.clamp((overlapMinX + overlapMaxX) / 2, firstBounds.minX + doorway.width / 2, firstBounds.maxX - doorway.width / 2);
+      const minCenter = overlapMinX + doorway.width / 2;
+      const maxCenter = overlapMaxX - doorway.width / 2;
+      const x = THREE.MathUtils.clamp(THREE.MathUtils.lerp(minCenter, maxCenter, offsetRatio), firstBounds.minX + doorway.width / 2, firstBounds.maxX - doorway.width / 2);
       const minZ = fromSide === 'front' ? firstBounds.maxZ : secondBounds.maxZ;
       const maxZ = fromSide === 'front' ? secondBounds.minZ : firstBounds.minZ;
       if (maxZ - minZ <= 0.05) return false;
       getOpeningBucket(openingsByRoom, firstRoom.id, fromSide).push({ x });
       getOpeningBucket(openingsByRoom, secondRoom.id, toSide).push({ x });
-      connectors.push({ axis: 'z', x, minZ, maxZ, fromRoomId: firstRoom.id, toRoomId: secondRoom.id, fromSide, toSide });
+      connectors.push({ id: opening?.id, axis: 'z', x, minZ, maxZ, fromRoomId: firstRoom.id, toRoomId: secondRoom.id, fromSide, toSide, offsetRatio });
       connectedPairs.add(key);
       return true;
     }
 
     if ((fromSide === 'right' && toSide === 'left') || (fromSide === 'left' && toSide === 'right')) {
       if (overlapZ < doorway.width) return false;
-      const z = THREE.MathUtils.clamp((overlapMinZ + overlapMaxZ) / 2, firstBounds.minZ + doorway.width / 2, firstBounds.maxZ - doorway.width / 2);
+      const minCenter = overlapMinZ + doorway.width / 2;
+      const maxCenter = overlapMaxZ - doorway.width / 2;
+      const z = THREE.MathUtils.clamp(THREE.MathUtils.lerp(minCenter, maxCenter, offsetRatio), firstBounds.minZ + doorway.width / 2, firstBounds.maxZ - doorway.width / 2);
       const minX = fromSide === 'right' ? firstBounds.maxX : secondBounds.maxX;
       const maxX = fromSide === 'right' ? secondBounds.minX : firstBounds.minX;
       if (maxX - minX <= 0.05) return false;
       getOpeningBucket(openingsByRoom, firstRoom.id, fromSide).push({ z });
       getOpeningBucket(openingsByRoom, secondRoom.id, toSide).push({ z });
-      connectors.push({ axis: 'x', z, minX, maxX, fromRoomId: firstRoom.id, toRoomId: secondRoom.id, fromSide, toSide });
+      connectors.push({ id: opening?.id, axis: 'x', z, minX, maxX, fromRoomId: firstRoom.id, toRoomId: secondRoom.id, fromSide, toSide, offsetRatio });
       connectedPairs.add(key);
       return true;
     }
     return false;
   }
 
-  createBaseConstructionModel().openings.forEach((opening) => {
+  getValidBuildOpenings(openings, rooms).forEach((opening) => {
     const firstRoom = roomById.get(opening.fromRoomId);
     const secondRoom = roomById.get(opening.toRoomId);
-    const fromSide = opening.fromWallId?.split(':')[1];
-    const toSide = opening.toWallId?.split(':')[1];
-    if (firstRoom && secondRoom && fromSide && toSide) {
-      addConnector(firstRoom, secondRoom, fromSide, toSide, opening.id);
+    if (firstRoom && secondRoom) {
+      addConnector(firstRoom, secondRoom, opening.fromSide, opening.toSide, opening);
     }
-  });
-
-  rooms.forEach((firstRoom, firstIndex) => {
-    rooms.slice(firstIndex + 1).forEach((secondRoom) => {
-      const firstBounds = getRoomBounds(firstRoom);
-      const secondBounds = getRoomBounds(secondRoom);
-      const verticalGapForward = secondBounds.minZ - firstBounds.maxZ;
-      const verticalGapBackward = firstBounds.minZ - secondBounds.maxZ;
-      const horizontalGapRight = secondBounds.minX - firstBounds.maxX;
-      const horizontalGapLeft = firstBounds.minX - secondBounds.maxX;
-      if (verticalGapForward > 0 && verticalGapForward <= corridorLength * 1.8) {
-        addConnector(firstRoom, secondRoom, 'front', 'back');
-      } else if (verticalGapBackward > 0 && verticalGapBackward <= corridorLength * 1.8) {
-        addConnector(firstRoom, secondRoom, 'back', 'front');
-      } else if (horizontalGapRight > 0 && horizontalGapRight <= corridorLength * 1.8) {
-        addConnector(firstRoom, secondRoom, 'right', 'left');
-      } else if (horizontalGapLeft > 0 && horizontalGapLeft <= corridorLength * 1.8) {
-        addConnector(firstRoom, secondRoom, 'left', 'right');
-      }
-    });
   });
   return { openingsByRoom, connectors };
 }
@@ -5218,14 +5286,70 @@ function setBuildStatus(text, type = 'info') {
 function updateBuildSelectionSummary() {
   const roomConfig = buildRooms[selectedBuildRoomIndex];
   const wall = getConstructionWallById(selectedConstructionWallId);
+  const opening = getSelectedBuildOpening();
   const hasSelectedWall = Boolean(wall);
   if (buildSelection) {
     const roomLabel = roomConfig?.label ?? 'žádná místnost';
     const wallLabel = wall ? `${getWallSideLabel(wall.side)} stěna` : 'žádná stěna';
-    buildSelection.textContent = `Vybráno: ${roomLabel} · ${wallLabel}`;
+    const openingLabel = opening ? ` · průchod ${getBuildOpeningLabel(opening)}` : '';
+    buildSelection.textContent = `Vybráno: ${roomLabel} · ${wallLabel}${openingLabel}`;
   }
   if (buildWallInButton) buildWallInButton.disabled = !hasSelectedWall;
   if (buildWallOutButton) buildWallOutButton.disabled = !hasSelectedWall;
+}
+
+function getBuildRoomById(roomId) {
+  return buildRooms.find((roomConfig) => roomConfig.id === roomId) ?? null;
+}
+
+function getSelectedBuildOpening() {
+  return buildOpenings.find((opening) => opening.id === selectedBuildOpeningId) ?? null;
+}
+
+function getBuildOpeningLabel(opening) {
+  const fromRoom = getBuildRoomById(opening.fromRoomId);
+  const toRoom = getBuildRoomById(opening.toRoomId);
+  const fromLabel = fromRoom?.label ?? opening.fromRoomId;
+  const toLabel = toRoom?.label ?? opening.toRoomId;
+  return `${fromLabel} → ${toLabel}`;
+}
+
+function ensureSelectedBuildOpening() {
+  buildOpenings = getValidBuildOpenings(buildOpenings, buildRooms);
+  if (!buildOpenings.length) {
+    selectedBuildOpeningId = null;
+    return null;
+  }
+  if (!buildOpenings.some((opening) => opening.id === selectedBuildOpeningId)) {
+    selectedBuildOpeningId = buildOpenings[0].id;
+  }
+  return getSelectedBuildOpening();
+}
+
+function syncBuildOpeningControls() {
+  if (!buildOpeningSelect) return;
+  const selected = ensureSelectedBuildOpening();
+  const previousValue = buildOpeningSelect.value;
+  buildOpeningSelect.innerHTML = '';
+  if (!buildOpenings.length) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'Žádný průchod';
+    buildOpeningSelect.append(option);
+  } else {
+    buildOpenings.forEach((opening, index) => {
+      const option = document.createElement('option');
+      option.value = opening.id;
+      option.textContent = `${index + 1}. ${getBuildOpeningLabel(opening)}`;
+      buildOpeningSelect.append(option);
+    });
+  }
+  buildOpeningSelect.value = selected?.id ?? previousValue ?? '';
+  if (buildOpeningPositionInput) buildOpeningPositionInput.value = String(Math.round((selected?.offsetRatio ?? 0.5) * 100));
+  const hasOpening = Boolean(selected);
+  if (buildOpeningRemoveButton) buildOpeningRemoveButton.disabled = !hasOpening;
+  if (buildOpeningLeftButton) buildOpeningLeftButton.disabled = !hasOpening;
+  if (buildOpeningRightButton) buildOpeningRightButton.disabled = !hasOpening;
 }
 
 function disposeBuildRoomObject(object) {
@@ -5270,17 +5394,18 @@ function addBuildPreviewWall(group, width, height, position, rotationY, selected
 
 function addBuildPreviewConnector(group, connector) {
   const connectorHeight = doorway.height;
+  const selected = connector.id && connector.id === selectedBuildOpeningId;
   if (connector.axis === 'z') {
     const depth = connector.maxZ - connector.minZ;
     if (depth <= 0.05) return;
     const centerZ = (connector.minZ + connector.maxZ) / 2;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(doorway.width, depth), buildPreviewConnectorMaterial);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(doorway.width, depth), selected ? buildPreviewSelectedConnectorMaterial : buildPreviewConnectorMaterial);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(connector.x, 0.07, centerZ);
     floor.renderOrder = 88;
     group.add(floor);
-    addBuildPreviewWall(group, depth, connectorHeight, [connector.x - doorway.width / 2, connectorHeight / 2, centerZ], -Math.PI / 2);
-    addBuildPreviewWall(group, depth, connectorHeight, [connector.x + doorway.width / 2, connectorHeight / 2, centerZ], Math.PI / 2);
+    addBuildPreviewWall(group, depth, connectorHeight, [connector.x - doorway.width / 2, connectorHeight / 2, centerZ], -Math.PI / 2, selected);
+    addBuildPreviewWall(group, depth, connectorHeight, [connector.x + doorway.width / 2, connectorHeight / 2, centerZ], Math.PI / 2, selected);
     const topLine = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(connector.x - doorway.width / 2, connectorHeight, connector.minZ),
       new THREE.Vector3(connector.x + doorway.width / 2, connectorHeight, connector.minZ),
@@ -5295,13 +5420,13 @@ function addBuildPreviewConnector(group, connector) {
   const width = connector.maxX - connector.minX;
   if (width <= 0.05) return;
   const centerX = (connector.minX + connector.maxX) / 2;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, doorway.width), buildPreviewConnectorMaterial);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, doorway.width), selected ? buildPreviewSelectedConnectorMaterial : buildPreviewConnectorMaterial);
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(centerX, 0.07, connector.z);
   floor.renderOrder = 88;
   group.add(floor);
-  addBuildPreviewWall(group, width, connectorHeight, [centerX, connectorHeight / 2, connector.z - doorway.width / 2], Math.PI);
-  addBuildPreviewWall(group, width, connectorHeight, [centerX, connectorHeight / 2, connector.z + doorway.width / 2], 0);
+  addBuildPreviewWall(group, width, connectorHeight, [centerX, connectorHeight / 2, connector.z - doorway.width / 2], Math.PI, selected);
+  addBuildPreviewWall(group, width, connectorHeight, [centerX, connectorHeight / 2, connector.z + doorway.width / 2], 0, selected);
   const topLine = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(connector.minX, connectorHeight, connector.z - doorway.width / 2),
     new THREE.Vector3(connector.maxX, connectorHeight, connector.z - doorway.width / 2),
@@ -5357,6 +5482,28 @@ function renderBuildLayout() {
     if (child === buildGridHelper) return;
     buildGroup.remove(child);
     disposeBuildRoomObject(child);
+  });
+
+  const { connectors } = getBuildRoomConnections(buildRooms);
+  connectors.forEach((connector) => {
+    if (!connector.id) return;
+    const selected = connector.id === selectedBuildOpeningId;
+    const group = new THREE.Group();
+    const width = connector.axis === 'z' ? doorway.width : Math.max(0.05, connector.maxX - connector.minX);
+    const depth = connector.axis === 'z' ? Math.max(0.05, connector.maxZ - connector.minZ) : doorway.width;
+    const x = connector.axis === 'z' ? connector.x : (connector.minX + connector.maxX) / 2;
+    const z = connector.axis === 'z' ? (connector.minZ + connector.maxZ) / 2 : connector.z;
+    const handle = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, depth),
+      selected ? buildConnectorSelectedHandleMaterial : buildConnectorHandleMaterial,
+    );
+    handle.rotation.x = -Math.PI / 2;
+    handle.position.set(x, 0.074, z);
+    handle.renderOrder = selected ? 47 : 46;
+    handle.userData.buildOpeningId = connector.id;
+    group.add(handle);
+    buildRaycastObjects.push(handle);
+    buildGroup.add(group);
   });
 
   buildRooms.forEach((roomConfig, index) => {
@@ -5415,6 +5562,7 @@ function syncBuildPanel() {
   if (buildRoomDepthInput) buildRoomDepthInput.value = String(Number(roomConfig.depth.toFixed(2)));
   if (buildRoomHeightInput) buildRoomHeightInput.value = String(Number(roomConfig.height.toFixed(2)));
   if (buildRemoveRoomButton) buildRemoveRoomButton.disabled = buildRooms.length <= 1;
+  syncBuildOpeningControls();
   updateBuildSelectionSummary();
 }
 
@@ -5451,6 +5599,151 @@ function getBuildFloorPoint(event) {
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.ray.intersectPlane(buildFloorPlane, buildHitPoint);
   return hit ? buildHitPoint.clone() : null;
+}
+
+function applyBuildOpeningChange(message = 'Průchod upravený.') {
+  buildOpenings = getValidBuildOpenings(buildOpenings, buildRooms);
+  renderBuildLayout();
+  syncBuildPanel();
+  saveBuildLayout();
+  if (buildArchitectureApplied) {
+    applyBuildLayoutToGallery({ persist: false });
+    saveBuildLayout();
+  }
+  setBuildStatus(message);
+}
+
+function getOppositeOpeningSide(side) {
+  return {
+    back: 'front',
+    front: 'back',
+    left: 'right',
+    right: 'left',
+  }[side] ?? null;
+}
+
+function getRoomGapForSide(sourceRoom, targetRoom, side) {
+  const source = getRoomBounds(sourceRoom);
+  const target = getRoomBounds(targetRoom);
+  if (side === 'front') return target.minZ - source.maxZ;
+  if (side === 'back') return source.minZ - target.maxZ;
+  if (side === 'right') return target.minX - source.maxX;
+  if (side === 'left') return source.minX - target.maxX;
+  return Infinity;
+}
+
+function getRoomOverlapForSide(sourceRoom, targetRoom, side) {
+  const source = getRoomBounds(sourceRoom);
+  const target = getRoomBounds(targetRoom);
+  if (side === 'front' || side === 'back') {
+    return Math.min(source.maxX, target.maxX) - Math.max(source.minX, target.minX);
+  }
+  return Math.min(source.maxZ, target.maxZ) - Math.max(source.minZ, target.minZ);
+}
+
+function findBestOpeningTarget(sourceRoom, preferredSide = null) {
+  const sides = preferredSide ? [preferredSide] : ['front', 'back', 'right', 'left'];
+  let best = null;
+  buildRooms.forEach((targetRoom) => {
+    if (targetRoom.id === sourceRoom.id) return;
+    sides.forEach((side) => {
+      const gap = getRoomGapForSide(sourceRoom, targetRoom, side);
+      const overlap = getRoomOverlapForSide(sourceRoom, targetRoom, side);
+      if (gap <= 0.05 || overlap < doorway.width) return;
+      const score = gap + Math.abs(overlap - doorway.width) * 0.03;
+      if (!best || score < best.score) {
+        best = { targetRoom, side, toSide: getOppositeOpeningSide(side), score };
+      }
+    });
+  });
+  return best;
+}
+
+function addBuildOpening() {
+  const sourceRoom = buildRooms[selectedBuildRoomIndex] ?? buildRooms[0];
+  if (!sourceRoom) return;
+  const selectedWall = getConstructionWallById(selectedConstructionWallId);
+  const preferredSide = selectedWall?.roomId === sourceRoom.id ? selectedWall.side : selectedBuildEdge;
+  const target = findBestOpeningTarget(sourceRoom, preferredSide);
+  if (!target?.targetRoom || !target.toSide) {
+    setBuildStatus('Limit: poblíž vybrané místnosti není vhodná druhá místnost pro průchod.', 'warning');
+    return;
+  }
+  const similarCount = buildOpenings.filter((opening) => (
+    opening.fromRoomId === sourceRoom.id
+    && opening.toRoomId === target.targetRoom.id
+    && opening.fromSide === target.side
+    && opening.toSide === target.toSide
+  )).length;
+  const offsetRatio = THREE.MathUtils.clamp(0.5 + (similarCount % 5 - 2) * 0.16, 0.08, 0.92);
+  const opening = {
+    id: `opening-${Date.now()}`,
+    fromRoomId: sourceRoom.id,
+    toRoomId: target.targetRoom.id,
+    fromSide: target.side,
+    toSide: target.toSide,
+    offsetRatio,
+  };
+  buildOpenings.push(opening);
+  selectedBuildOpeningId = opening.id;
+  applyBuildOpeningChange(`Přidaný průchod: ${getBuildOpeningLabel(opening)}.`);
+}
+
+function removeSelectedBuildOpening() {
+  const selected = getSelectedBuildOpening();
+  if (!selected) return;
+  buildOpenings = buildOpenings.filter((opening) => opening.id !== selected.id);
+  selectedBuildOpeningId = buildOpenings[0]?.id ?? null;
+  applyBuildOpeningChange('Průchod smazaný ze stavebního plánu.');
+}
+
+function setSelectedBuildOpeningPosition(offsetRatio, message = 'Průchod posunutý.') {
+  const selected = getSelectedBuildOpening();
+  if (!selected) return;
+  selected.offsetRatio = THREE.MathUtils.clamp(offsetRatio, 0, 1);
+  applyBuildOpeningChange(message);
+}
+
+function getBuildOpeningMoveSpan(opening) {
+  const fromRoom = getBuildRoomById(opening.fromRoomId);
+  const toRoom = getBuildRoomById(opening.toRoomId);
+  if (!fromRoom || !toRoom) return doorway.width;
+  return Math.max(doorway.width, getRoomOverlapForSide(fromRoom, toRoom, opening.fromSide) - doorway.width);
+}
+
+function moveSelectedBuildOpening(direction) {
+  const selected = getSelectedBuildOpening();
+  if (!selected) return;
+  const step = THREE.MathUtils.clamp(buildGridSize / getBuildOpeningMoveSpan(selected), 0.03, 0.16);
+  setSelectedBuildOpeningPosition(selected.offsetRatio + direction * step, `Průchod posunutý po stěně o krok mřížky ${buildGridSize} m.`);
+}
+
+function selectBuildOpening(openingId) {
+  selectedBuildOpeningId = openingId || null;
+  renderBuildLayout();
+  syncBuildPanel();
+  const selected = getSelectedBuildOpening();
+  if (selected) setBuildStatus(`Vybraný průchod: ${getBuildOpeningLabel(selected)}.`);
+}
+
+function setBuildOpeningPositionFromPoint(opening, point) {
+  const fromRoom = getBuildRoomById(opening.fromRoomId);
+  const toRoom = getBuildRoomById(opening.toRoomId);
+  if (!fromRoom || !toRoom || !point) return false;
+  const fromBounds = getRoomBounds(fromRoom);
+  const toBounds = getRoomBounds(toRoom);
+  if (opening.fromSide === 'front' || opening.fromSide === 'back') {
+    const minCenter = Math.max(fromBounds.minX, toBounds.minX) + doorway.width / 2;
+    const maxCenter = Math.min(fromBounds.maxX, toBounds.maxX) - doorway.width / 2;
+    if (maxCenter <= minCenter) return false;
+    opening.offsetRatio = THREE.MathUtils.clamp((snapBuildValue(point.x) - minCenter) / (maxCenter - minCenter), 0, 1);
+    return true;
+  }
+  const minCenter = Math.max(fromBounds.minZ, toBounds.minZ) + doorway.width / 2;
+  const maxCenter = Math.min(fromBounds.maxZ, toBounds.maxZ) - doorway.width / 2;
+  if (maxCenter <= minCenter) return false;
+  opening.offsetRatio = THREE.MathUtils.clamp((snapBuildValue(point.z) - minCenter) / (maxCenter - minCenter), 0, 1);
+  return true;
 }
 
 function selectBuildRoom(index) {
@@ -5508,6 +5801,17 @@ function beginBuildDrag(event) {
   if (!buildModeActive) return false;
   const hit = getBuildPointerHit(event);
   if (!hit) return false;
+  if (hit.object.userData.buildOpeningId) {
+    selectedBuildOpeningId = hit.object.userData.buildOpeningId;
+    draggingBuildHandle = {
+      openingId: selectedBuildOpeningId,
+      kind: 'opening',
+    };
+    renderBuildLayout();
+    syncBuildPanel();
+    setBuildStatus('Táhni průchod po jeho stěně. Puštěním myši změnu uložíš.');
+    return true;
+  }
   const index = hit.object.userData.buildRoomIndex;
   if (Number.isInteger(index)) selectBuildRoom(index);
   if (hit.object.userData.buildEdge) {
@@ -5524,6 +5828,14 @@ function beginBuildDrag(event) {
 function updateBuildDrag(event) {
   if (!buildModeActive || !draggingBuildHandle) return false;
   const point = getBuildFloorPoint(event);
+  if (draggingBuildHandle.kind === 'opening') {
+    const opening = buildOpenings.find((item) => item.id === draggingBuildHandle.openingId);
+    if (!opening || !point || !setBuildOpeningPositionFromPoint(opening, point)) return false;
+    renderBuildLayout();
+    syncBuildPanel();
+    if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
+    return true;
+  }
   const roomConfig = buildRooms[draggingBuildHandle.roomIndex];
   if (!point || !roomConfig) return false;
   const left = roomConfig.centerX - roomConfig.width / 2;
@@ -5553,11 +5865,14 @@ function updateBuildDrag(event) {
 
 function finishBuildDrag() {
   if (!draggingBuildHandle) return false;
+  const finishedKind = draggingBuildHandle.kind;
   draggingBuildHandle = null;
   saveBuildLayout();
   if (buildArchitectureApplied) {
     applyBuildLayoutToGallery({ persist: false });
     saveBuildLayout();
+  } else if (finishedKind === 'opening') {
+    setBuildStatus('Průchod posunutý. Plán je uložený lokálně.');
   } else {
     setBuildStatus('Hrana upravená. Plán je uložený lokálně.');
   }
@@ -5584,6 +5899,10 @@ function addBuildRoom() {
 function removeSelectedBuildRoom() {
   if (buildRooms.length <= 1) return;
   buildRooms.splice(selectedBuildRoomIndex, 1);
+  buildOpenings = getValidBuildOpenings(buildOpenings, buildRooms);
+  if (!buildOpenings.some((opening) => opening.id === selectedBuildOpeningId)) {
+    selectedBuildOpeningId = buildOpenings[0]?.id ?? null;
+  }
   selectedBuildRoomIndex = Math.min(selectedBuildRoomIndex, buildRooms.length - 1);
   if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
   saveBuildLayout();
@@ -7830,6 +8149,14 @@ buildOriginalButton.addEventListener('click', () => restoreOriginalArchitecture(
 buildClearSelectionButton.addEventListener('click', clearBuildSelection);
 buildWallInButton.addEventListener('click', () => moveSelectedConstructionWall(-1));
 buildWallOutButton.addEventListener('click', () => moveSelectedConstructionWall(1));
+buildOpeningAddButton?.addEventListener('click', addBuildOpening);
+buildOpeningRemoveButton?.addEventListener('click', removeSelectedBuildOpening);
+buildOpeningLeftButton?.addEventListener('click', () => moveSelectedBuildOpening(-1));
+buildOpeningRightButton?.addEventListener('click', () => moveSelectedBuildOpening(1));
+buildOpeningSelect?.addEventListener('change', () => selectBuildOpening(buildOpeningSelect.value));
+buildOpeningPositionInput?.addEventListener('input', () => {
+  setSelectedBuildOpeningPosition(Number(buildOpeningPositionInput.value) / 100, 'Průchod posunutý podle posuvníku.');
+});
 [buildGridSizeInput, buildRoomWidthInput, buildRoomDepthInput, buildRoomHeightInput].forEach((input) => {
   input.addEventListener('input', updateSelectedBuildRoomFromInputs);
   input.addEventListener('change', updateSelectedBuildRoomFromInputs);
