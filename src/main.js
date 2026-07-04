@@ -91,6 +91,7 @@ const buildResetViewButton = document.querySelector('#build-reset-view');
 const buildAddRoomButton = document.querySelector('#build-add-room');
 const buildRemoveRoomButton = document.querySelector('#build-remove-room');
 const buildApplyButton = document.querySelector('#build-apply');
+const buildApplyBetaButton = document.querySelector('#build-apply-beta');
 const buildOriginalButton = document.querySelector('#build-original');
 const buildClearSelectionButton = document.querySelector('#build-clear-selection');
 const buildGridSizeInput = document.querySelector('#build-grid-size');
@@ -4546,7 +4547,7 @@ function commitBuildRoomChange(index, nextRoom, successMessage) {
   syncBuildPanel();
   saveBuildLayout();
   if (buildArchitectureApplied) {
-    applyBuildLayoutToGallery({ persist: false });
+    applyBuildLayoutToGallery({ persist: false, beta: true });
     saveBuildLayout();
   }
   if (successMessage) setBuildStatus(successMessage);
@@ -4857,11 +4858,38 @@ function preserveEditableObjectsInsideBuildRooms() {
   markEditableRaycastObjectsDirty();
 }
 
-function applyBuildLayoutToGallery({ persist = true } = {}) {
-  restoreOriginalArchitecture({ persist: false });
+function saveBuildPlanOnly() {
   saveBuildLayout();
   syncBuildPanel();
+  renderBuildPreview();
   setBuildStatus('Stavební plán je uložený jen jako návrh. 3D galerie zůstává v původním stabilním skeletu.');
+}
+
+function applyBuildLayoutToGallery({ persist = true, beta = false } = {}) {
+  if (!beta) {
+    saveBuildPlanOnly();
+    return;
+  }
+  restoreOriginalArchitecture({ persist: false });
+  const normalizedRooms = buildRooms.map((roomConfig, index) => normalizeBuildRoom(roomConfig, index));
+  const { openingsByRoom, connectors } = getBuildRoomConnections(normalizedRooms);
+  activeBuildRoomLayouts = normalizedRooms;
+  buildArchitectureApplied = true;
+  baseArchitectureObjects.forEach((object) => {
+    object.visible = false;
+  });
+  resetDynamicArchitecture();
+  dynamicArchitectureGroup.visible = true;
+  normalizedRooms.forEach((roomConfig) => addDynamicRoomArchitecture(roomConfig, openingsByRoom));
+  connectors.forEach(addDynamicConnectorArchitecture);
+  wallMeshes.length = 0;
+  wallMeshes.push(...dynamicWallMeshes);
+  navigationSpaces = createNavigationSpacesFromBuildRooms();
+  preserveEditableObjectsInsideBuildRooms();
+  if (persist) saveBuildLayout();
+  renderBuildPreview();
+  syncBuildPanel();
+  setBuildStatus('Beta stavba použita: návrh je teď zobrazený jako dynamické stěny. Původní skelet vrátíš tlačítkem Původní skelet.', 'warning');
 }
 
 function restoreOriginalArchitecture({ persist = true } = {}) {
@@ -4890,6 +4918,7 @@ function restoreOriginalArchitecture({ persist = true } = {}) {
   constrainToGallery(body.position, 0.55, body.position.clone());
   markEditableRaycastObjectsDirty();
   if (persist) saveBuildLayout();
+  renderBuildPreview();
   syncBuildPanel();
   setBuildStatus('Vrácený původní skelet galerie. Stavební plán zůstává uložený pro další úpravy.');
 }
@@ -4931,7 +4960,7 @@ function disposeBuildPreviewObject(object) {
 }
 
 function updateBuildPreviewVisibility() {
-  buildPreviewGroup.visible = buildPanel.classList.contains('visible') && !buildModeActive;
+  buildPreviewGroup.visible = buildPanel.classList.contains('visible') && !buildModeActive && !buildArchitectureApplied;
 }
 
 function addBuildPreviewWall(group, width, height, position, rotationY, selected = false) {
@@ -5245,7 +5274,7 @@ function finishBuildDrag() {
   draggingBuildHandle = null;
   saveBuildLayout();
   if (buildArchitectureApplied) {
-    applyBuildLayoutToGallery({ persist: false });
+    applyBuildLayoutToGallery({ persist: false, beta: true });
     saveBuildLayout();
   } else {
     setBuildStatus('Hrana upravená. Plán je uložený lokálně.');
@@ -5265,7 +5294,7 @@ function addBuildRoom() {
   };
   buildRooms.push(roomConfig);
   selectBuildRoom(buildRooms.length - 1);
-  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
+  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false, beta: true });
   saveBuildLayout();
   setBuildStatus('Nová místnost přidaná do půdorysu.');
 }
@@ -5274,7 +5303,7 @@ function removeSelectedBuildRoom() {
   if (buildRooms.length <= 1) return;
   buildRooms.splice(selectedBuildRoomIndex, 1);
   selectedBuildRoomIndex = Math.min(selectedBuildRoomIndex, buildRooms.length - 1);
-  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
+  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false, beta: true });
   saveBuildLayout();
   renderBuildLayout();
   syncBuildPanel();
@@ -7515,6 +7544,7 @@ buildResetViewButton.addEventListener('click', exitBuildTopView);
 buildAddRoomButton.addEventListener('click', addBuildRoom);
 buildRemoveRoomButton.addEventListener('click', removeSelectedBuildRoom);
 buildApplyButton.addEventListener('click', () => applyBuildLayoutToGallery());
+buildApplyBetaButton.addEventListener('click', () => applyBuildLayoutToGallery({ beta: true }));
 buildOriginalButton.addEventListener('click', () => restoreOriginalArchitecture());
 buildClearSelectionButton.addEventListener('click', clearBuildSelection);
 buildWallInButton.addEventListener('click', () => moveSelectedConstructionWall(-1));
