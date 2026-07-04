@@ -1209,10 +1209,11 @@ const speakerAccentMaterial = new THREE.MeshStandardMaterial({
 });
 const audioSpeakers = [];
 
-function createSpeakerFixture(position, target) {
+function createSpeakerFixture(position, target, metadata = {}) {
   const speaker = new THREE.Group();
   speaker.position.copy(position);
   speaker.lookAt(target);
+  speaker.userData.roomServiceFixture = true;
 
   const cabinet = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.14), speakerCabinetMaterial);
   cabinet.castShadow = true;
@@ -1237,18 +1238,18 @@ function createSpeakerFixture(position, target) {
   speaker.add(bracket);
 
   room.add(speaker);
-  audioSpeakers.push({ group: speaker, position: position.clone(), target: target.clone(), panner: null });
+  audioSpeakers.push({ group: speaker, position: position.clone(), target: target.clone(), panner: null, ...metadata });
 }
 
 function addCornerSpeakers() {
-  galleryRooms.forEach(({ centerX, centerZ }) => {
+  galleryRooms.forEach(({ centerX, centerZ }, roomIndex) => {
     const target = new THREE.Vector3(centerX, 1.48, centerZ);
     const cornerX = roomWidth / 2 - 0.16;
     const cornerZ = roomDepth / 2 - 0.18;
     [
       new THREE.Vector3(centerX + cornerX, roomHeight - 0.34, centerZ - cornerZ),
       new THREE.Vector3(centerX - cornerX, roomHeight - 0.34, centerZ + cornerZ),
-    ].forEach((position) => createSpeakerFixture(position, target));
+    ].forEach((position, slot) => createSpeakerFixture(position, target, { roomIndex, slot }));
   });
 }
 
@@ -2284,6 +2285,8 @@ function addRoomLightPanel(centerX, centerZ) {
     maxX: centerX + roomWidth / 2 + corridorLength,
     minZ: centerZ - roomDepth / 2 - corridorLength,
     maxZ: centerZ + roomDepth / 2 + corridorLength,
+    panel,
+    frame,
     panelMaterial,
     light,
     currentPower: 0,
@@ -2299,6 +2302,8 @@ const autoRoomLights = galleryRooms.map(({ centerX, centerZ }, index) => {
       maxX: centerX + roomWidth / 2 + corridorLength,
       minZ: centerZ - roomDepth / 2 - corridorLength,
       maxZ: centerZ + roomDepth / 2 + corridorLength,
+      panel: roomLightPanel,
+      frame: roomLightFrame,
       panelMaterial: roomLightPanelMaterial,
       light: roomLight,
       currentPower: 0,
@@ -2353,6 +2358,132 @@ addRoomLightSwitch(new THREE.Vector3(switchX, switchY, roomDepth / 2 - 0.035), M
 addRoomLightSwitch(new THREE.Vector3(switchX, switchY, roomStep - roomDepth / 2 + 0.035), 0);
 addRoomLightSwitch(new THREE.Vector3(switchX, switchY, roomStep + roomDepth / 2 - 0.035), Math.PI);
 addRoomLightSwitch(new THREE.Vector3(switchX, switchY, roomStep * 2 - roomDepth / 2 + 0.035), 0);
+
+function ensureRoomLightFixture(index, roomConfig) {
+  if (!autoRoomLights[index]) {
+    autoRoomLights[index] = addRoomLightPanel(roomConfig.centerX, roomConfig.centerZ);
+  }
+  return autoRoomLights[index];
+}
+
+function updateRoomLightFixtureForRoom(fixture, roomConfig) {
+  const height = getRoomHeight(roomConfig);
+  const bounds = getRoomBounds(roomConfig);
+  fixture.centerX = roomConfig.centerX;
+  fixture.centerZ = roomConfig.centerZ;
+  fixture.minX = bounds.minX - corridorLength;
+  fixture.maxX = bounds.maxX + corridorLength;
+  fixture.minZ = bounds.minZ - corridorLength;
+  fixture.maxZ = bounds.maxZ + corridorLength;
+  fixture.panel.visible = true;
+  fixture.panel.position.set(roomConfig.centerX, height - 0.075, roomConfig.centerZ);
+  fixture.frame.visible = true;
+  frameParts.forEach(({ position }, partIndex) => {
+    const framePart = fixture.frame.children[partIndex];
+    if (framePart) framePart.position.set(position[0] + roomConfig.centerX, height - 0.078, position[2] + roomConfig.centerZ);
+  });
+  fixture.light.visible = true;
+  fixture.light.position.set(roomConfig.centerX, height - 0.28, roomConfig.centerZ);
+}
+
+function ensureNavigationFillLight(index, roomConfig) {
+  if (!navigationFillLights[index]) {
+    navigationFillLights[index] = {
+      centerX: roomConfig.centerX,
+      centerZ: roomConfig.centerZ,
+      light: addRoomNavigationLight(roomConfig.centerX, roomConfig.centerZ),
+    };
+  }
+  return navigationFillLights[index];
+}
+
+function updateNavigationFillLightForRoom(fixture, roomConfig) {
+  fixture.centerX = roomConfig.centerX;
+  fixture.centerZ = roomConfig.centerZ;
+  fixture.light.visible = true;
+  fixture.light.position.set(roomConfig.centerX, getRoomHeight(roomConfig) * 0.52, roomConfig.centerZ);
+}
+
+function ensureRoomLightSwitch(index) {
+  if (!roomLightSwitches[index]) {
+    addRoomLightSwitch(new THREE.Vector3(0, switchY, 0), -Math.PI / 2);
+  }
+  return roomLightSwitches[index];
+}
+
+function updateRoomLightSwitchForRoom(switchGroup, roomConfig) {
+  const bounds = getRoomBounds(roomConfig);
+  const height = getRoomHeight(roomConfig);
+  const x = bounds.maxX - 0.035;
+  const z = THREE.MathUtils.clamp(bounds.minZ + Math.min(1.1, getRoomDepth(roomConfig) * 0.22), bounds.minZ + 0.35, bounds.maxZ - 0.35);
+  switchGroup.visible = true;
+  switchGroup.position.set(x, Math.min(switchY, height - 0.7), z);
+  switchGroup.rotation.y = -Math.PI / 2;
+  switchGroup.userData.wallAttachment = getWallAttachmentForSurface(switchGroup.position, directionFromRotationY(switchGroup.rotation.y));
+}
+
+function ensureSpeakerFixture(roomIndex, slot, roomConfig) {
+  const speakerIndex = roomIndex * 2 + slot;
+  if (!audioSpeakers[speakerIndex]) {
+    createSpeakerFixture(
+      new THREE.Vector3(roomConfig.centerX, getRoomHeight(roomConfig) - 0.34, roomConfig.centerZ),
+      new THREE.Vector3(roomConfig.centerX, 1.48, roomConfig.centerZ),
+      { roomIndex, slot },
+    );
+  }
+  return audioSpeakers[speakerIndex];
+}
+
+function updateSpeakerFixtureForRoom(speakerData, roomIndex, slot, roomConfig) {
+  const target = new THREE.Vector3(roomConfig.centerX, 1.48, roomConfig.centerZ);
+  const cornerX = getRoomWidth(roomConfig) / 2 - 0.16;
+  const cornerZ = getRoomDepth(roomConfig) / 2 - 0.18;
+  const position = slot === 0
+    ? new THREE.Vector3(roomConfig.centerX + cornerX, getRoomHeight(roomConfig) - 0.34, roomConfig.centerZ - cornerZ)
+    : new THREE.Vector3(roomConfig.centerX - cornerX, getRoomHeight(roomConfig) - 0.34, roomConfig.centerZ + cornerZ);
+  speakerData.roomIndex = roomIndex;
+  speakerData.slot = slot;
+  speakerData.position.copy(position);
+  speakerData.target.copy(target);
+  speakerData.group.visible = true;
+  speakerData.group.position.copy(position);
+  speakerData.group.lookAt(target);
+  if (speakerData.panner) {
+    setPannerPosition(speakerData.panner, position);
+    setPannerOrientation(speakerData.panner, target.clone().sub(position).normalize());
+  }
+}
+
+function syncRoomServiceFixturesToActiveRooms() {
+  const activeRooms = getActiveGalleryRooms();
+  activeRooms.forEach((roomConfig, index) => {
+    updateRoomLightFixtureForRoom(ensureRoomLightFixture(index, roomConfig), roomConfig);
+    updateNavigationFillLightForRoom(ensureNavigationFillLight(index, roomConfig), roomConfig);
+    updateRoomLightSwitchForRoom(ensureRoomLightSwitch(index), roomConfig);
+    updateSpeakerFixtureForRoom(ensureSpeakerFixture(index, 0, roomConfig), index, 0, roomConfig);
+    updateSpeakerFixtureForRoom(ensureSpeakerFixture(index, 1, roomConfig), index, 1, roomConfig);
+  });
+  autoRoomLights.forEach((fixture, index) => {
+    if (index < activeRooms.length) return;
+    fixture.panel.visible = false;
+    fixture.frame.visible = false;
+    fixture.light.visible = false;
+    fixture.light.intensity = 0;
+  });
+  navigationFillLights.forEach((fixture, index) => {
+    if (index < activeRooms.length) return;
+    fixture.light.visible = false;
+    fixture.light.intensity = 0;
+  });
+  roomLightSwitches.forEach((switchGroup, index) => {
+    if (index < activeRooms.length) return;
+    switchGroup.visible = false;
+  });
+  audioSpeakers.forEach((speakerData, index) => {
+    if (index < activeRooms.length * 2) return;
+    speakerData.group.visible = false;
+  });
+}
 
 function setRoomLightPanelColor(material, activePower) {
   const glow = THREE.MathUtils.clamp(activePower / 80, 0, 1);
@@ -4601,6 +4732,7 @@ const buildRoomFillMaterial = new THREE.MeshBasicMaterial({
   transparent: true,
   opacity: 0.16,
   depthWrite: false,
+  depthTest: false,
   side: THREE.DoubleSide,
 });
 const buildRoomSelectedMaterial = new THREE.MeshBasicMaterial({
@@ -4608,6 +4740,7 @@ const buildRoomSelectedMaterial = new THREE.MeshBasicMaterial({
   transparent: true,
   opacity: 0.28,
   depthWrite: false,
+  depthTest: false,
   side: THREE.DoubleSide,
 });
 const buildHandleMaterial = new THREE.MeshBasicMaterial({
@@ -4615,10 +4748,11 @@ const buildHandleMaterial = new THREE.MeshBasicMaterial({
   transparent: true,
   opacity: 0.74,
   depthWrite: false,
+  depthTest: false,
   side: THREE.DoubleSide,
 });
-const buildWallMaterial = new THREE.LineBasicMaterial({ color: 0xf7f4ea, transparent: true, opacity: 0.92 });
-const buildSelectedWallMaterial = new THREE.LineBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 1 });
+const buildWallMaterial = new THREE.LineBasicMaterial({ color: 0xf7f4ea, transparent: true, opacity: 0.92, depthTest: false });
+const buildSelectedWallMaterial = new THREE.LineBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 1, depthTest: false });
 const buildPreviewFloorMaterial = new THREE.MeshBasicMaterial({
   color: 0x84b8ff,
   transparent: true,
@@ -5341,6 +5475,7 @@ function applyBuildLayoutToGallery({ persist = true } = {}) {
   wallMeshes.length = 0;
   wallMeshes.push(...dynamicWallMeshes);
   navigationSpaces = createNavigationSpacesFromBuildRooms(normalizedRooms);
+  syncRoomServiceFixturesToActiveRooms();
   reattachWallBoundObjects();
   reattachPedestalsToRooms();
   preserveEditableObjectsInsideBuildRooms();
@@ -5383,6 +5518,7 @@ function restoreOriginalArchitecture({ persist = true, reattach = true } = {}) {
       { minX: -sideRoomStep * 2 - roomWidth / 2, maxX: -sideRoomStep * 2 + roomWidth / 2, minZ: roomStep - roomDepth / 2, maxZ: roomStep + roomDepth / 2, padZMin: 0, padZMax: 0 },
     ] : []),
   ];
+  syncRoomServiceFixturesToActiveRooms();
   if (reattach) {
     reattachWallBoundObjects();
     reattachPedestalsToRooms();
@@ -5947,6 +6083,20 @@ function beginBuildDrag(event) {
       edge: hit.object.userData.buildEdge,
     };
     setBuildStatus('Táhni hranu po mřížce. Puštěním myši změnu uložíš.');
+  } else if (Number.isInteger(index)) {
+    const point = getBuildFloorPoint(event);
+    const roomConfig = buildRooms[selectedBuildRoomIndex];
+    if (point && roomConfig) {
+      selectedBuildEdge = null;
+      draggingBuildHandle = {
+        roomIndex: selectedBuildRoomIndex,
+        kind: 'room',
+        startPoint: point,
+        startCenterX: roomConfig.centerX,
+        startCenterZ: roomConfig.centerZ,
+      };
+      setBuildStatus('Táhni místnost po mřížce. Průchody se přepočítají podle nové pozice.');
+    }
   }
   return true;
 }
@@ -5961,6 +6111,20 @@ function updateBuildDrag(event) {
     syncBuildPanel();
     if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
     return true;
+  }
+  if (draggingBuildHandle.kind === 'room') {
+    const roomConfig = buildRooms[draggingBuildHandle.roomIndex];
+    if (!point || !roomConfig || !draggingBuildHandle.startPoint) return false;
+    const nextRoom = {
+      ...roomConfig,
+      centerX: snapBuildValue(draggingBuildHandle.startCenterX + point.x - draggingBuildHandle.startPoint.x),
+      centerZ: snapBuildValue(draggingBuildHandle.startCenterZ + point.z - draggingBuildHandle.startPoint.z),
+    };
+    return commitBuildRoomChange(
+      draggingBuildHandle.roomIndex,
+      nextRoom,
+      'Místnost posunutá po mřížce. Průchody se přepočítaly podle nové pozice.',
+    );
   }
   const roomConfig = buildRooms[draggingBuildHandle.roomIndex];
   if (!point || !roomConfig) return false;
@@ -5999,6 +6163,8 @@ function finishBuildDrag() {
     saveBuildLayout();
   } else if (finishedKind === 'opening') {
     setBuildStatus('Průchod posunutý. Plán je uložený lokálně.');
+  } else if (finishedKind === 'room') {
+    setBuildStatus('Místnost posunutá. Plán je uložený lokálně.');
   } else {
     setBuildStatus('Hrana upravená. Plán je uložený lokálně.');
   }
