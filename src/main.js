@@ -85,6 +85,7 @@ const toggleBuildEditor = document.querySelector('#toggle-build-editor');
 const buildPanel = document.querySelector('#build-panel');
 const buildTitle = document.querySelector('#build-title');
 const buildStatus = document.querySelector('#build-status');
+const buildSelection = document.querySelector('#build-selection');
 const buildTopViewButton = document.querySelector('#build-top-view');
 const buildResetViewButton = document.querySelector('#build-reset-view');
 const buildAddRoomButton = document.querySelector('#build-add-room');
@@ -4249,6 +4250,7 @@ function selectConstructionWall(wallId) {
   const wall = getConstructionWallById(wallId);
   if (!wall) {
     setBuildStatus('Stěna není vybraná.');
+    updateBuildSelectionSummary();
     return;
   }
   const buildRoomIndex = getBuildRoomIndexById(wall.roomId);
@@ -4257,6 +4259,7 @@ function selectConstructionWall(wallId) {
     syncBuildPanel();
     if (buildModeActive) renderBuildLayout();
   }
+  updateBuildSelectionSummary();
   setBuildStatus(`Vybraná stěna: ${getRoomLabelById(wall.roomId)} - ${getWallSideLabel(wall.side)} strana. Délka ${wall.length.toFixed(2)} m, výška ${wall.height.toFixed(2)} m.`);
 }
 
@@ -4280,7 +4283,7 @@ function getConstructionWallHitFromPointer(event) {
 function selectConstructionWallFromPointer(event) {
   const result = getConstructionWallHitFromPointer(event);
   if (!result) {
-    setBuildStatus('Klikni na stěnu galerie pro výběr. Fyzická stavba se zatím nemění.');
+    setBuildStatus('Klikni na stěnu galerie pro výběr. Fyzická stavba se zatím nemění.', 'warning');
     return false;
   }
   selectConstructionWall(result.wallId);
@@ -4453,7 +4456,8 @@ function commitBuildRoomChange(index, nextRoom, successMessage) {
   const nextRooms = cloneBuildRoomsWithRoom(index, nextRoom);
   const validation = validateBuildRooms(nextRooms, index);
   if (!validation.ok) {
-    setBuildStatus(validation.message);
+    setBuildStatus(validation.message, 'warning');
+    updateBuildSelectionSummary();
     return false;
   }
   buildRooms = nextRooms;
@@ -4466,19 +4470,22 @@ function commitBuildRoomChange(index, nextRoom, successMessage) {
     saveBuildLayout();
   }
   if (successMessage) setBuildStatus(successMessage);
+  updateBuildSelectionSummary();
   return true;
 }
 
 function moveSelectedConstructionWall(direction) {
   const wall = getConstructionWallById(selectedConstructionWallId);
   if (!wall) {
-    setBuildStatus('Nejdřív vyber stěnu kliknutím v galerii.');
+    setBuildStatus('Nejdřív vyber stěnu kliknutím v galerii.', 'warning');
+    updateBuildSelectionSummary();
     return false;
   }
   const roomIndex = getBuildRoomIndexById(wall.roomId);
   const roomConfig = buildRooms[roomIndex];
   if (!roomConfig) {
-    setBuildStatus('Vybraná stěna zatím nemá odpovídající místnost ve stavebním plánu.');
+    setBuildStatus('Vybraná stěna zatím nemá odpovídající místnost ve stavebním plánu.', 'warning');
+    updateBuildSelectionSummary();
     return false;
   }
   const step = getBuildWallStep() * direction;
@@ -4811,8 +4818,23 @@ function snapBuildValue(value) {
   return Math.round(value / buildGridSize) * buildGridSize;
 }
 
-function setBuildStatus(text) {
-  if (buildStatus) buildStatus.textContent = text;
+function setBuildStatus(text, type = 'info') {
+  if (!buildStatus) return;
+  buildStatus.textContent = text;
+  buildStatus.dataset.type = type;
+}
+
+function updateBuildSelectionSummary() {
+  const roomConfig = buildRooms[selectedBuildRoomIndex];
+  const wall = getConstructionWallById(selectedConstructionWallId);
+  const hasSelectedWall = Boolean(wall);
+  if (buildSelection) {
+    const roomLabel = roomConfig?.label ?? 'žádná místnost';
+    const wallLabel = wall ? `${getWallSideLabel(wall.side)} stěna` : 'žádná stěna';
+    buildSelection.textContent = `Vybráno: ${roomLabel} · ${wallLabel}`;
+  }
+  if (buildWallInButton) buildWallInButton.disabled = !hasSelectedWall;
+  if (buildWallOutButton) buildWallOutButton.disabled = !hasSelectedWall;
 }
 
 function disposeBuildRoomObject(object) {
@@ -4885,6 +4907,7 @@ function syncBuildPanel() {
   if (buildRoomDepthInput) buildRoomDepthInput.value = String(Number(roomConfig.depth.toFixed(2)));
   if (buildRoomHeightInput) buildRoomHeightInput.value = String(Number(roomConfig.height.toFixed(2)));
   if (buildRemoveRoomButton) buildRemoveRoomButton.disabled = buildRooms.length <= 1;
+  updateBuildSelectionSummary();
 }
 
 function updateSelectedBuildRoomFromInputs() {
@@ -7254,12 +7277,13 @@ toggleBuildEditor.addEventListener('click', () => {
     syncBuildPanel();
     renderSelectedWallHighlight();
     setBuildStatus(selectedConstructionWallId
-      ? 'Stavební mód je otevřený. Vybraná stěna je zvýrazněná; půdorys zapneš tlačítkem Půdorys.'
-      : 'Stavební mód je otevřený. Klikni myší na stěnu pro výběr; půdorys zapneš tlačítkem Půdorys.');
+      ? 'Stavební mód je otevřený. Vybraná stěna je zvýrazněná; změny jsou zatím jen návrh.'
+      : 'Stavební mód je otevřený. Klikni myší na stěnu nebo zapni půdorys.');
   } else {
     exitBuildTopView();
     selectedConstructionWallId = null;
     clearSelectedWallHighlight();
+    updateBuildSelectionSummary();
   }
   syncEditorToggleState();
 });
