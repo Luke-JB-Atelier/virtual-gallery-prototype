@@ -143,6 +143,7 @@
             <button id="build-remove-room" type="button" title="Smaže vybranou místnost z návrhu.">Smazat místnost</button>
             <button id="build-apply" type="button" title="Zatím uloží návrh, fyzickou galerii nemění.">Uložit plán</button>
             <button id="build-original" type="button" title="Vrátí stabilní skelet galerie.">Původní skelet</button>
+            <button id="build-clear-selection" type="button" title="Odznačí vybranou stěnu a vrátí panel na místnost, ve které stojíš.">Zrušit výběr</button>
           </div>
           <label>Mřížka (m) <input id="build-grid-size" type="range" min="0.25" max="1" step="0.25" value="0.5" /></label>
           <label>Šířka místnosti (m) <input id="build-room-width" type="number" min="2" max="24" step="0.5" value="9" /></label>
@@ -150,8 +151,8 @@
           <label>Výška stropu (m) <input id="build-room-height" type="number" min="2.2" max="7" step="0.1" value="3.4" /></label>
           <label>Krok stěny (m) <input id="build-wall-step" type="number" min="0.25" max="2" step="0.25" value="0.5" /></label>
           <div class="editor-buttons">
-            <button id="build-wall-in" type="button" title="Zmenší místnost přes vybranou stěnu.">Stěna dovnitř</button>
-            <button id="build-wall-out" type="button" title="Zvětší místnost přes vybranou stěnu.">Stěna ven</button>
+            <button id="build-wall-in" type="button" title="Posune vybranou stěnu směrem do místnosti.">Zmenšit přes stěnu</button>
+            <button id="build-wall-out" type="button" title="Posune vybranou stěnu směrem ven z místnosti.">Zvětšit přes stěnu</button>
           </div>
         </div>
       </section>

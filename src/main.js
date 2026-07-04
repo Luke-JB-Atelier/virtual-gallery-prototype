@@ -92,6 +92,7 @@ const buildAddRoomButton = document.querySelector('#build-add-room');
 const buildRemoveRoomButton = document.querySelector('#build-remove-room');
 const buildApplyButton = document.querySelector('#build-apply');
 const buildOriginalButton = document.querySelector('#build-original');
+const buildClearSelectionButton = document.querySelector('#build-clear-selection');
 const buildGridSizeInput = document.querySelector('#build-grid-size');
 const buildRoomWidthInput = document.querySelector('#build-room-width');
 const buildRoomDepthInput = document.querySelector('#build-room-depth');
@@ -4292,6 +4293,15 @@ function selectConstructionWallFromPointer(event) {
   return true;
 }
 
+function clearBuildSelection() {
+  selectedConstructionWallId = null;
+  selectedBuildRoomIndex = getCurrentBuildRoomIndex();
+  clearSelectedWallHighlight();
+  renderBuildLayout();
+  syncBuildPanel();
+  setBuildStatus('Výběr stěny zrušený. Panel ukazuje místnost, ve které stojíš.');
+}
+
 const buildLayoutStorageKey = 'virtual-gallery-build-layout-v1';
 const buildGridDefaultSize = 0.5;
 let buildModeActive = false;
@@ -4419,14 +4429,21 @@ function createDefaultBuildLayout() {
 }
 
 function normalizeBuildRoom(roomConfig, index) {
+  const canonicalRoom = galleryRooms[index] ?? null;
+  const legacyFirstRoomId = index === 0 && roomConfig?.id === 'room-1';
   return {
-    id: typeof roomConfig?.id === 'string' && roomConfig.id ? roomConfig.id : `room-${index + 1}`,
-    label: typeof roomConfig?.label === 'string' && roomConfig.label ? roomConfig.label : `Místnost ${index + 1}`,
+    id: canonicalRoom && (legacyFirstRoomId || !roomConfig?.customBuildRoom)
+      ? canonicalRoom.id
+      : typeof roomConfig?.id === 'string' && roomConfig.id ? roomConfig.id : `room-${index + 1}`,
+    label: canonicalRoom && (legacyFirstRoomId || !roomConfig?.customBuildRoom)
+      ? (index < 3 ? `Místnost ${index + 1}` : `Boční místnost ${index - 2}`)
+      : typeof roomConfig?.label === 'string' && roomConfig.label ? roomConfig.label : `Místnost ${index + 1}`,
     centerX: Number.isFinite(roomConfig?.centerX) ? roomConfig.centerX : 0,
     centerZ: Number.isFinite(roomConfig?.centerZ) ? roomConfig.centerZ : index * (roomDepth + corridorLength),
     width: THREE.MathUtils.clamp(Number(roomConfig?.width) || roomWidth, buildRoomMinSize, buildRoomMaxWidth),
     depth: THREE.MathUtils.clamp(Number(roomConfig?.depth) || roomDepth, buildRoomMinSize, buildRoomMaxDepth),
     height: THREE.MathUtils.clamp(Number(roomConfig?.height) || roomHeight, 2.2, 7),
+    customBuildRoom: Boolean(roomConfig?.customBuildRoom),
   };
 }
 
@@ -4446,6 +4463,14 @@ let buildRooms = loadBuildLayout();
 
 function getBuildRoomIndexById(roomId) {
   return buildRooms.findIndex((roomConfig) => roomConfig.id === roomId);
+}
+
+function getCurrentBuildRoomIndex() {
+  return THREE.MathUtils.clamp(
+    getRoomIndexForPosition(body.position.x, body.position.z),
+    0,
+    Math.max(0, buildRooms.length - 1),
+  );
 }
 
 function cloneBuildRoomsWithRoom(index, nextRoom) {
@@ -5234,6 +5259,7 @@ function addBuildRoom() {
     ...source,
     id: `room-${Date.now()}`,
     label: `Místnost ${buildRooms.length + 1}`,
+    customBuildRoom: true,
     centerX: snapBuildValue(source.centerX + source.width + corridorLength),
     centerZ: snapBuildValue(source.centerZ),
   };
@@ -7448,6 +7474,9 @@ toggleBuildEditor.addEventListener('click', () => {
     textPanelPanel.classList.remove('visible');
     audioPanel.classList.remove('visible');
     artPreview.visible = false;
+    if (!selectedConstructionWallId) {
+      selectedBuildRoomIndex = getCurrentBuildRoomIndex();
+    }
     syncBuildPanel();
     renderBuildPreview();
     renderSelectedWallHighlight();
@@ -7487,6 +7516,7 @@ buildAddRoomButton.addEventListener('click', addBuildRoom);
 buildRemoveRoomButton.addEventListener('click', removeSelectedBuildRoom);
 buildApplyButton.addEventListener('click', () => applyBuildLayoutToGallery());
 buildOriginalButton.addEventListener('click', () => restoreOriginalArchitecture());
+buildClearSelectionButton.addEventListener('click', clearBuildSelection);
 buildWallInButton.addEventListener('click', () => moveSelectedConstructionWall(-1));
 buildWallOutButton.addEventListener('click', () => moveSelectedConstructionWall(1));
 [buildGridSizeInput, buildRoomWidthInput, buildRoomDepthInput, buildRoomHeightInput].forEach((input) => {
