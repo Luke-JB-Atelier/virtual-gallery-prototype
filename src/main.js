@@ -3815,6 +3815,7 @@ function syncEditorToggleState() {
   togglePedestalEditor.classList.toggle('has-selection', Boolean(selectedPedestal));
   toggleTextPanelEditor.classList.toggle('has-selection', Boolean(selectedTextPanel));
   toggleLightEditor.classList.toggle('has-selection', lightPanel.classList.contains('visible') && Boolean(getSelectedLight()));
+  updateBuildPreviewVisibility();
 }
 
 function clearSelectedEditable(keep = '') {
@@ -4261,6 +4262,7 @@ function selectConstructionWall(wallId) {
   }
   updateBuildSelectionSummary();
   setBuildStatus(`Vybraná stěna: ${getRoomLabelById(wall.roomId)} - ${getWallSideLabel(wall.side)} strana. Délka ${wall.length.toFixed(2)} m, výška ${wall.height.toFixed(2)} m.`);
+  renderBuildPreview();
 }
 
 function getConstructionWallHitFromPointer(event) {
@@ -4304,6 +4306,7 @@ const buildRoomMaxWidth = 24;
 const buildRoomMaxDepth = 28;
 const buildRoomClearance = 0.25;
 const buildGroup = new THREE.Group();
+const buildPreviewGroup = new THREE.Group();
 const buildGridHelper = new THREE.GridHelper(64, 128, 0x4c6f8f, 0x25313a);
 const selectedWallHighlightGroup = new THREE.Group();
 const buildRaycastObjects = [];
@@ -4332,6 +4335,42 @@ const buildHandleMaterial = new THREE.MeshBasicMaterial({
 });
 const buildWallMaterial = new THREE.LineBasicMaterial({ color: 0xf7f4ea, transparent: true, opacity: 0.92 });
 const buildSelectedWallMaterial = new THREE.LineBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 1 });
+const buildPreviewFloorMaterial = new THREE.MeshBasicMaterial({
+  color: 0x84b8ff,
+  transparent: true,
+  opacity: 0.12,
+  depthWrite: false,
+  depthTest: false,
+  side: THREE.DoubleSide,
+});
+const buildPreviewWallMaterial = new THREE.MeshBasicMaterial({
+  color: 0x84b8ff,
+  transparent: true,
+  opacity: 0.16,
+  depthWrite: false,
+  depthTest: false,
+  side: THREE.DoubleSide,
+});
+const buildPreviewSelectedMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffd36a,
+  transparent: true,
+  opacity: 0.24,
+  depthWrite: false,
+  depthTest: false,
+  side: THREE.DoubleSide,
+});
+const buildPreviewLineMaterial = new THREE.LineBasicMaterial({
+  color: 0xbdd8ff,
+  transparent: true,
+  opacity: 0.72,
+  depthTest: false,
+});
+const buildPreviewSelectedLineMaterial = new THREE.LineBasicMaterial({
+  color: 0xffd36a,
+  transparent: true,
+  opacity: 0.95,
+  depthTest: false,
+});
 const selectedWallHighlightMaterial = new THREE.MeshBasicMaterial({
   color: 0xffd36a,
   transparent: true,
@@ -4346,9 +4385,11 @@ const selectedWallOutlineMaterial = new THREE.LineBasicMaterial({
 });
 
 buildGroup.visible = false;
+buildPreviewGroup.visible = false;
 buildGridHelper.position.y = 0.012;
 buildGroup.add(buildGridHelper);
 scene.add(buildGroup);
+scene.add(buildPreviewGroup);
 room.add(selectedWallHighlightGroup);
 
 function createDefaultBuildLayout() {
@@ -4844,6 +4885,73 @@ function disposeBuildRoomObject(object) {
   });
 }
 
+function disposeBuildPreviewObject(object) {
+  object.traverse((child) => {
+    child.geometry?.dispose?.();
+  });
+}
+
+function updateBuildPreviewVisibility() {
+  buildPreviewGroup.visible = buildPanel.classList.contains('visible') && !buildModeActive;
+}
+
+function addBuildPreviewWall(group, width, height, position, rotationY, selected = false) {
+  const wall = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    selected ? buildPreviewSelectedMaterial : buildPreviewWallMaterial,
+  );
+  wall.position.set(...position);
+  wall.rotation.y = rotationY;
+  wall.renderOrder = selected ? 86 : 84;
+  group.add(wall);
+
+  const outlineGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-width / 2, -height / 2, 0.006),
+    new THREE.Vector3(width / 2, -height / 2, 0.006),
+    new THREE.Vector3(width / 2, height / 2, 0.006),
+    new THREE.Vector3(-width / 2, height / 2, 0.006),
+  ]);
+  const outline = new THREE.LineLoop(outlineGeometry, selected ? buildPreviewSelectedLineMaterial : buildPreviewLineMaterial);
+  outline.position.copy(wall.position);
+  outline.rotation.copy(wall.rotation);
+  outline.renderOrder = selected ? 87 : 85;
+  group.add(outline);
+}
+
+function renderBuildPreview() {
+  while (buildPreviewGroup.children.length) {
+    const child = buildPreviewGroup.children[0];
+    buildPreviewGroup.remove(child);
+    disposeBuildPreviewObject(child);
+  }
+
+  const selectedWall = getConstructionWallById(selectedConstructionWallId);
+  buildRooms.forEach((roomConfig, index) => {
+    const selectedRoom = index === selectedBuildRoomIndex;
+    const group = new THREE.Group();
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(roomConfig.width, roomConfig.depth),
+      selectedRoom ? buildPreviewSelectedMaterial : buildPreviewFloorMaterial,
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(roomConfig.centerX, 0.045, roomConfig.centerZ);
+    floor.renderOrder = selectedRoom ? 83 : 82;
+    group.add(floor);
+
+    const halfW = roomConfig.width / 2;
+    const halfD = roomConfig.depth / 2;
+    const wallHeight = roomConfig.height;
+    const roomSelectedWall = selectedWall?.roomId === roomConfig.id ? selectedWall.side : null;
+    addBuildPreviewWall(group, roomConfig.width, wallHeight, [roomConfig.centerX, wallHeight / 2, roomConfig.centerZ + halfD], 0, roomSelectedWall === 'front');
+    addBuildPreviewWall(group, roomConfig.width, wallHeight, [roomConfig.centerX, wallHeight / 2, roomConfig.centerZ - halfD], Math.PI, roomSelectedWall === 'back');
+    addBuildPreviewWall(group, roomConfig.depth, wallHeight, [roomConfig.centerX - halfW, wallHeight / 2, roomConfig.centerZ], -Math.PI / 2, roomSelectedWall === 'left');
+    addBuildPreviewWall(group, roomConfig.depth, wallHeight, [roomConfig.centerX + halfW, wallHeight / 2, roomConfig.centerZ], Math.PI / 2, roomSelectedWall === 'right');
+
+    buildPreviewGroup.add(group);
+  });
+  updateBuildPreviewVisibility();
+}
+
 function renderBuildLayout() {
   buildRaycastObjects.length = 0;
   [...buildGroup.children].forEach((child) => {
@@ -4896,6 +5004,7 @@ function renderBuildLayout() {
 
     buildGroup.add(group);
   });
+  renderBuildPreview();
 }
 
 function syncBuildPanel() {
@@ -4963,6 +5072,7 @@ function enterBuildTopView() {
   };
   buildModeActive = true;
   buildGroup.visible = true;
+  updateBuildPreviewVisibility();
   const minX = Math.min(...buildRooms.map((roomConfig) => roomConfig.centerX - roomConfig.width / 2));
   const maxX = Math.max(...buildRooms.map((roomConfig) => roomConfig.centerX + roomConfig.width / 2));
   const minZ = Math.min(...buildRooms.map((roomConfig) => roomConfig.centerZ - roomConfig.depth / 2));
@@ -4981,6 +5091,7 @@ function exitBuildTopView() {
   if (!buildModeActive) return;
   buildModeActive = false;
   buildGroup.visible = false;
+  updateBuildPreviewVisibility();
   if (buildSavedView) {
     body.position.copy(buildSavedView.bodyPosition);
     camera.position.copy(buildSavedView.cameraPosition);
@@ -7275,14 +7386,17 @@ toggleBuildEditor.addEventListener('click', () => {
     audioPanel.classList.remove('visible');
     artPreview.visible = false;
     syncBuildPanel();
+    renderBuildPreview();
     renderSelectedWallHighlight();
     setBuildStatus(selectedConstructionWallId
-      ? 'Stavební mód je otevřený. Vybraná stěna je zvýrazněná; změny jsou zatím jen návrh.'
-      : 'Stavební mód je otevřený. Klikni myší na stěnu nebo zapni půdorys.');
+      ? 'Stavební mód je otevřený. Modrá vrstva ukazuje návrh; skutečné stěny se zatím nemění.'
+      : 'Stavební mód je otevřený. Modrá vrstva ukazuje návrh. Klikni na stěnu nebo zapni půdorys.');
   } else {
     exitBuildTopView();
     selectedConstructionWallId = null;
     clearSelectedWallHighlight();
+    renderBuildPreview();
+    updateBuildPreviewVisibility();
     updateBuildSelectionSummary();
   }
   syncEditorToggleState();
@@ -8438,6 +8552,8 @@ window.__galleryDebug = () => ({
   constructionModel: getConstructionModelDebug(),
   buildMode: {
     active: buildModeActive,
+    previewVisible: buildPreviewGroup.visible,
+    previewObjects: buildPreviewGroup.children.length,
     selectedRoomIndex: selectedBuildRoomIndex,
     selectedWallId: selectedConstructionWallId,
     gridSize: buildGridSize,
