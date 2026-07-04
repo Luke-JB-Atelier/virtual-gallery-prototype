@@ -95,6 +95,9 @@ const buildGridSizeInput = document.querySelector('#build-grid-size');
 const buildRoomWidthInput = document.querySelector('#build-room-width');
 const buildRoomDepthInput = document.querySelector('#build-room-depth');
 const buildRoomHeightInput = document.querySelector('#build-room-height');
+const buildWallStepInput = document.querySelector('#build-wall-step');
+const buildWallInButton = document.querySelector('#build-wall-in');
+const buildWallOutButton = document.querySelector('#build-wall-out');
 const toggleTextPanelEditor = document.querySelector('#toggle-text-panel-editor');
 const textPanelPanel = document.querySelector('#text-panel-panel');
 const textPanelTitle = document.querySelector('#text-panel-title');
@@ -4248,6 +4251,12 @@ function selectConstructionWall(wallId) {
     setBuildStatus('Stěna není vybraná.');
     return;
   }
+  const buildRoomIndex = getBuildRoomIndexById(wall.roomId);
+  if (buildRoomIndex >= 0) {
+    selectedBuildRoomIndex = buildRoomIndex;
+    syncBuildPanel();
+    if (buildModeActive) renderBuildLayout();
+  }
   setBuildStatus(`Vybraná stěna: ${getRoomLabelById(wall.roomId)} - ${getWallSideLabel(wall.side)} strana. Délka ${wall.length.toFixed(2)} m, výška ${wall.height.toFixed(2)} m.`);
 }
 
@@ -4287,6 +4296,10 @@ let draggingBuildHandle = null;
 let selectedBuildEdge = null;
 let selectedConstructionWallId = null;
 let buildGridSize = buildGridDefaultSize;
+const buildRoomMinSize = 2;
+const buildRoomMaxWidth = 24;
+const buildRoomMaxDepth = 28;
+const buildRoomClearance = 0.25;
 const buildGroup = new THREE.Group();
 const buildGridHelper = new THREE.GridHelper(64, 128, 0x4c6f8f, 0x25313a);
 const selectedWallHighlightGroup = new THREE.Group();
@@ -4353,8 +4366,8 @@ function normalizeBuildRoom(roomConfig, index) {
     label: typeof roomConfig?.label === 'string' && roomConfig.label ? roomConfig.label : `Místnost ${index + 1}`,
     centerX: Number.isFinite(roomConfig?.centerX) ? roomConfig.centerX : 0,
     centerZ: Number.isFinite(roomConfig?.centerZ) ? roomConfig.centerZ : index * (roomDepth + corridorLength),
-    width: THREE.MathUtils.clamp(Number(roomConfig?.width) || roomWidth, 2, 24),
-    depth: THREE.MathUtils.clamp(Number(roomConfig?.depth) || roomDepth, 2, 28),
+    width: THREE.MathUtils.clamp(Number(roomConfig?.width) || roomWidth, buildRoomMinSize, buildRoomMaxWidth),
+    depth: THREE.MathUtils.clamp(Number(roomConfig?.depth) || roomDepth, buildRoomMinSize, buildRoomMaxDepth),
     height: THREE.MathUtils.clamp(Number(roomConfig?.height) || roomHeight, 2.2, 7),
   };
 }
@@ -4372,6 +4385,111 @@ function loadBuildLayout() {
 }
 
 let buildRooms = loadBuildLayout();
+
+function getBuildRoomIndexById(roomId) {
+  return buildRooms.findIndex((roomConfig) => roomConfig.id === roomId);
+}
+
+function cloneBuildRoomsWithRoom(index, nextRoom) {
+  return buildRooms.map((roomConfig, roomIndex) => (
+    roomIndex === index ? { ...roomConfig, ...nextRoom } : { ...roomConfig }
+  ));
+}
+
+function getBuildWallStep() {
+  const value = THREE.MathUtils.clamp(Number(buildWallStepInput?.value) || buildGridSize, 0.25, 2);
+  return snapBuildValue(value);
+}
+
+function doBuildBoundsOverlap(firstRoom, secondRoom, clearance = 0) {
+  const first = getRoomBounds(firstRoom);
+  const second = getRoomBounds(secondRoom);
+  return first.minX - clearance < second.maxX
+    && first.maxX + clearance > second.minX
+    && first.minZ - clearance < second.maxZ
+    && first.maxZ + clearance > second.minZ;
+}
+
+function validateBuildRooms(nextRooms, changedIndex) {
+  const changedRoom = nextRooms[changedIndex];
+  if (!changedRoom) return { ok: false, message: 'Limit: místnost v plánu neexistuje.' };
+  if (changedRoom.width < buildRoomMinSize || changedRoom.depth < buildRoomMinSize) {
+    return { ok: false, message: `Limit: místnost nesmí být menší než ${buildRoomMinSize} m.` };
+  }
+  if (changedRoom.width > buildRoomMaxWidth || changedRoom.depth > buildRoomMaxDepth) {
+    return { ok: false, message: 'Limit: místnost je větší než povolený pracovní rozsah.' };
+  }
+  const collidingRoom = nextRooms.find((roomConfig, roomIndex) => (
+    roomIndex !== changedIndex && doBuildBoundsOverlap(changedRoom, roomConfig, buildRoomClearance)
+  ));
+  if (collidingRoom) {
+    return {
+      ok: false,
+      message: `Limit: ${changedRoom.label} by zasáhla do místnosti ${collidingRoom.label}.`,
+    };
+  }
+  return { ok: true, message: '' };
+}
+
+function getMovedBuildRoomWall(roomConfig, side, signedDistance) {
+  const nextRoom = { ...roomConfig };
+  if (side === 'left') {
+    nextRoom.centerX = snapBuildValue(roomConfig.centerX - signedDistance / 2);
+    nextRoom.width = snapBuildValue(roomConfig.width + signedDistance);
+  } else if (side === 'right') {
+    nextRoom.centerX = snapBuildValue(roomConfig.centerX + signedDistance / 2);
+    nextRoom.width = snapBuildValue(roomConfig.width + signedDistance);
+  } else if (side === 'back') {
+    nextRoom.centerZ = snapBuildValue(roomConfig.centerZ - signedDistance / 2);
+    nextRoom.depth = snapBuildValue(roomConfig.depth + signedDistance);
+  } else {
+    nextRoom.centerZ = snapBuildValue(roomConfig.centerZ + signedDistance / 2);
+    nextRoom.depth = snapBuildValue(roomConfig.depth + signedDistance);
+  }
+  return nextRoom;
+}
+
+function commitBuildRoomChange(index, nextRoom, successMessage) {
+  const nextRooms = cloneBuildRoomsWithRoom(index, nextRoom);
+  const validation = validateBuildRooms(nextRooms, index);
+  if (!validation.ok) {
+    setBuildStatus(validation.message);
+    return false;
+  }
+  buildRooms = nextRooms;
+  selectedBuildRoomIndex = index;
+  renderBuildLayout();
+  syncBuildPanel();
+  saveBuildLayout();
+  if (buildArchitectureApplied) {
+    applyBuildLayoutToGallery({ persist: false });
+    saveBuildLayout();
+  }
+  if (successMessage) setBuildStatus(successMessage);
+  return true;
+}
+
+function moveSelectedConstructionWall(direction) {
+  const wall = getConstructionWallById(selectedConstructionWallId);
+  if (!wall) {
+    setBuildStatus('Nejdřív vyber stěnu kliknutím v galerii.');
+    return false;
+  }
+  const roomIndex = getBuildRoomIndexById(wall.roomId);
+  const roomConfig = buildRooms[roomIndex];
+  if (!roomConfig) {
+    setBuildStatus('Vybraná stěna zatím nemá odpovídající místnost ve stavebním plánu.');
+    return false;
+  }
+  const step = getBuildWallStep() * direction;
+  const nextRoom = getMovedBuildRoomWall(roomConfig, wall.side, step);
+  const label = direction > 0 ? 'ven' : 'dovnitř';
+  return commitBuildRoomChange(
+    roomIndex,
+    nextRoom,
+    `Návrh: ${getWallSideLabel(wall.side)} stěna posunutá ${label} o ${Math.abs(step).toFixed(2)} m. 3D galerie zatím zůstává beze změny.`,
+  );
+}
 
 function saveBuildLayout() {
   try {
@@ -4773,18 +4891,18 @@ function updateSelectedBuildRoomFromInputs() {
   const roomConfig = buildRooms[selectedBuildRoomIndex];
   if (!roomConfig) return;
   buildGridSize = THREE.MathUtils.clamp(Number(buildGridSizeInput?.value) || buildGridDefaultSize, 0.25, 1);
-  roomConfig.width = snapBuildValue(THREE.MathUtils.clamp(Number(buildRoomWidthInput?.value) || roomConfig.width, 2, 24));
-  roomConfig.depth = snapBuildValue(THREE.MathUtils.clamp(Number(buildRoomDepthInput?.value) || roomConfig.depth, 2, 28));
-  roomConfig.height = THREE.MathUtils.clamp(Number(buildRoomHeightInput?.value) || roomConfig.height, 2.2, 7);
-  saveBuildLayout();
-  renderBuildLayout();
-  syncBuildPanel();
-  if (buildArchitectureApplied) {
-    applyBuildLayoutToGallery({ persist: false });
-    saveBuildLayout();
-  } else {
-    setBuildStatus('Rozměry jsou uložené do stavebního plánu. 3D galerie zatím zůstává beze změny.');
-  }
+  const nextRoom = {
+    ...roomConfig,
+    width: snapBuildValue(THREE.MathUtils.clamp(Number(buildRoomWidthInput?.value) || roomConfig.width, buildRoomMinSize, buildRoomMaxWidth)),
+    depth: snapBuildValue(THREE.MathUtils.clamp(Number(buildRoomDepthInput?.value) || roomConfig.depth, buildRoomMinSize, buildRoomMaxDepth)),
+    height: THREE.MathUtils.clamp(Number(buildRoomHeightInput?.value) || roomConfig.height, 2.2, 7),
+  };
+  const changed = commitBuildRoomChange(
+    selectedBuildRoomIndex,
+    nextRoom,
+    'Rozměry jsou uložené do stavebního plánu. 3D galerie zatím zůstává beze změny.',
+  );
+  if (!changed) syncBuildPanel();
 }
 
 function getBuildPointerHit(event) {
@@ -4875,31 +4993,29 @@ function updateBuildDrag(event) {
   const point = getBuildFloorPoint(event);
   const roomConfig = buildRooms[draggingBuildHandle.roomIndex];
   if (!point || !roomConfig) return false;
-  const minSize = 2;
   const left = roomConfig.centerX - roomConfig.width / 2;
   const right = roomConfig.centerX + roomConfig.width / 2;
   const back = roomConfig.centerZ - roomConfig.depth / 2;
   const front = roomConfig.centerZ + roomConfig.depth / 2;
+  const nextRoom = { ...roomConfig };
   if (draggingBuildHandle.edge === 'left') {
-    const nextLeft = Math.min(snapBuildValue(point.x), right - minSize);
-    roomConfig.centerX = (nextLeft + right) / 2;
-    roomConfig.width = right - nextLeft;
+    const nextLeft = Math.min(snapBuildValue(point.x), right - buildRoomMinSize);
+    nextRoom.centerX = snapBuildValue((nextLeft + right) / 2);
+    nextRoom.width = snapBuildValue(right - nextLeft);
   } else if (draggingBuildHandle.edge === 'right') {
-    const nextRight = Math.max(snapBuildValue(point.x), left + minSize);
-    roomConfig.centerX = (left + nextRight) / 2;
-    roomConfig.width = nextRight - left;
+    const nextRight = Math.max(snapBuildValue(point.x), left + buildRoomMinSize);
+    nextRoom.centerX = snapBuildValue((left + nextRight) / 2);
+    nextRoom.width = snapBuildValue(nextRight - left);
   } else if (draggingBuildHandle.edge === 'back') {
-    const nextBack = Math.min(snapBuildValue(point.z), front - minSize);
-    roomConfig.centerZ = (nextBack + front) / 2;
-    roomConfig.depth = front - nextBack;
+    const nextBack = Math.min(snapBuildValue(point.z), front - buildRoomMinSize);
+    nextRoom.centerZ = snapBuildValue((nextBack + front) / 2);
+    nextRoom.depth = snapBuildValue(front - nextBack);
   } else if (draggingBuildHandle.edge === 'front') {
-    const nextFront = Math.max(snapBuildValue(point.z), back + minSize);
-    roomConfig.centerZ = (back + nextFront) / 2;
-    roomConfig.depth = nextFront - back;
+    const nextFront = Math.max(snapBuildValue(point.z), back + buildRoomMinSize);
+    nextRoom.centerZ = snapBuildValue((back + nextFront) / 2);
+    nextRoom.depth = snapBuildValue(nextFront - back);
   }
-  renderBuildLayout();
-  syncBuildPanel();
-  return true;
+  return commitBuildRoomChange(draggingBuildHandle.roomIndex, nextRoom);
 }
 
 function finishBuildDrag() {
@@ -4947,26 +5063,21 @@ function resizeSelectedBuildEdge(direction) {
   if (!roomConfig) return false;
   const edge = selectedBuildEdge ?? 'front';
   const delta = buildGridSize * direction;
-  const minSize = 2;
+  let nextRoom = { ...roomConfig };
   if (edge === 'left') {
-    roomConfig.centerX -= delta / 2;
-    roomConfig.width = Math.max(minSize, snapBuildValue(roomConfig.width + delta));
+    nextRoom = getMovedBuildRoomWall(roomConfig, 'left', delta);
   } else if (edge === 'right') {
-    roomConfig.centerX += delta / 2;
-    roomConfig.width = Math.max(minSize, snapBuildValue(roomConfig.width + delta));
+    nextRoom = getMovedBuildRoomWall(roomConfig, 'right', delta);
   } else if (edge === 'back') {
-    roomConfig.centerZ -= delta / 2;
-    roomConfig.depth = Math.max(minSize, snapBuildValue(roomConfig.depth + delta));
+    nextRoom = getMovedBuildRoomWall(roomConfig, 'back', delta);
   } else {
-    roomConfig.centerZ += delta / 2;
-    roomConfig.depth = Math.max(minSize, snapBuildValue(roomConfig.depth + delta));
+    nextRoom = getMovedBuildRoomWall(roomConfig, 'front', delta);
   }
-  renderBuildLayout();
-  syncBuildPanel();
-  if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
-  saveBuildLayout();
-  setBuildStatus(`Hrana ${edge} upravená kolečkem po mřížce ${buildGridSize} m.`);
-  return true;
+  return commitBuildRoomChange(
+    selectedBuildRoomIndex,
+    nextRoom,
+    `Hrana ${edge} upravená kolečkem po mřížce ${buildGridSize} m.`,
+  );
 }
 
 renderBuildLayout();
@@ -7175,6 +7286,8 @@ buildAddRoomButton.addEventListener('click', addBuildRoom);
 buildRemoveRoomButton.addEventListener('click', removeSelectedBuildRoom);
 buildApplyButton.addEventListener('click', () => applyBuildLayoutToGallery());
 buildOriginalButton.addEventListener('click', () => restoreOriginalArchitecture());
+buildWallInButton.addEventListener('click', () => moveSelectedConstructionWall(-1));
+buildWallOutButton.addEventListener('click', () => moveSelectedConstructionWall(1));
 [buildGridSizeInput, buildRoomWidthInput, buildRoomDepthInput, buildRoomHeightInput].forEach((input) => {
   input.addEventListener('input', updateSelectedBuildRoomFromInputs);
   input.addEventListener('change', updateSelectedBuildRoomFromInputs);
