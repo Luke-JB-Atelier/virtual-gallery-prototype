@@ -5327,11 +5327,16 @@ function addDynamicPlane(width, height, material, position, rotation, segments =
   return addDynamicMesh(mesh);
 }
 
-function addDynamicWall(width, height, position, rotation, segments = 18) {
+function addDynamicWall(width, height, position, rotation, segments = 18, options = {}) {
+  const { edgeDarkening = true } = options;
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height, segments, segments), wallMaterial);
   mesh.position.set(...position);
   mesh.rotation.set(...rotation);
-  addSurfaceEdgeDarkening(mesh, width, height);
+  if (edgeDarkening) {
+    addSurfaceEdgeDarkening(mesh, width, height);
+  } else {
+    setGeometryColor(mesh.geometry);
+  }
   return addDynamicMesh(mesh, true);
 }
 
@@ -5380,7 +5385,7 @@ function createArchedHeaderGeometry({ axis, fixed, center, height }) {
 }
 
 function addDynamicArchedDoorHeader({ axis, fixed, center, height }) {
-  const mesh = new THREE.Mesh(createArchedHeaderGeometry({ axis, fixed, center, height }), archWallMaterial);
+  const mesh = new THREE.Mesh(createArchedHeaderGeometry({ axis, fixed, center, height }), wallMaterial);
   return addDynamicMesh(mesh, true);
 }
 
@@ -5426,24 +5431,39 @@ function addDynamicBarrelVault(connector) {
   geometry.setIndex(indices);
   setGeometryColor(geometry);
   geometry.computeVertexNormals();
-  return addDynamicMesh(new THREE.Mesh(geometry, archWallMaterial));
+  return addDynamicMesh(new THREE.Mesh(geometry, wallMaterial));
 }
 
-function addDynamicWallSegment(startX, startZ, endX, endZ, height) {
+function addDynamicWallSegment(startX, startZ, endX, endZ, height, options = {}) {
+  const {
+    floorTrim = true,
+    ceilingTrim = true,
+    edgeDarkening = true,
+  } = options;
   const dx = endX - startX;
   const dz = endZ - startZ;
   const length = Math.hypot(dx, dz);
   if (length <= 0.05) return null;
   const rotationY = Math.atan2(-dz, dx);
   const centerY = height / 2;
-  const wall = addDynamicWall(length, height, [(startX + endX) / 2, centerY, (startZ + endZ) / 2], [0, rotationY, 0], 12);
-  addDynamicTrim(length, [(startX + endX) / 2, 0.035, (startZ + endZ) / 2], rotationY);
-  addDynamicTrim(length, [(startX + endX) / 2, height - 0.035, (startZ + endZ) / 2], rotationY);
+  const wall = addDynamicWall(length, height, [(startX + endX) / 2, centerY, (startZ + endZ) / 2], [0, rotationY, 0], 12, { edgeDarkening });
+  if (floorTrim) {
+    addDynamicTrim(length, [(startX + endX) / 2, 0.035, (startZ + endZ) / 2], rotationY);
+  }
+  if (ceilingTrim) {
+    addDynamicTrim(length, [(startX + endX) / 2, height - 0.035, (startZ + endZ) / 2], rotationY);
+  }
   return wall;
 }
 
 function addDynamicWallWithOpenings(startX, startZ, endX, endZ, height, openings = []) {
   const horizontal = Math.abs(endZ - startZ) < 0.01;
+  const wallLength = Math.hypot(endX - startX, endZ - startZ);
+  const wallRotationY = Math.atan2(-(endZ - startZ), endX - startX);
+  const hasOpenings = openings.length > 0;
+  if (wallLength > 0.05 && hasOpenings) {
+    addDynamicTrim(wallLength, [(startX + endX) / 2, height - 0.035, (startZ + endZ) / 2], wallRotationY);
+  }
   const sortedOpenings = openings
     .map((opening) => ({
       center: horizontal ? opening.x : opening.z,
@@ -5465,18 +5485,18 @@ function addDynamicWallWithOpenings(startX, startZ, endX, endZ, height, openings
     }
     if (gapStart - cursor > 0.05) {
       if (horizontal) {
-        addDynamicWallSegment(cursor, startZ, gapStart, startZ, height);
+        addDynamicWallSegment(cursor, startZ, gapStart, startZ, height, { ceilingTrim: !hasOpenings, edgeDarkening: !hasOpenings });
       } else {
-        addDynamicWallSegment(startX, cursor, startX, gapStart, height);
+        addDynamicWallSegment(startX, cursor, startX, gapStart, height, { ceilingTrim: !hasOpenings, edgeDarkening: !hasOpenings });
       }
     }
     cursor = Math.max(cursor, gapEnd);
   });
   if (end - cursor > 0.05) {
     if (horizontal) {
-      addDynamicWallSegment(cursor, startZ, end, startZ, height);
+      addDynamicWallSegment(cursor, startZ, end, startZ, height, { ceilingTrim: !hasOpenings, edgeDarkening: !hasOpenings });
     } else {
-      addDynamicWallSegment(startX, cursor, startX, end, height);
+      addDynamicWallSegment(startX, cursor, startX, end, height, { ceilingTrim: !hasOpenings, edgeDarkening: !hasOpenings });
     }
   }
 }
@@ -5557,8 +5577,8 @@ function addDynamicConnectorArchitecture(connector) {
     const floorMesh = addDynamicPlane(doorway.width, depth, floorMaterial, [connector.x, 0.004, centerZ], [-Math.PI / 2, 0, 0], 8);
     addFloorEdgeDarkening(floorMesh, doorway.width, depth);
     addDynamicBarrelVault(connector);
-    addDynamicWallSegment(connector.x - doorway.width / 2, connector.minZ, connector.x - doorway.width / 2, connector.maxZ, doorway.height);
-    addDynamicWallSegment(connector.x + doorway.width / 2, connector.minZ, connector.x + doorway.width / 2, connector.maxZ, doorway.height);
+    addDynamicWallSegment(connector.x - doorway.width / 2, connector.minZ, connector.x - doorway.width / 2, connector.maxZ, doorway.height, { floorTrim: false, ceilingTrim: false, edgeDarkening: false });
+    addDynamicWallSegment(connector.x + doorway.width / 2, connector.minZ, connector.x + doorway.width / 2, connector.maxZ, doorway.height, { floorTrim: false, ceilingTrim: false, edgeDarkening: false });
     return;
   }
   const width = connector.maxX - connector.minX;
@@ -5567,8 +5587,8 @@ function addDynamicConnectorArchitecture(connector) {
   const floorMesh = addDynamicPlane(width, doorway.width, floorMaterial, [centerX, 0.004, connector.z], [-Math.PI / 2, 0, 0], 8);
   addFloorEdgeDarkening(floorMesh, width, doorway.width);
   addDynamicBarrelVault(connector);
-  addDynamicWallSegment(connector.minX, connector.z - doorway.width / 2, connector.maxX, connector.z - doorway.width / 2, doorway.height);
-  addDynamicWallSegment(connector.minX, connector.z + doorway.width / 2, connector.maxX, connector.z + doorway.width / 2, doorway.height);
+  addDynamicWallSegment(connector.minX, connector.z - doorway.width / 2, connector.maxX, connector.z - doorway.width / 2, doorway.height, { floorTrim: false, ceilingTrim: false, edgeDarkening: false });
+  addDynamicWallSegment(connector.minX, connector.z + doorway.width / 2, connector.maxX, connector.z + doorway.width / 2, doorway.height, { floorTrim: false, ceilingTrim: false, edgeDarkening: false });
 }
 
 function addDynamicRoomArchitecture(roomConfig, openingsByRoom = new Map()) {
