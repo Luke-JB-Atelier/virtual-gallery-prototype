@@ -1,8 +1,14 @@
 ﻿import './styles.css';
 import * as THREE from 'three';
 import publicGalleryState from './public-gallery-state.json';
+import { initBrickTextureTool } from './brick-texture-tool.js';
 
 const canvas = document.querySelector('#gallery');
+const initialUrlParams = new URLSearchParams(window.location.search);
+if (initialUrlParams.get('texture') === 'brick') {
+  initBrickTextureTool();
+}
+document.body.classList.add('gallery-booting');
 const hint = document.querySelector('#hint');
 const status = document.querySelector('#status');
 const crosshair = document.querySelector('#crosshair');
@@ -150,6 +156,15 @@ const textPanelFontWeightInput = document.querySelector('#text-panel-font-weight
 const textPanelAlignInput = document.querySelector('#text-panel-align');
 const textPanelBgColorInput = document.querySelector('#text-panel-bg-color');
 const textPanelTextColorInput = document.querySelector('#text-panel-text-color');
+const toggleTextureEditor = document.querySelector('#toggle-texture-editor');
+const texturePanel = document.querySelector('#texture-panel');
+const textureTitle = document.querySelector('#texture-title');
+const textureStatus = document.querySelector('#texture-status');
+const wallTextureFileInput = document.querySelector('#wall-texture-file');
+const loadWallTextureButton = document.querySelector('#load-wall-texture');
+const openBrickGeneratorButton = document.querySelector('#open-brick-generator');
+const removeWallTextureButton = document.querySelector('#remove-wall-texture');
+const wallTextureBumpInput = document.querySelector('#wall-texture-bump');
 const toggleAudioEditor = document.querySelector('#toggle-audio-editor');
 const audioPanel = document.querySelector('#audio-panel');
 const audioVolumeInput = document.querySelector('#audio-volume');
@@ -267,6 +282,7 @@ const defaultArtworkWidthCm = 120;
 const defaultArtworkAspect = 1;
 const lightingStorageKey = 'virtual-gallery-lighting-oil-v3';
 const galleryStorageKey = 'virtual-gallery-art-oil-v1';
+const galleryWallTextureStorageKey = 'virtual-gallery-wall-texture-v1';
 const urlParams = new URLSearchParams(window.location.search);
 const editorMode = urlParams.has('edit');
 const forceGitHubState = urlParams.has('github') || urlParams.has('fresh');
@@ -278,8 +294,17 @@ const savedGallery = useLocalSavedState
 const audioSettings = {
   volume: THREE.MathUtils.clamp(Number(savedGallery?.audio?.volume ?? 1), 0, 1),
 };
+let currentWallTexturePayload = savedGallery?.wallTexture?.version === 1 ? savedGallery.wallTexture : null;
+let currentWallTextureBumpScale = THREE.MathUtils.clamp(
+  Number(savedGallery?.wallTexture?.bumpScale ?? currentWallTexturePayload?.bumpScale ?? 0.018),
+  0,
+  0.08,
+);
 if (audioVolumeInput) {
   audioVolumeInput.value = String(Math.round(audioSettings.volume * 100));
+}
+if (wallTextureBumpInput) {
+  wallTextureBumpInput.value = String(Math.round(currentWallTextureBumpScale / 0.08 * 100));
 }
 document.body.classList.toggle('viewer-mode', !editorMode);
 document.body.classList.toggle('mobile-performance', mobilePerformanceMode);
@@ -410,6 +435,140 @@ const archWallMaterial = new THREE.MeshStandardMaterial({
   depthWrite: true,
   fog: false,
 });
+
+function applyStoredWallTextureToMaterial() {
+  let payload = null;
+  try {
+    payload = JSON.parse(localStorage.getItem(galleryWallTextureStorageKey) || 'null');
+  } catch {
+    payload = null;
+  }
+  if (!payload?.dataUrl && currentWallTexturePayload?.dataUrl) {
+    payload = currentWallTexturePayload;
+  }
+  if (!payload?.dataUrl) return;
+  currentWallTexturePayload = {
+    ...payload,
+    bumpScale: THREE.MathUtils.clamp(Number(payload.bumpScale ?? currentWallTextureBumpScale), 0, 0.08),
+  };
+  currentWallTextureBumpScale = currentWallTexturePayload.bumpScale;
+  if (wallTextureBumpInput) {
+    wallTextureBumpInput.value = String(Math.round(currentWallTextureBumpScale / 0.08 * 100));
+  }
+
+  const loader = new THREE.TextureLoader();
+  loader.load(currentWallTexturePayload.dataUrl, (texture) => {
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(1, 1);
+    texture.generateMipmaps = true;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.anisotropy = textureAnisotropy;
+
+    [wallMaterial, archWallMaterial].forEach((material) => {
+      material.map = texture;
+      material.bumpMap = texture;
+      material.bumpScale = currentWallTextureBumpScale;
+      material.color.set(0xffffff);
+      material.emissive.set(0x050505);
+      material.emissiveIntensity = 0.08;
+      material.roughness = 0.95;
+      material.needsUpdate = true;
+    });
+
+    renderer.shadowMap.needsUpdate = true;
+    if (textureStatus) {
+      textureStatus.textContent = `Textura stěn aktivní (${currentWallTexturePayload.width || 1024} x ${currentWallTexturePayload.height || 1024}).`;
+    }
+    if (galleryStatus && urlParams.has('wallTexture')) {
+      galleryStatus.textContent = `Textura stěn načtena z generátoru (${currentWallTexturePayload.width || 1024} x ${currentWallTexturePayload.height || 1024}).`;
+      galleryPanel?.classList.add('visible');
+    }
+  });
+}
+
+applyStoredWallTextureToMaterial();
+
+function refreshWallTextureBumpScale() {
+  [wallMaterial, archWallMaterial].forEach((material) => {
+    if (!material.bumpMap) return;
+    material.bumpScale = currentWallTextureBumpScale;
+    material.needsUpdate = true;
+  });
+  if (currentWallTexturePayload) {
+    currentWallTexturePayload.bumpScale = currentWallTextureBumpScale;
+    try {
+      localStorage.setItem(galleryWallTextureStorageKey, JSON.stringify(currentWallTexturePayload));
+    } catch {
+      // Large textures can exceed local storage; export still carries the current in-memory payload.
+    }
+  }
+}
+
+function clearWallTexture() {
+  currentWallTexturePayload = null;
+  [wallMaterial, archWallMaterial].forEach((material) => {
+    material.map = null;
+    material.bumpMap = wallTexture;
+    material.bumpScale = 0.01;
+    material.color.set(0x20272d);
+    material.emissive.set(0x080d11);
+    material.emissiveIntensity = 0.28;
+    material.needsUpdate = true;
+  });
+  try {
+    localStorage.removeItem(galleryWallTextureStorageKey);
+  } catch {
+    // Storage can be unavailable in embedded browsers.
+  }
+  if (textureStatus) textureStatus.textContent = 'Textura stěn smazaná. Export už ji nebude obsahovat.';
+}
+
+function makeWallTexturePayloadFromImage(image, sourceName = 'wall-texture') {
+  const maxSize = 1024;
+  const size = maxSize;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#202020';
+  ctx.fillRect(0, 0, size, size);
+  const scale = Math.max(size / image.naturalWidth, size / image.naturalHeight);
+  const width = image.naturalWidth * scale;
+  const height = image.naturalHeight * scale;
+  ctx.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+  return {
+    version: 1,
+    kind: 'wall-texture',
+    name: sourceName,
+    width: size,
+    height: size,
+    mime: 'image/jpeg',
+    dataUrl: canvas.toDataURL('image/jpeg', 0.82),
+    bumpScale: currentWallTextureBumpScale,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function applyWallTexturePayload(payload, statusPrefix = 'Textura stěn načtená') {
+  currentWallTexturePayload = {
+    ...payload,
+    bumpScale: THREE.MathUtils.clamp(Number(payload.bumpScale ?? currentWallTextureBumpScale), 0, 0.08),
+  };
+  currentWallTextureBumpScale = currentWallTexturePayload.bumpScale;
+  try {
+    localStorage.setItem(galleryWallTextureStorageKey, JSON.stringify(currentWallTexturePayload));
+  } catch {
+    // If storage is full, keep the texture active in memory and allow Export JSON.
+  }
+  applyStoredWallTextureToMaterial();
+  if (textureStatus) {
+    const kilobytes = Math.round(currentWallTexturePayload.dataUrl.length * 0.75 / 1024);
+    textureStatus.textContent = `${statusPrefix}. Webová verze má přibližně ${kilobytes} kB.`;
+  }
+}
 
 const floorMaterial = new THREE.MeshStandardMaterial({
   color: 0xffffff,
@@ -3319,8 +3478,8 @@ function normalizeLoadedLightingState(lighting) {
   return normalized;
 }
 
-function serializeGalleryState() {
-  return {
+function serializeGalleryState({ includeWallTexture = false } = {}) {
+  const state = {
     version: 1,
     audio: {
       volume: Number(audioSettings.volume.toFixed(3)),
@@ -3377,6 +3536,10 @@ function serializeGalleryState() {
       wallAttachment: serializeWallAttachment(textPanelData.wallAttachment),
     })),
   };
+  if (includeWallTexture && currentWallTexturePayload?.dataUrl) {
+    state.wallTexture = currentWallTexturePayload;
+  }
+  return state;
 }
 
 function saveGalleryState() {
@@ -4246,6 +4409,7 @@ function syncEditorToggleState() {
   togglePedestalEditor.classList.toggle('active', pedestalPanel.classList.contains('visible'));
   toggleBuildEditor.classList.toggle('active', buildPanel.classList.contains('visible'));
   toggleTextPanelEditor.classList.toggle('active', textPanelPanel.classList.contains('visible'));
+  toggleTextureEditor?.classList.toggle('active', texturePanel?.classList.contains('visible'));
   toggleAudioEditor.classList.toggle('active', audioPanel.classList.contains('visible'));
   toggleArtEditor.classList.toggle('has-selection', Boolean(selectedPainting));
   togglePedestalEditor.classList.toggle('has-selection', Boolean(selectedPedestal));
@@ -7915,7 +8079,7 @@ function serializePublicGalleryConfig() {
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
-    gallery: serializeGalleryState(),
+    gallery: serializeGalleryState({ includeWallTexture: true }),
     lighting: serializeLightingState(),
   };
 }
@@ -7940,7 +8104,9 @@ function exportGalleryFromEditor() {
 
   galleryPanel.classList.add('visible');
   galleryTitle.textContent = 'Galerie exportovaná';
-  galleryStatus.textContent = 'Stáhl se JSON se světly, obrazy, podstavci a textovými tabulkami. Ten pak můžeme vložit do kódu pro veřejnou verzi.';
+  galleryStatus.textContent = currentWallTexturePayload?.dataUrl
+    ? 'Stáhl se JSON se světly, obrazy, podstavci, tabulkami a aktuální texturou stěn. Ten pak můžeme vložit do kódu pro veřejnou verzi.'
+    : 'Stáhl se JSON se světly, obrazy, podstavci a textovými tabulkami. Ten pak můžeme vložit do kódu pro veřejnou verzi.';
   syncEditorToggleState();
 }
 
@@ -7948,6 +8114,8 @@ function resetLocalGalleryFromEditor() {
   try {
     localStorage.removeItem(galleryStorageKey);
     localStorage.removeItem(lightingStorageKey);
+    localStorage.removeItem(galleryWallTextureStorageKey);
+    currentWallTexturePayload = null;
   } catch {
     // Embedded browser storage can be unavailable.
   }
@@ -8507,6 +8675,7 @@ toggleGalleryEditor.addEventListener('click', () => {
     pedestalPanel.classList.remove('visible');
     buildPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
+    texturePanel?.classList.remove('visible');
     audioPanel.classList.remove('visible');
     exitBuildTopView();
     artPreview.visible = false;
@@ -8523,6 +8692,7 @@ toggleLightEditor.addEventListener('click', () => {
     pedestalPanel.classList.remove('visible');
     buildPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
+    texturePanel?.classList.remove('visible');
     audioPanel.classList.remove('visible');
     exitBuildTopView();
     artPreview.visible = false;
@@ -8634,6 +8804,7 @@ toggleArtEditor.addEventListener('click', () => {
     pedestalPanel.classList.remove('visible');
     buildPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
+    texturePanel?.classList.remove('visible');
     audioPanel.classList.remove('visible');
     exitBuildTopView();
     updateLightLabels();
@@ -8652,6 +8823,7 @@ togglePedestalEditor.addEventListener('click', () => {
     artPanel.classList.remove('visible');
     buildPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
+    texturePanel?.classList.remove('visible');
     audioPanel.classList.remove('visible');
     exitBuildTopView();
     artPreview.visible = false;
@@ -8669,6 +8841,7 @@ toggleTextPanelEditor.addEventListener('click', () => {
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
     buildPanel.classList.remove('visible');
+    texturePanel?.classList.remove('visible');
     audioPanel.classList.remove('visible');
     exitBuildTopView();
     artPreview.visible = false;
@@ -8686,6 +8859,7 @@ toggleBuildEditor.addEventListener('click', () => {
     artPanel.classList.remove('visible');
     pedestalPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
+    texturePanel?.classList.remove('visible');
     audioPanel.classList.remove('visible');
     artPreview.visible = false;
     if (!selectedConstructionWallId) {
@@ -8708,6 +8882,72 @@ toggleBuildEditor.addEventListener('click', () => {
   syncEditorToggleState();
 });
 
+toggleTextureEditor?.addEventListener('click', () => {
+  texturePanel.classList.toggle('visible');
+  if (texturePanel.classList.contains('visible')) {
+    clearSelectedEditable('texture');
+    galleryPanel.classList.remove('visible');
+    lightPanel.classList.remove('visible');
+    artPanel.classList.remove('visible');
+    pedestalPanel.classList.remove('visible');
+    buildPanel.classList.remove('visible');
+    textPanelPanel.classList.remove('visible');
+    audioPanel.classList.remove('visible');
+    exitBuildTopView();
+    artPreview.visible = false;
+    textureStatus.textContent = currentWallTexturePayload?.dataUrl
+      ? `Textura stěn je aktivní (${currentWallTexturePayload.width || 1024} x ${currentWallTexturePayload.height || 1024}).`
+      : 'Nahraj hotovou texturu, nebo otevři generátor cihel.';
+  }
+  syncEditorToggleState();
+});
+
+loadWallTextureButton?.addEventListener('click', () => wallTextureFileInput.click());
+
+wallTextureFileInput?.addEventListener('change', () => {
+  const [file] = wallTextureFileInput.files;
+  if (!file) return;
+  texturePanel.classList.add('visible');
+  textureTitle.textContent = 'Načítám texturu';
+  textureStatus.textContent = file.name;
+  const reader = new FileReader();
+  reader.addEventListener('load', () => {
+    const image = new Image();
+    image.addEventListener('load', () => {
+      const payload = makeWallTexturePayloadFromImage(image, file.name);
+      applyWallTexturePayload(payload, 'Textura stěn načtená');
+      textureTitle.textContent = 'Textury stěn';
+      syncEditorToggleState();
+    });
+    image.addEventListener('error', () => {
+      textureTitle.textContent = 'Textura se nenačetla';
+      textureStatus.textContent = 'Zkus JPG, PNG nebo WebP.';
+    });
+    image.src = reader.result;
+  });
+  reader.addEventListener('error', () => {
+    textureTitle.textContent = 'Textura se nenačetla';
+    textureStatus.textContent = 'Soubor nejde přečíst.';
+  });
+  reader.readAsDataURL(file);
+  wallTextureFileInput.value = '';
+});
+
+openBrickGeneratorButton?.addEventListener('click', () => {
+  window.location.href = `${window.location.origin}${window.location.pathname}?texture=brick`;
+});
+
+removeWallTextureButton?.addEventListener('click', () => {
+  clearWallTexture();
+  syncEditorToggleState();
+});
+
+wallTextureBumpInput?.addEventListener('input', () => {
+  currentWallTextureBumpScale = THREE.MathUtils.clamp(Number(wallTextureBumpInput.value) / 100 * 0.08, 0, 0.08);
+  refreshWallTextureBumpScale();
+  if (textureStatus) textureStatus.textContent = `Plastika stěny nastavena na ${wallTextureBumpInput.value} %.`;
+});
+
 toggleAudioEditor.addEventListener('click', () => {
   audioPanel.classList.toggle('visible');
   if (audioPanel.classList.contains('visible')) {
@@ -8718,6 +8958,7 @@ toggleAudioEditor.addEventListener('click', () => {
     pedestalPanel.classList.remove('visible');
     buildPanel.classList.remove('visible');
     textPanelPanel.classList.remove('visible');
+    texturePanel?.classList.remove('visible');
     exitBuildTopView();
     artPreview.visible = false;
   }
@@ -9180,21 +9421,19 @@ document.addEventListener('keydown', (event) => {
     return;
   }
 
-  if (buildModeActive) {
-    if (event.code === 'Escape') {
-      event.preventDefault();
-      buildPanel.classList.remove('visible');
-      exitBuildTopView();
-      syncEditorToggleState();
-    }
-    return;
-  }
-
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC', 'Space'].includes(event.code)) {
     event.preventDefault();
     if (event.code === 'KeyW') {
       tryStartRequestedAudio();
     }
+  }
+
+  if (buildModeActive && event.code === 'Escape') {
+    event.preventDefault();
+    buildPanel.classList.remove('visible');
+    exitBuildTopView();
+    syncEditorToggleState();
+    return;
   }
 
   if (event.code === 'Space' && grounded && jumpOffset <= 0.001 && !isCrouching()) {
@@ -9249,7 +9488,6 @@ canvas.addEventListener('mousedown', (event) => {
   if (buildPanel.classList.contains('visible') && event.button === 0 && !isTouchDevice) {
     event.preventDefault();
     selectConstructionWallFromPointer(event);
-    return;
   }
 
   if (event.button === 2) {
@@ -9587,6 +9825,7 @@ const clock = new THREE.Clock();
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
 const movement = new THREE.Vector3();
+let bootFramesRemaining = 2;
 
 function updateMovement(delta) {
   if (buildModeActive) return;
@@ -9796,6 +10035,10 @@ function animate() {
   updateCrosshairAndEditors(delta);
   updateGalleryAudioListener();
   renderer.render(scene, camera);
+  if (bootFramesRemaining > 0) {
+    bootFramesRemaining -= 1;
+    if (bootFramesRemaining === 0) document.body.classList.remove('gallery-booting');
+  }
   requestAnimationFrame(animate);
 }
 

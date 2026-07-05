@@ -20,10 +20,192 @@ body,
   height: 100%;
   cursor: grab;
   touch-action: none;
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.gallery-booting #gallery {
+  opacity: 0;
 }
 
 #gallery.dragging {
   cursor: grabbing;
+}
+
+.brick-texture-mode {
+  overflow: auto;
+  background: #171614;
+}
+
+.brick-texture-mode #app {
+  height: auto;
+  overflow: auto;
+}
+
+.brick-texture-mode #gallery,
+.brick-texture-mode #hint,
+.brick-texture-mode #status,
+.brick-texture-mode #audio-toggle,
+.brick-texture-mode #room-light-control,
+.brick-texture-mode #action-dialog,
+.brick-texture-mode #crosshair,
+.brick-texture-mode #gallery-editor,
+.brick-texture-mode #light-editor,
+.brick-texture-mode #art-editor,
+.brick-texture-mode #pedestal-editor,
+.brick-texture-mode #build-editor,
+.brick-texture-mode #text-panel-editor,
+.brick-texture-mode #audio-editor,
+.brick-texture-mode #mobile-controls {
+  display: none;
+}
+
+#brick-texture-tool {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px;
+  color: rgba(255, 255, 255, 0.9);
+  background:
+    linear-gradient(90deg, rgba(21, 20, 18, 0.96), rgba(35, 31, 27, 0.92)),
+    #1d1a17;
+}
+
+#brick-texture-tool[hidden] {
+  display: none;
+}
+
+#brick-texture-controls {
+  align-self: start;
+  display: grid;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background: rgba(12, 12, 11, 0.72);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.26);
+}
+
+.brick-tool-title {
+  color: #ffd6a0;
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.brick-tool-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+#brick-texture-controls button,
+#brick-texture-controls select {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.92);
+  font: 700 12px/1 Arial, Helvetica, sans-serif;
+}
+
+#brick-texture-controls button {
+  cursor: pointer;
+}
+
+#brick-texture-controls button:hover {
+  background: rgba(255, 212, 160, 0.16);
+}
+
+#brick-apply-gallery {
+  grid-column: 1 / -1;
+  background: rgba(255, 188, 92, 0.16);
+  color: #ffe4bd;
+}
+
+#brick-texture-controls label {
+  display: grid;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+#brick-texture-controls input[type="range"],
+#brick-texture-controls input[type="color"],
+#brick-texture-controls select {
+  width: 100%;
+}
+
+#brick-texture-controls input[type="color"] {
+  height: 34px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+#brick-texture-controls select {
+  background: rgba(255, 255, 255, 0.92);
+  color: #15120f;
+  padding: 5px 7px;
+}
+
+#brick-texture-status {
+  min-height: 38px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(255, 214, 160, 0.09);
+  color: rgba(255, 228, 192, 0.86);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+#brick-texture-preview-wrap {
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25% 75%, rgba(255, 255, 255, 0.035) 75%),
+    linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25% 75%, rgba(255, 255, 255, 0.035) 75%),
+    #211e1b;
+  background-position: 0 0, 12px 12px;
+  background-size: 24px 24px;
+}
+
+#brick-texture-preview {
+  display: block;
+  width: min(100%, 78dvh);
+  height: auto;
+  aspect-ratio: 1;
+  image-rendering: auto;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.34);
+}
+
+@media (max-width: 860px) {
+  #brick-texture-tool {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  #brick-texture-controls {
+    position: static;
+  }
+
+  #brick-texture-preview {
+    width: min(100%, 92dvw);
+  }
+}
+
+@media (max-width: 430px) {
+  .brick-tool-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 #hint {
@@ -199,6 +381,7 @@ body,
 #pedestal-editor,
 #build-editor,
 #text-panel-editor,
+#texture-editor,
 #audio-editor {
   position: fixed;
   left: 14px;
@@ -215,6 +398,7 @@ body,
 .viewer-mode #pedestal-editor,
 .viewer-mode #build-editor,
 .viewer-mode #text-panel-editor,
+.viewer-mode #texture-editor,
 .viewer-mode #audio-editor {
   display: none;
 }
@@ -256,10 +440,18 @@ body,
   --editor-top: 14px;
 }
 
+#texture-editor {
+  right: 14px;
+  left: auto;
+  top: 58px;
+  --editor-top: 58px;
+}
+
 #gallery-editor:has(#gallery-panel.visible),
 #light-editor:has(#light-panel.visible),
 #art-editor:has(#art-panel.visible),
 #pedestal-editor:has(#pedestal-panel.visible),
+#texture-editor:has(#texture-panel.visible),
 #audio-editor:has(#audio-panel.visible) {
   z-index: 30;
 }
@@ -278,13 +470,15 @@ body,
 #toggle-pedestal-editor,
 #toggle-build-editor,
 #toggle-text-panel-editor,
+#toggle-texture-editor,
 #toggle-audio-editor,
 #gallery-panel button,
 #light-panel button,
 #art-panel button,
 #pedestal-panel button,
 #build-panel button,
-#text-panel-panel button {
+#text-panel-panel button,
+#texture-panel button {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 6px;
   background: rgba(12, 13, 14, 0.72);
@@ -299,13 +493,15 @@ body,
 #toggle-pedestal-editor:hover,
 #toggle-build-editor:hover,
 #toggle-text-panel-editor:hover,
+#toggle-texture-editor:hover,
 #toggle-audio-editor:hover,
 #gallery-panel button:hover,
 #light-panel button:hover,
 #art-panel button:hover,
 #pedestal-panel button:hover,
 #build-panel button:hover,
-#text-panel-panel button:hover {
+#text-panel-panel button:hover,
+#texture-panel button:hover {
   background: rgba(28, 30, 32, 0.82);
 }
 
@@ -315,6 +511,7 @@ body,
 #toggle-pedestal-editor.active,
 #toggle-build-editor.active,
 #toggle-text-panel-editor.active,
+#toggle-texture-editor.active,
 #toggle-audio-editor.active {
   border-color: rgba(255, 206, 96, 0.72);
   background: rgba(86, 62, 19, 0.86);
@@ -333,6 +530,7 @@ body,
 #art-panel,
 #pedestal-panel,
 #build-panel,
+#texture-panel,
 #audio-panel {
   position: fixed;
   left: 152px;
@@ -353,6 +551,7 @@ body,
 #pedestal-panel,
 #build-panel,
 #text-panel-panel,
+#texture-panel,
 #audio-panel {
   display: none;
   overflow-y: auto;
@@ -382,6 +581,7 @@ body,
 #pedestal-panel.visible,
 #build-panel.visible,
 #text-panel-panel.visible,
+#texture-panel.visible,
 #audio-panel.visible {
   display: grid;
   gap: 8px;
@@ -393,6 +593,7 @@ body,
 #pedestal-title,
 #build-title,
 #text-panel-title,
+#texture-title,
 #audio-title {
   color: rgba(255, 229, 184, 0.92);
   font-weight: 700;
@@ -401,6 +602,7 @@ body,
 #gallery-status,
 #pedestal-status,
 #build-status,
+#texture-status,
 #text-panel-status,
 #art-status {
   color: rgba(255, 255, 255, 0.64);
@@ -457,7 +659,8 @@ body,
 #art-panel .editor-buttons,
 #pedestal-panel .editor-buttons,
 #build-panel .editor-buttons,
-#text-panel-panel .editor-buttons {
+#text-panel-panel .editor-buttons,
+#texture-panel .editor-buttons {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
@@ -467,7 +670,8 @@ body,
 #art-panel .editor-buttons button,
 #pedestal-panel .editor-buttons button,
 #build-panel .editor-buttons button,
-#text-panel-panel .editor-buttons button {
+#text-panel-panel .editor-buttons button,
+#texture-panel .editor-buttons button {
   min-height: 30px;
   padding: 6px 7px;
   font-size: 11px;
@@ -485,6 +689,7 @@ body,
 #pedestal-panel label,
 #build-panel label,
 #text-panel-panel label,
+#texture-panel label,
 #audio-panel label {
   display: grid;
   gap: 4px;
@@ -515,6 +720,7 @@ body,
 #text-panel-panel input,
 #text-panel-panel select,
 #text-panel-panel textarea,
+#texture-panel input,
 #audio-panel input {
   width: 100%;
 }

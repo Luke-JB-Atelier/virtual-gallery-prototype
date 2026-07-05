@@ -9,6 +9,45 @@
   <body>
     <main id="app">
       <canvas id="gallery"></canvas>
+      <section id="brick-texture-tool" hidden>
+        <div id="brick-texture-controls">
+          <div class="brick-tool-title">Textura zdiva</div>
+          <input id="brick-source-file" type="file" accept="image/*" multiple hidden />
+          <div class="brick-tool-actions">
+            <button id="brick-load-source" type="button">Nahrát cihly</button>
+            <button id="brick-rough-preset" type="button">Hrubá test</button>
+            <button id="brick-generate" type="button">Vygenerovat</button>
+            <button id="brick-download" type="button">Stáhnout PNG</button>
+            <button id="brick-apply-gallery" type="button">Použít v galerii</button>
+          </div>
+          <label>Výstup
+            <select id="brick-output-size">
+              <option value="1024" selected>1024 x 1024</option>
+              <option value="2048">2048 x 2048</option>
+            </select>
+          </label>
+          <label>Šířka cihly <input id="brick-width" type="range" min="90" max="280" step="1" value="168" /></label>
+          <label>Výška cihly <input id="brick-height" type="range" min="38" max="112" step="1" value="66" /></label>
+          <label>Tloušťka spáry <input id="brick-mortar" type="range" min="4" max="24" step="1" value="9" /></label>
+          <label>Barva spáry <input id="brick-mortar-color" type="color" value="#4f463b" /></label>
+          <label>Zrnitost spáry <input id="brick-mortar-grain" type="range" min="0" max="100" step="1" value="72" /></label>
+          <label>Špinavost spáry <input id="brick-mortar-dirt" type="range" min="0" max="100" step="1" value="64" /></label>
+          <label>Posun řady
+            <select id="brick-row-offset">
+              <option value="0">0 %</option>
+              <option value="0.5" selected>50 %</option>
+            </select>
+          </label>
+          <label>Nepravidelné hrany <input id="brick-edge-roughness" type="range" min="0" max="100" step="1" value="62" /></label>
+          <label>Prolnutí do spáry <input id="brick-edge-blend" type="range" min="0" max="100" step="1" value="58" /></label>
+          <label>Stín pod cihlou <input id="brick-shadow-depth" type="range" min="0" max="100" step="1" value="44" /></label>
+          <label>Random barva/jas <input id="brick-color-random" type="range" min="0" max="100" step="1" value="42" /></label>
+          <div id="brick-texture-status">Nahraj jednu nebo více vlastních cihel. Generátor je poskládá do bezešvé zdi.</div>
+        </div>
+        <div id="brick-texture-preview-wrap">
+          <canvas id="brick-texture-preview" width="1024" height="1024"></canvas>
+        </div>
+      </section>
       <div id="hint">Klikni do scény: myš otáčí tělo · W/S chůze · C skrčení · mezerník skok · Shift rychleji · A/D otočení · Esc vypnout pohled · pravý klik otevře odkaz</div>
       <div id="status">pohled vypnutý</div>
       <button id="audio-toggle" type="button">Zapnout hudbu</button>
@@ -211,6 +250,20 @@
           </select></label>
           <label>Barva tabulky <input id="text-panel-bg-color" type="color" value="#f7f4ea" /></label>
           <label>Barva písma <input id="text-panel-text-color" type="color" value="#111315" /></label>
+        </div>
+      </section>
+      <section id="texture-editor">
+        <button id="toggle-texture-editor" type="button">Textury</button>
+        <div id="texture-panel">
+          <div id="texture-title">Textury stěn</div>
+          <div id="texture-status">Nahraj hotovou texturu, nebo otevři generátor cihel.</div>
+          <input id="wall-texture-file" type="file" accept="image/*" hidden />
+          <div class="editor-buttons">
+            <button id="load-wall-texture" type="button">Nahrát texturu</button>
+            <button id="open-brick-generator" type="button">Generátor cihel</button>
+            <button id="remove-wall-texture" type="button">Smazat texturu</button>
+          </div>
+          <label>Plastika stěny <input id="wall-texture-bump" type="range" min="0" max="100" step="1" value="45" /></label>
         </div>
       </section>
       <section id="audio-editor">
