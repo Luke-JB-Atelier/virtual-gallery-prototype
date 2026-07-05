@@ -165,6 +165,7 @@ const loadWallTextureButton = document.querySelector('#load-wall-texture');
 const openBrickGeneratorButton = document.querySelector('#open-brick-generator');
 const removeWallTextureButton = document.querySelector('#remove-wall-texture');
 const wallTextureBumpInput = document.querySelector('#wall-texture-bump');
+const wallTextureScaleInput = document.querySelector('#wall-texture-scale');
 const toggleAudioEditor = document.querySelector('#toggle-audio-editor');
 const audioPanel = document.querySelector('#audio-panel');
 const audioVolumeInput = document.querySelector('#audio-volume');
@@ -300,11 +301,19 @@ let currentWallTextureBumpScale = THREE.MathUtils.clamp(
   0,
   0.08,
 );
+let currentWallTextureScale = THREE.MathUtils.clamp(
+  Number(savedGallery?.wallTexture?.scale ?? currentWallTexturePayload?.scale ?? 1),
+  0.45,
+  1.8,
+);
 if (audioVolumeInput) {
   audioVolumeInput.value = String(Math.round(audioSettings.volume * 100));
 }
 if (wallTextureBumpInput) {
   wallTextureBumpInput.value = String(Math.round(currentWallTextureBumpScale / 0.08 * 100));
+}
+if (wallTextureScaleInput) {
+  wallTextureScaleInput.value = String(Math.round(currentWallTextureScale * 100));
 }
 document.body.classList.toggle('viewer-mode', !editorMode);
 document.body.classList.toggle('mobile-performance', mobilePerformanceMode);
@@ -450,10 +459,15 @@ function applyStoredWallTextureToMaterial() {
   currentWallTexturePayload = {
     ...payload,
     bumpScale: THREE.MathUtils.clamp(Number(payload.bumpScale ?? currentWallTextureBumpScale), 0, 0.08),
+    scale: THREE.MathUtils.clamp(Number(payload.scale ?? currentWallTextureScale), 0.45, 1.8),
   };
   currentWallTextureBumpScale = currentWallTexturePayload.bumpScale;
+  currentWallTextureScale = currentWallTexturePayload.scale;
   if (wallTextureBumpInput) {
     wallTextureBumpInput.value = String(Math.round(currentWallTextureBumpScale / 0.08 * 100));
+  }
+  if (wallTextureScaleInput) {
+    wallTextureScaleInput.value = String(Math.round(currentWallTextureScale * 100));
   }
 
   const loader = new THREE.TextureLoader();
@@ -548,6 +562,7 @@ function makeWallTexturePayloadFromImage(image, sourceName = 'wall-texture') {
     mime: 'image/jpeg',
     dataUrl: canvas.toDataURL('image/jpeg', 0.82),
     bumpScale: currentWallTextureBumpScale,
+    scale: currentWallTextureScale,
     createdAt: new Date().toISOString(),
   };
 }
@@ -556,8 +571,10 @@ function applyWallTexturePayload(payload, statusPrefix = 'Textura stěn načten�
   currentWallTexturePayload = {
     ...payload,
     bumpScale: THREE.MathUtils.clamp(Number(payload.bumpScale ?? currentWallTextureBumpScale), 0, 0.08),
+    scale: THREE.MathUtils.clamp(Number(payload.scale ?? currentWallTextureScale), 0.45, 1.8),
   };
   currentWallTextureBumpScale = currentWallTexturePayload.bumpScale;
+  currentWallTextureScale = currentWallTexturePayload.scale;
   try {
     localStorage.setItem(galleryWallTextureStorageKey, JSON.stringify(currentWallTexturePayload));
   } catch {
@@ -612,6 +629,43 @@ function plane(width, height, material, position, rotation, segments = 1) {
   mesh.rotation.set(...rotation);
   room.add(mesh);
   return mesh;
+}
+
+function applyWallUvScale(mesh, width, height) {
+  const uv = mesh.geometry?.attributes?.uv;
+  if (!uv) return;
+  const tileWorldWidth = 2.7 * currentWallTextureScale;
+  const tileWorldHeight = tileWorldWidth;
+  const repeatX = Math.max(0.1, width / tileWorldWidth);
+  const repeatY = Math.max(0.1, height / tileWorldHeight);
+  for (let i = 0; i < uv.count; i += 1) {
+    const u = uv.getX(i);
+    const v = uv.getY(i);
+    uv.setXY(i, u * repeatX, v * repeatY);
+  }
+  uv.needsUpdate = true;
+  mesh.userData.wallTextureSize = { width, height };
+}
+
+function refreshWallUvScale() {
+  [...baseWallMeshes, ...dynamicWallMeshes].forEach((mesh) => {
+    const size = mesh.userData.wallTextureSize;
+    if (!size) return;
+    const geometry = mesh.geometry;
+    if (!geometry?.attributes?.uv) return;
+    const position = geometry.attributes.position;
+    const width = size.width;
+    const height = size.height;
+    const tileWorldWidth = 2.7 * currentWallTextureScale;
+    const repeatX = Math.max(0.1, width / tileWorldWidth);
+    const repeatY = Math.max(0.1, height / tileWorldWidth);
+    for (let i = 0; i < position.count; i += 1) {
+      const x = position.getX(i);
+      const y = position.getY(i);
+      geometry.attributes.uv.setXY(i, (x / width + 0.5) * repeatX, (y / height + 0.5) * repeatY);
+    }
+    geometry.attributes.uv.needsUpdate = true;
+  });
 }
 
 
@@ -981,6 +1035,7 @@ function addSideCorridorFloorAndCeiling(centerX, centerZ) {
 
 function addWall(width, height, position, rotation, segments = 18) {
   const mesh = plane(width, height, wallMaterial, position, rotation, segments);
+  applyWallUvScale(mesh, width, height);
   addSurfaceEdgeDarkening(mesh, width, height);
   wallMeshes.push(mesh);
   return mesh;
@@ -5496,6 +5551,7 @@ function addDynamicWall(width, height, position, rotation, segments = 18, option
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height, segments, segments), wallMaterial);
   mesh.position.set(...position);
   mesh.rotation.set(...rotation);
+  applyWallUvScale(mesh, width, height);
   if (edgeDarkening) {
     addSurfaceEdgeDarkening(mesh, width, height);
   } else {
@@ -8946,6 +9002,20 @@ wallTextureBumpInput?.addEventListener('input', () => {
   currentWallTextureBumpScale = THREE.MathUtils.clamp(Number(wallTextureBumpInput.value) / 100 * 0.08, 0, 0.08);
   refreshWallTextureBumpScale();
   if (textureStatus) textureStatus.textContent = `Plastika stěny nastavena na ${wallTextureBumpInput.value} %.`;
+});
+
+wallTextureScaleInput?.addEventListener('input', () => {
+  currentWallTextureScale = THREE.MathUtils.clamp(Number(wallTextureScaleInput.value) / 100, 0.45, 1.8);
+  if (currentWallTexturePayload) {
+    currentWallTexturePayload.scale = currentWallTextureScale;
+    try {
+      localStorage.setItem(galleryWallTextureStorageKey, JSON.stringify(currentWallTexturePayload));
+    } catch {
+      // Export keeps the current in-memory payload even if local storage is full.
+    }
+  }
+  refreshWallUvScale();
+  if (textureStatus) textureStatus.textContent = `Měřítko textury nastaveno na ${wallTextureScaleInput.value} %.`;
 });
 
 toggleAudioEditor.addEventListener('click', () => {
