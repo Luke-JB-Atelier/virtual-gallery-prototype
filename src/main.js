@@ -3127,6 +3127,101 @@ function updateActiveSpotShadows(currentRoomIndex) {
   });
 }
 
+let roomLightingWarmUpStarted = false;
+
+function warmUpRoomLightingForIndex(roomIndex, state) {
+  const roomConfig = state.activeRooms[roomIndex];
+  if (!roomConfig) return;
+
+  const requestedPower = roomLightState.enabled ? roomLightState.power : 0;
+  body.position.set(roomConfig.centerX, body.position.y, roomConfig.centerZ);
+  camera.position.set(roomConfig.centerX, getRoomHeight(roomConfig) * 0.55, roomConfig.centerZ + Math.min(2.5, roomConfig.depth * 0.25));
+  camera.lookAt(roomConfig.centerX, getRoomHeight(roomConfig) * 0.45, roomConfig.centerZ);
+
+  ceilingLights.forEach((lightData) => {
+    lightData.spot.visible = (lightData.roomIndex ?? roomIndex) === roomIndex;
+  });
+  autoRoomLights.forEach((fixture, index) => {
+    const power = index === roomIndex ? requestedPower : 0;
+    fixture.currentPower = power;
+    fixture.light.intensity = power;
+    setRoomLightPanelColor(fixture.panelMaterial, power);
+  });
+  navigationFillLights.forEach((fixture, index) => {
+    fixture.light.intensity = index === roomIndex ? Math.min(requestedPower * 0.035, 2.8) : 0;
+  });
+
+  spotShadowSetupDirty = true;
+  updateActiveSpotShadows(roomIndex);
+  renderer.shadowMap.needsUpdate = true;
+  renderer.compile(scene, camera);
+  renderer.render(scene, camera);
+}
+
+function restoreRoomLightingWarmUpState(state) {
+  state.originalSpotState.forEach(({ lightData, visible, castShadow, shadowNeedsUpdate }) => {
+    lightData.spot.visible = visible;
+    lightData.spot.castShadow = castShadow;
+    lightData.spot.shadow.needsUpdate = shadowNeedsUpdate;
+  });
+  state.originalRoomLightState.forEach(({ fixture, intensity, currentPower }) => {
+    fixture.light.intensity = intensity;
+    fixture.currentPower = currentPower;
+    setRoomLightPanelColor(fixture.panelMaterial, currentPower);
+  });
+  state.originalFillLightState.forEach(({ fixture, intensity }) => {
+    fixture.light.intensity = intensity;
+  });
+  camera.position.copy(state.originalCameraPosition);
+  body.position.copy(state.originalBodyPosition);
+  syncCameraRotation();
+  spotShadowSetupDirty = state.originalShadowDirty;
+  spotShadowRoomIndex = state.originalShadowRoomIndex;
+  renderer.shadowMap.needsUpdate = true;
+}
+
+function scheduleRoomLightingWarmUp() {
+  if (roomLightingWarmUpStarted || mobilePerformanceMode) return;
+  const activeRooms = getActiveGalleryRooms();
+  if (!activeRooms.length) return;
+  roomLightingWarmUpStarted = true;
+
+  const state = {
+    activeRooms,
+  };
+  let nextRoomIndex = 0;
+
+  const warmNextRoom = () => {
+    if (nextRoomIndex >= activeRooms.length) return;
+    state.originalCameraPosition = camera.position.clone();
+    state.originalBodyPosition = body.position.clone();
+    state.originalSpotState = ceilingLights.map((lightData) => ({
+      lightData,
+      visible: lightData.spot.visible,
+      castShadow: lightData.spot.castShadow,
+      shadowNeedsUpdate: lightData.spot.shadow.needsUpdate,
+    }));
+    state.originalRoomLightState = autoRoomLights.map((fixture) => ({
+      fixture,
+      intensity: fixture.light.intensity,
+      currentPower: fixture.currentPower,
+    }));
+    state.originalFillLightState = navigationFillLights.map((fixture) => ({
+      fixture,
+      intensity: fixture.light.intensity,
+    }));
+    state.originalShadowDirty = spotShadowSetupDirty;
+    state.originalShadowRoomIndex = spotShadowRoomIndex;
+
+    warmUpRoomLightingForIndex(nextRoomIndex, state);
+    nextRoomIndex += 1;
+    restoreRoomLightingWarmUpState(state);
+    window.requestAnimationFrame(warmNextRoom);
+  };
+
+  window.requestAnimationFrame(warmNextRoom);
+}
+
 function syncLightPanel() {
   if (!ceilingLights.length) {
     lightTitle.textContent = 'Žádné stropní světlo';
@@ -9701,6 +9796,7 @@ window.addEventListener('orientationchange', () => {
 
 syncCameraRotation();
 updateStatus();
+clock.start();
 animate();
 
 function getConstructionModelDebug() {
@@ -9808,6 +9904,14 @@ window.__galleryDebug = () => ({
   lookPointerId: lookPointer.id,
   keys: [...keys],
 });
+
+window.setTimeout(() => {
+  try {
+    scheduleRoomLightingWarmUp();
+  } catch (error) {
+    console.warn('Room lighting warm-up skipped.', error);
+  }
+}, 250);
 
 window.__galleryLightingConfig = () => serializeLightingState();
 window.__galleryPublicConfig = () => serializePublicGalleryConfig();
