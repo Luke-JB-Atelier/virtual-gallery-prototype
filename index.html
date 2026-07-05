@@ -149,6 +149,7 @@
           <label>Šířka místnosti (m) <input id="build-room-width" type="number" min="2" max="24" step="0.5" value="9" /></label>
           <label>Hloubka místnosti (m) <input id="build-room-depth" type="number" min="2" max="28" step="0.5" value="12" /></label>
           <label>Výška stropu (m) <input id="build-room-height" type="number" min="2.2" max="7" step="0.1" value="3.4" /></label>
+          <label>Vlastní název <input id="build-room-name" type="text" placeholder="např. Digitální tvorba" /></label>
           <label>Krok stěny (m) <input id="build-wall-step" type="number" min="0.25" max="2" step="0.25" value="0.5" /></label>
           <div class="editor-buttons">
             <button id="build-wall-in" type="button" title="Posune vybranou stěnu směrem do místnosti.">Zmenšit přes stěnu</button>
@@ -156,10 +157,12 @@
           </div>
           <div id="build-opening-tools">
             <div id="build-opening-title">Průchody</div>
+            <label>Z místnosti <select id="build-opening-from"></select></label>
+            <label>Do místnosti <select id="build-opening-to"></select></label>
             <label>Vybraný průchod <select id="build-opening-select"></select></label>
             <label>Pozice na stěně (%) <input id="build-opening-position" type="range" min="0" max="100" step="1" value="50" /></label>
             <div class="editor-buttons">
-              <button id="build-opening-add" type="button" title="Přidá průchod mezi vybranou místnost a nejbližší vhodnou místnost.">Přidat průchod</button>
+              <button id="build-opening-add" type="button" title="Přidá průchod mezi místnosti vybrané v polích Z místnosti a Do místnosti.">Přidat průchod</button>
               <button id="build-opening-remove" type="button" title="Smaže vybraný průchod.">Smazat průchod</button>
               <button id="build-opening-left" type="button" title="Posune průchod po vybrané stěně doleva nebo dozadu.">Posun -</button>
               <button id="build-opening-right" type="button" title="Posune průchod po vybrané stěně doprava nebo dopředu.">Posun +</button>

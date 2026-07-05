@@ -97,10 +97,13 @@ const buildGridSizeInput = document.querySelector('#build-grid-size');
 const buildRoomWidthInput = document.querySelector('#build-room-width');
 const buildRoomDepthInput = document.querySelector('#build-room-depth');
 const buildRoomHeightInput = document.querySelector('#build-room-height');
+const buildRoomNameInput = document.querySelector('#build-room-name');
 const buildWallStepInput = document.querySelector('#build-wall-step');
 const buildWallInButton = document.querySelector('#build-wall-in');
 const buildWallOutButton = document.querySelector('#build-wall-out');
 const buildOpeningSelect = document.querySelector('#build-opening-select');
+const buildOpeningFromSelect = document.querySelector('#build-opening-from');
+const buildOpeningToSelect = document.querySelector('#build-opening-to');
 const buildOpeningPositionInput = document.querySelector('#build-opening-position');
 const buildOpeningAddButton = document.querySelector('#build-opening-add');
 const buildOpeningRemoveButton = document.querySelector('#build-opening-remove');
@@ -4969,16 +4972,41 @@ function createDefaultBuildOpenings() {
   }));
 }
 
+function normalizeBuildRoomName(roomConfig) {
+  if (typeof roomConfig?.roomName === 'string') return roomConfig.roomName.trim();
+  if (typeof roomConfig?.label !== 'string') return '';
+  return roomConfig.label
+    .replace(/^Místnost\s+\d+\s*[-–:]?\s*/i, '')
+    .replace(/^Boční\s+místnost\s+\d+\s*[-–:]?\s*/i, '')
+    .trim();
+}
+
+function getBuildRoomLabel(index, roomName = '') {
+  const base = `Místnost ${index + 1}`;
+  return roomName ? `${base} - ${roomName}` : base;
+}
+
+function renumberBuildRooms(rooms) {
+  return rooms.map((roomConfig, index) => {
+    const roomName = normalizeBuildRoomName(roomConfig);
+    return {
+      ...roomConfig,
+      roomName,
+      label: getBuildRoomLabel(index, roomName),
+    };
+  });
+}
+
 function normalizeBuildRoom(roomConfig, index) {
   const canonicalRoom = galleryRooms[index] ?? null;
   const legacyFirstRoomId = index === 0 && roomConfig?.id === 'room-1';
+  const roomName = normalizeBuildRoomName(roomConfig);
   return {
     id: canonicalRoom && (legacyFirstRoomId || !roomConfig?.customBuildRoom)
       ? canonicalRoom.id
       : typeof roomConfig?.id === 'string' && roomConfig.id ? roomConfig.id : `room-${index + 1}`,
-    label: canonicalRoom && (legacyFirstRoomId || !roomConfig?.customBuildRoom)
-      ? `Místnost ${index + 1}`
-      : typeof roomConfig?.label === 'string' && roomConfig.label ? roomConfig.label : `Místnost ${index + 1}`,
+    label: getBuildRoomLabel(index, roomName),
+    roomName,
     centerX: Number.isFinite(roomConfig?.centerX) ? roomConfig.centerX : 0,
     centerZ: Number.isFinite(roomConfig?.centerZ) ? roomConfig.centerZ : index * (roomDepth + corridorLength),
     width: THREE.MathUtils.clamp(Number(roomConfig?.width) || roomWidth, buildRoomMinSize, buildRoomMaxWidth),
@@ -5023,13 +5051,13 @@ function loadBuildLayout() {
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.rooms)) return createDefaultBuildLayout();
     buildGridSize = THREE.MathUtils.clamp(Number(parsed.gridSize) || buildGridDefaultSize, 0.25, 1);
     buildArchitectureApplied = Boolean(parsed.applied);
-    return parsed.rooms.map(normalizeBuildRoom);
+    return renumberBuildRooms(parsed.rooms.map(normalizeBuildRoom));
   } catch {
     return createDefaultBuildLayout();
   }
 }
 
-let buildRooms = loadBuildLayout();
+let buildRooms = renumberBuildRooms(loadBuildLayout());
 let buildOpenings = (() => {
   try {
     const parsed = JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null');
@@ -5111,8 +5139,8 @@ function getMovedBuildRoomWall(roomConfig, side, signedDistance) {
   return nextRoom;
 }
 
-function commitBuildRoomChange(index, nextRoom, successMessage) {
-  const nextRooms = cloneBuildRoomsWithRoom(index, nextRoom);
+function commitBuildRoomChange(index, nextRoom, successMessage, { liveApply = true, persist = true } = {}) {
+  const nextRooms = renumberBuildRooms(cloneBuildRoomsWithRoom(index, nextRoom));
   const validation = validateBuildRooms(nextRooms, index);
   if (!validation.ok) {
     setBuildStatus(validation.message, 'warning');
@@ -5124,10 +5152,10 @@ function commitBuildRoomChange(index, nextRoom, successMessage) {
   selectedBuildRoomIndex = index;
   renderBuildLayout();
   syncBuildPanel();
-  saveBuildLayout();
-  if (buildArchitectureApplied) {
+  if (persist) saveBuildLayout();
+  if (buildArchitectureApplied && liveApply) {
     applyBuildLayoutToGallery({ persist: false });
-    saveBuildLayout();
+    if (persist) saveBuildLayout();
   }
   if (successMessage) setBuildStatus(successMessage);
   updateBuildSelectionSummary();
@@ -5704,6 +5732,26 @@ function syncBuildOpeningControls() {
   }
   buildOpeningSelect.value = selected?.id ?? previousValue ?? '';
   if (buildOpeningPositionInput) buildOpeningPositionInput.value = String(Math.round((selected?.offsetRatio ?? 0.5) * 100));
+  [buildOpeningFromSelect, buildOpeningToSelect].forEach((select) => {
+    if (!select) return;
+    const previousRoomId = select.value;
+    select.innerHTML = '';
+    buildRooms.forEach((roomConfig) => {
+      const option = document.createElement('option');
+      option.value = roomConfig.id;
+      option.textContent = roomConfig.label;
+      select.append(option);
+    });
+    const fallbackRoomId = select === buildOpeningFromSelect
+      ? selected?.fromRoomId ?? buildRooms[selectedBuildRoomIndex]?.id
+      : selected?.toRoomId ?? buildRooms.find((roomConfig) => roomConfig.id !== buildRooms[selectedBuildRoomIndex]?.id)?.id;
+    const nextRoomId = selected
+      ? fallbackRoomId
+      : buildRooms.some((roomConfig) => roomConfig.id === previousRoomId)
+        ? previousRoomId
+        : fallbackRoomId;
+    select.value = nextRoomId ?? '';
+  });
   const hasOpening = Boolean(selected);
   if (buildOpeningRemoveButton) buildOpeningRemoveButton.disabled = !hasOpening;
   if (buildOpeningLeftButton) buildOpeningLeftButton.disabled = !hasOpening;
@@ -5919,6 +5967,7 @@ function syncBuildPanel() {
   if (buildRoomWidthInput) buildRoomWidthInput.value = String(Number(roomConfig.width.toFixed(2)));
   if (buildRoomDepthInput) buildRoomDepthInput.value = String(Number(roomConfig.depth.toFixed(2)));
   if (buildRoomHeightInput) buildRoomHeightInput.value = String(Number(roomConfig.height.toFixed(2)));
+  if (buildRoomNameInput) buildRoomNameInput.value = roomConfig.roomName ?? '';
   if (buildRemoveRoomButton) buildRemoveRoomButton.disabled = buildRooms.length <= 1;
   syncBuildOpeningControls();
   updateBuildSelectionSummary();
@@ -5933,6 +5982,7 @@ function updateSelectedBuildRoomFromInputs() {
     width: snapBuildValue(THREE.MathUtils.clamp(Number(buildRoomWidthInput?.value) || roomConfig.width, buildRoomMinSize, buildRoomMaxWidth)),
     depth: snapBuildValue(THREE.MathUtils.clamp(Number(buildRoomDepthInput?.value) || roomConfig.depth, buildRoomMinSize, buildRoomMaxDepth)),
     height: THREE.MathUtils.clamp(Number(buildRoomHeightInput?.value) || roomConfig.height, 2.2, 7),
+    roomName: buildRoomNameInput?.value.trim() ?? roomConfig.roomName ?? '',
   };
   const changed = commitBuildRoomChange(
     selectedBuildRoomIndex,
@@ -6017,18 +6067,40 @@ function findBestOpeningTarget(sourceRoom, preferredSide = null) {
   return best;
 }
 
+function findBestOpeningBetweenRooms(sourceRoom, targetRoom, preferredSide = null) {
+  if (!sourceRoom || !targetRoom || sourceRoom.id === targetRoom.id) return null;
+  const sides = preferredSide ? [preferredSide, ...['front', 'back', 'right', 'left'].filter((side) => side !== preferredSide)] : ['front', 'back', 'right', 'left'];
+  let best = null;
+  sides.forEach((side) => {
+    const toSide = getOppositeOpeningSide(side);
+    const gap = getRoomGapForSide(sourceRoom, targetRoom, side);
+    const overlap = getRoomOverlapForSide(sourceRoom, targetRoom, side);
+    if (gap <= 0.05 || overlap < doorway.width) return;
+    const preferredBonus = side === preferredSide ? -100 : 0;
+    const score = preferredBonus + gap + Math.abs(overlap - doorway.width) * 0.03;
+    if (!best || score < best.score) {
+      best = { targetRoom, side, toSide, score };
+    }
+  });
+  return best;
+}
+
 function addBuildOpening() {
   const sourceRoom = buildRooms[selectedBuildRoomIndex] ?? buildRooms[0];
   if (!sourceRoom) return;
   const selectedWall = getConstructionWallById(selectedConstructionWallId);
-  const preferredSide = selectedWall?.roomId === sourceRoom.id ? selectedWall.side : selectedBuildEdge;
-  const target = findBestOpeningTarget(sourceRoom, preferredSide);
+  const selectedFromRoom = getBuildRoomById(buildOpeningFromSelect?.value) ?? sourceRoom;
+  const selectedToRoom = getBuildRoomById(buildOpeningToSelect?.value) ?? null;
+  const preferredSide = selectedWall?.roomId === selectedFromRoom.id ? selectedWall.side : selectedBuildEdge;
+  const target = selectedToRoom && selectedToRoom.id !== selectedFromRoom.id
+    ? findBestOpeningBetweenRooms(selectedFromRoom, selectedToRoom, preferredSide)
+    : findBestOpeningTarget(selectedFromRoom, preferredSide);
   if (!target?.targetRoom || !target.toSide) {
-    setBuildStatus('Limit: poblíž vybrané místnosti není vhodná druhá místnost pro průchod.', 'warning');
+    setBuildStatus('Limit: vybrané místnosti se nedají propojit. Musí mít proti sobě volnou hranu a dostatečný překryv pro průchod.', 'warning');
     return;
   }
   const similarCount = buildOpenings.filter((opening) => (
-    opening.fromRoomId === sourceRoom.id
+    opening.fromRoomId === selectedFromRoom.id
     && opening.toRoomId === target.targetRoom.id
     && opening.fromSide === target.side
     && opening.toSide === target.toSide
@@ -6036,7 +6108,7 @@ function addBuildOpening() {
   const offsetRatio = THREE.MathUtils.clamp(0.5 + (similarCount % 5 - 2) * 0.16, 0.08, 0.92);
   const opening = {
     id: `opening-${Date.now()}`,
-    fromRoomId: sourceRoom.id,
+    fromRoomId: selectedFromRoom.id,
     toRoomId: target.targetRoom.id,
     fromSide: target.side,
     toSide: target.toSide,
@@ -6205,7 +6277,6 @@ function updateBuildDrag(event) {
     if (!opening || !point || !setBuildOpeningPositionFromPoint(opening, point)) return false;
     renderBuildLayout();
     syncBuildPanel();
-    if (buildArchitectureApplied) applyBuildLayoutToGallery({ persist: false });
     return true;
   }
   if (draggingBuildHandle.kind === 'room') {
@@ -6219,7 +6290,8 @@ function updateBuildDrag(event) {
     return commitBuildRoomChange(
       draggingBuildHandle.roomIndex,
       nextRoom,
-      'Místnost posunutá po mřížce. Průchody se přepočítaly podle nové pozice.',
+      null,
+      { liveApply: false, persist: false },
     );
   }
   const roomConfig = buildRooms[draggingBuildHandle.roomIndex];
@@ -6246,7 +6318,7 @@ function updateBuildDrag(event) {
     nextRoom.centerZ = snapBuildValue((back + nextFront) / 2);
     nextRoom.depth = snapBuildValue(nextFront - back);
   }
-  return commitBuildRoomChange(draggingBuildHandle.roomIndex, nextRoom);
+  return commitBuildRoomChange(draggingBuildHandle.roomIndex, nextRoom, null, { liveApply: false, persist: false });
 }
 
 function finishBuildDrag() {
@@ -6274,11 +6346,12 @@ function addBuildRoom() {
     ...source,
     id: `room-${Date.now()}`,
     label: `Místnost ${buildRooms.length + 1}`,
+    roomName: '',
     customBuildRoom: true,
     centerX: snapBuildValue(source.centerX + source.width + corridorLength),
     centerZ: snapBuildValue(source.centerZ),
   };
-  buildRooms.push(roomConfig);
+  buildRooms = renumberBuildRooms([...buildRooms, roomConfig]);
   const opening = {
     id: `opening-${Date.now()}-new-room`,
     fromRoomId: sourceId,
@@ -6298,6 +6371,7 @@ function addBuildRoom() {
 function removeSelectedBuildRoom() {
   if (buildRooms.length <= 1) return;
   buildRooms.splice(selectedBuildRoomIndex, 1);
+  buildRooms = renumberBuildRooms(buildRooms);
   buildOpenings = getValidBuildOpenings(buildOpenings, buildRooms);
   if (!buildOpenings.some((opening) => opening.id === selectedBuildOpeningId)) {
     selectedBuildOpeningId = buildOpenings[0]?.id ?? null;
@@ -8549,10 +8623,17 @@ buildOpeningRemoveButton?.addEventListener('click', removeSelectedBuildOpening);
 buildOpeningLeftButton?.addEventListener('click', () => moveSelectedBuildOpening(-1));
 buildOpeningRightButton?.addEventListener('click', () => moveSelectedBuildOpening(1));
 buildOpeningSelect?.addEventListener('change', () => selectBuildOpening(buildOpeningSelect.value));
+buildOpeningFromSelect?.addEventListener('change', () => {
+  selectedBuildRoomIndex = Math.max(0, getBuildRoomIndexById(buildOpeningFromSelect.value));
+  renderBuildLayout();
+  updateBuildSelectionSummary();
+});
+buildOpeningToSelect?.addEventListener('change', updateBuildSelectionSummary);
 buildOpeningPositionInput?.addEventListener('input', () => {
   setSelectedBuildOpeningPosition(Number(buildOpeningPositionInput.value) / 100, 'Průchod posunutý podle posuvníku.');
 });
-[buildGridSizeInput, buildRoomWidthInput, buildRoomDepthInput, buildRoomHeightInput].forEach((input) => {
+[buildGridSizeInput, buildRoomWidthInput, buildRoomDepthInput, buildRoomHeightInput, buildRoomNameInput].forEach((input) => {
+  if (!input) return;
   input.addEventListener('input', updateSelectedBuildRoomFromInputs);
   input.addEventListener('change', updateSelectedBuildRoomFromInputs);
 });
