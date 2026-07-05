@@ -3423,9 +3423,10 @@ function warmUpRoomLightingForIndex(roomIndex, state) {
   if (!roomConfig) return;
 
   const requestedPower = roomLightState.enabled ? roomLightState.power : 0;
-  body.position.set(roomConfig.centerX, body.position.y, roomConfig.centerZ);
-  camera.position.set(roomConfig.centerX, getRoomHeight(roomConfig) * 0.55, roomConfig.centerZ + Math.min(2.5, roomConfig.depth * 0.25));
-  camera.lookAt(roomConfig.centerX, getRoomHeight(roomConfig) * 0.45, roomConfig.centerZ);
+  const warmUpCamera = camera.clone();
+  warmUpCamera.position.set(roomConfig.centerX, getRoomHeight(roomConfig) * 0.55, roomConfig.centerZ + Math.min(2.5, roomConfig.depth * 0.25));
+  warmUpCamera.lookAt(roomConfig.centerX, getRoomHeight(roomConfig) * 0.45, roomConfig.centerZ);
+  warmUpCamera.updateMatrixWorld(true);
 
   ceilingLights.forEach((lightData) => {
     lightData.spot.visible = (lightData.roomIndex ?? roomIndex) === roomIndex;
@@ -3443,8 +3444,12 @@ function warmUpRoomLightingForIndex(roomIndex, state) {
   spotShadowSetupDirty = true;
   updateActiveSpotShadows(roomIndex);
   renderer.shadowMap.needsUpdate = true;
-  renderer.compile(scene, camera);
-  renderer.render(scene, camera);
+  renderer.compile(scene, warmUpCamera);
+  const previousRenderTarget = renderer.getRenderTarget();
+  state.warmUpRenderTarget ??= new THREE.WebGLRenderTarget(1, 1);
+  renderer.setRenderTarget(state.warmUpRenderTarget);
+  renderer.render(scene, warmUpCamera);
+  renderer.setRenderTarget(previousRenderTarget);
 }
 
 function restoreRoomLightingWarmUpState(state) {
@@ -3461,9 +3466,6 @@ function restoreRoomLightingWarmUpState(state) {
   state.originalFillLightState.forEach(({ fixture, intensity }) => {
     fixture.light.intensity = intensity;
   });
-  camera.position.copy(state.originalCameraPosition);
-  body.position.copy(state.originalBodyPosition);
-  syncCameraRotation();
   spotShadowSetupDirty = state.originalShadowDirty;
   spotShadowRoomIndex = state.originalShadowRoomIndex;
   renderer.shadowMap.needsUpdate = true;
@@ -3481,9 +3483,11 @@ function scheduleRoomLightingWarmUp() {
   let nextRoomIndex = 0;
 
   const warmNextRoom = () => {
-    if (nextRoomIndex >= activeRooms.length) return;
-    state.originalCameraPosition = camera.position.clone();
-    state.originalBodyPosition = body.position.clone();
+    if (nextRoomIndex >= activeRooms.length) {
+      state.warmUpRenderTarget?.dispose();
+      state.warmUpRenderTarget = null;
+      return;
+    }
     state.originalSpotState = ceilingLights.map((lightData) => ({
       lightData,
       visible: lightData.spot.visible,
@@ -4966,6 +4970,11 @@ function refreshPedestalRoomAttachments() {
 
 function reattachPedestalsToRooms() {
   displayPedestals.forEach((pedestalData) => {
+    const currentRoom = getRoomAttachmentForFloorObject(pedestalData.group.position);
+    if (currentRoom) {
+      pedestalData.roomAttachment = currentRoom;
+      return;
+    }
     const placement = getFloorPositionFromRoomAttachment(pedestalData.roomAttachment, getPedestalFloorRadius(pedestalData));
     if (!placement) {
       clampPointIntoBuildRooms(pedestalData.group.position, getPedestalFloorRadius(pedestalData));
@@ -10226,6 +10235,9 @@ syncCameraRotation();
 updateStatus();
 clock.start();
 animate();
+window.setTimeout(() => {
+  document.body.classList.remove('gallery-booting');
+}, 900);
 
 function getConstructionModelDebug() {
   refreshConstructionAttachments();
