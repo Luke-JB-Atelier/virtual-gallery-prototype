@@ -330,6 +330,7 @@ const galleryPlaylist = [
 const room = new THREE.Group();
 scene.add(room);
 const wallMeshes = [];
+const wallUvScaledMeshes = [];
 
 function createWallTexture() {
   const size = 1024;
@@ -631,40 +632,86 @@ function plane(width, height, material, position, rotation, segments = 1) {
   return mesh;
 }
 
-function applyWallUvScale(mesh, width, height) {
-  const uv = mesh.geometry?.attributes?.uv;
-  if (!uv) return;
-  const tileWorldWidth = 2.7 * currentWallTextureScale;
-  const tileWorldHeight = tileWorldWidth;
-  const repeatX = Math.max(0.1, width / tileWorldWidth);
-  const repeatY = Math.max(0.1, height / tileWorldHeight);
-  for (let i = 0; i < uv.count; i += 1) {
-    const u = uv.getX(i);
-    const v = uv.getY(i);
-    uv.setXY(i, u * repeatX, v * repeatY);
-  }
-  uv.needsUpdate = true;
-  mesh.userData.wallTextureSize = { width, height };
+function getWallTextureTileWorldSize() {
+  return Math.max(0.1, 2.7 * currentWallTextureScale);
 }
 
-function refreshWallUvScale() {
-  [...baseWallMeshes, ...dynamicWallMeshes].forEach((mesh) => {
-    const size = mesh.userData.wallTextureSize;
-    if (!size) return;
+function registerWallUvUpdater(mesh, updater) {
+  mesh.userData.wallTextureUvUpdater = updater;
+  if (!wallUvScaledMeshes.includes(mesh)) {
+    wallUvScaledMeshes.push(mesh);
+  }
+  updater();
+}
+
+function applyWallUvScale(mesh, width, height) {
+  mesh.userData.wallTextureSize = { width, height };
+  registerWallUvUpdater(mesh, () => {
     const geometry = mesh.geometry;
-    if (!geometry?.attributes?.uv) return;
-    const position = geometry.attributes.position;
-    const width = size.width;
-    const height = size.height;
-    const tileWorldWidth = 2.7 * currentWallTextureScale;
-    const repeatX = Math.max(0.1, width / tileWorldWidth);
-    const repeatY = Math.max(0.1, height / tileWorldWidth);
+    const uv = geometry?.attributes?.uv;
+    const position = geometry?.attributes?.position;
+    if (!uv || !position) return;
+    const tileWorldSize = getWallTextureTileWorldSize();
+    const repeatX = Math.max(0.1, width / tileWorldSize);
+    const repeatY = Math.max(0.1, height / tileWorldSize);
     for (let i = 0; i < position.count; i += 1) {
       const x = position.getX(i);
       const y = position.getY(i);
-      geometry.attributes.uv.setXY(i, (x / width + 0.5) * repeatX, (y / height + 0.5) * repeatY);
+      uv.setXY(i, (x / width + 0.5) * repeatX, (y / height + 0.5) * repeatY);
     }
-    geometry.attributes.uv.needsUpdate = true;
+    uv.needsUpdate = true;
+  });
+}
+
+function refreshWallUvScale() {
+  wallUvScaledMeshes.forEach((mesh) => mesh.userData.wallTextureUvUpdater?.());
+}
+
+function registerBarrelVaultUv(mesh, {
+  axis,
+  length,
+  minAlong,
+  halfWidth,
+  arcSegments,
+  lengthSegments,
+}) {
+  registerWallUvUpdater(mesh, () => {
+    const uv = mesh.geometry?.attributes?.uv;
+    if (!uv) return;
+    const tileWorldSize = getWallTextureTileWorldSize();
+    for (let lengthIndex = 0; lengthIndex <= lengthSegments; lengthIndex += 1) {
+      const alongWorld = minAlong + (lengthIndex / lengthSegments) * length;
+      for (let arcIndex = 0; arcIndex <= arcSegments; arcIndex += 1) {
+        const vertexIndex = lengthIndex * (arcSegments + 1) + arcIndex;
+        const arcDistance = (arcIndex / arcSegments) * Math.PI * halfWidth;
+        const u = axis === 'z' ? alongWorld / tileWorldSize : arcDistance / tileWorldSize;
+        const v = axis === 'z' ? arcDistance / tileWorldSize : alongWorld / tileWorldSize;
+        uv.setXY(vertexIndex, u, v);
+      }
+    }
+    uv.needsUpdate = true;
+  });
+}
+
+function registerArchedHeaderUv(mesh, {
+  axis,
+  center,
+  height,
+  archSegments,
+}) {
+  registerWallUvUpdater(mesh, () => {
+    const uv = mesh.geometry?.attributes?.uv;
+    if (!uv) return;
+    const tileWorldSize = getWallTextureTileWorldSize();
+    for (let i = 0; i <= archSegments; i += 1) {
+      const theta = Math.PI - (i / archSegments) * Math.PI;
+      const across = center + Math.cos(theta) * (doorway.width / 2);
+      const archY = doorway.height + Math.sin(theta) * (doorway.width / 2);
+      const u = across / tileWorldSize;
+      uv.setXY(i * 2, u, archY / tileWorldSize);
+      uv.setXY(i * 2 + 1, u, height / tileWorldSize);
+    }
+    uv.needsUpdate = true;
   });
 }
 
@@ -974,6 +1021,14 @@ function addBarrelVault(centerZ) {
   geometry.computeVertexNormals();
 
   const vault = new THREE.Mesh(geometry, archWallMaterial);
+  registerBarrelVaultUv(vault, {
+    axis: 'z',
+    length,
+    minAlong: centerZ - length / 2,
+    halfWidth,
+    arcSegments,
+    lengthSegments,
+  });
   room.add(vault);
 }
 
@@ -1016,6 +1071,14 @@ function addSideBarrelVault(centerX, centerZ) {
   geometry.computeVertexNormals();
 
   const vault = new THREE.Mesh(geometry, archWallMaterial);
+  registerBarrelVaultUv(vault, {
+    axis: 'x',
+    length,
+    minAlong: centerX - length / 2,
+    halfWidth,
+    arcSegments,
+    lengthSegments,
+  });
   room.add(vault);
 }
 
@@ -1102,6 +1165,12 @@ function addArchedDoorHeader(z, centerX = 0) {
   setGeometryColor(geometry);
   geometry.computeVertexNormals();
   const mesh = new THREE.Mesh(geometry, archWallMaterial);
+  registerArchedHeaderUv(mesh, {
+    axis: 'x',
+    center: centerX,
+    height: roomHeight,
+    archSegments,
+  });
   room.add(mesh);
   wallMeshes.push(mesh);
 }
@@ -1137,6 +1206,12 @@ function addSideArchedDoorHeader(x, centerZ) {
   setGeometryColor(geometry);
   geometry.computeVertexNormals();
   const mesh = new THREE.Mesh(geometry, archWallMaterial);
+  registerArchedHeaderUv(mesh, {
+    axis: 'z',
+    center: centerZ,
+    height: roomHeight,
+    archSegments,
+  });
   room.add(mesh);
   wallMeshes.push(mesh);
 }
@@ -5525,6 +5600,11 @@ function disposeObjectTree(object) {
 
 function resetDynamicArchitecture() {
   dynamicWallMeshes.length = 0;
+  for (let i = wallUvScaledMeshes.length - 1; i >= 0; i -= 1) {
+    if (wallUvScaledMeshes[i]?.userData?.dynamicArchitecture) {
+      wallUvScaledMeshes.splice(i, 1);
+    }
+  }
   while (dynamicArchitectureGroup.children.length) {
     const child = dynamicArchitectureGroup.children[0];
     dynamicArchitectureGroup.remove(child);
@@ -5606,6 +5686,12 @@ function createArchedHeaderGeometry({ axis, fixed, center, height }) {
 
 function addDynamicArchedDoorHeader({ axis, fixed, center, height }) {
   const mesh = new THREE.Mesh(createArchedHeaderGeometry({ axis, fixed, center, height }), wallMaterial);
+  registerArchedHeaderUv(mesh, {
+    axis,
+    center,
+    height,
+    archSegments: 36,
+  });
   return addDynamicMesh(mesh, true);
 }
 
@@ -5651,7 +5737,16 @@ function addDynamicBarrelVault(connector) {
   geometry.setIndex(indices);
   setGeometryColor(geometry);
   geometry.computeVertexNormals();
-  return addDynamicMesh(new THREE.Mesh(geometry, wallMaterial));
+  const mesh = new THREE.Mesh(geometry, wallMaterial);
+  registerBarrelVaultUv(mesh, {
+    axis,
+    length,
+    minAlong: axis === 'z' ? connector.minZ : connector.minX,
+    halfWidth,
+    arcSegments,
+    lengthSegments,
+  });
+  return addDynamicMesh(mesh);
 }
 
 function addDynamicWallSegment(startX, startZ, endX, endZ, height, options = {}) {
