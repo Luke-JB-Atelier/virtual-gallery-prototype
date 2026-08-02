@@ -4421,13 +4421,14 @@ function normalFromConfig(config, ry) {
 
 function normalizeWallAttachmentConfig(attachment) {
   if (!attachment || typeof attachment.wallId !== 'string') return null;
+  const parsedOffset = Number(attachment.offset);
   return {
     wallId: attachment.wallId,
     roomId: typeof attachment.roomId === 'string' ? attachment.roomId : attachment.wallId.split(':')[0],
     side: typeof attachment.side === 'string' ? attachment.side : attachment.wallId.split(':')[1],
     alongRatio: THREE.MathUtils.clamp(Number(attachment.alongRatio) || 0.5, 0, 1),
     heightRatio: THREE.MathUtils.clamp(Number(attachment.heightRatio) || 0.5, 0, 1),
-    offset: Number.isFinite(Number(attachment.offset)) ? Number(attachment.offset) : 0.065,
+    offset: THREE.MathUtils.clamp(Number.isFinite(parsedOffset) ? parsedOffset : 0.065, 0.015, 0.16),
   };
 }
 
@@ -4893,7 +4894,9 @@ function getSurfacePositionFromWallAttachment(attachment, fallbackOffset = 0.065
   if (!wall) return null;
   const along = THREE.MathUtils.lerp(wall.min, wall.max, THREE.MathUtils.clamp(attachment.alongRatio ?? 0.5, 0, 1));
   const y = THREE.MathUtils.clamp((attachment.heightRatio ?? 0.5) * wall.height, 0.12, wall.height - 0.08);
-  const offset = Number.isFinite(attachment.offset) ? Math.max(attachment.offset, fallbackOffset) : fallbackOffset;
+  const rawOffset = Number.isFinite(attachment.offset) ? attachment.offset : fallbackOffset;
+  const maxOffset = Math.max(fallbackOffset, fallbackOffset + 0.045);
+  const offset = THREE.MathUtils.clamp(rawOffset, fallbackOffset, maxOffset);
   return {
     point: new THREE.Vector3(
       wall.axis === 'x' ? along : wall.fixed + wall.normal.x * offset,
