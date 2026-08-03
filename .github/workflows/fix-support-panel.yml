@@ -1,0 +1,66 @@
+name: Fix support panel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch legacy support panel values
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/main.js')
+          text = path.read_text(encoding='utf-8-sig')
+          marker = "const LEGACY_SUPPORT_IMAGE = 'support/tipcore-donate-panel.png';"
+          if marker in text:
+              print('Patch already present.')
+              raise SystemExit(0)
+
+          needle = "function addPainting({"
+          start = text.find(needle)
+          if start < 0:
+              raise SystemExit('addPainting function not found')
+
+          body = text.find('}) {', start)
+          if body < 0:
+              raise SystemExit('addPainting function body not found')
+          body += len('}) {')
+
+          patch = """
+  const LEGACY_SUPPORT_IMAGE = 'support/tipcore-donate-panel.png';
+  const SUPPORT_IMAGE = 'tipcore-donate-panel.png';
+  const LEGACY_SUPPORT_URL = 'https://donate.stripe.com/00weVf1NM1NR8KocH';
+  const SUPPORT_URL = 'https://donate.stripe.com/00weVf1NM1NR8KocH3eQM00';
+  if (imageSrc === LEGACY_SUPPORT_IMAGE || imageSrc === '/support/tipcore-donate-panel.png') {
+    imageSrc = SUPPORT_IMAGE;
+  }
+  if (actionUrl === LEGACY_SUPPORT_URL) {
+    actionUrl = SUPPORT_URL;
+  }
+"""
+          text = text[:body] + patch + text[body:]
+          path.write_text(text, encoding='utf-8', newline='\n')
+          PY
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.js
+          git commit -m "Fix legacy support panel image and Stripe URL"
+          git push
