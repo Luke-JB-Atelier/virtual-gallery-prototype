@@ -75,6 +75,9 @@ try {
     Run-External $git @('commit','-m',("Publish gallery state " + (Get-Date -Format 'yyyy-MM-dd HH:mm')),'--','src/public-gallery-state.json')
     Write-Step 'Posilam na GitHub'
     Run-External $git @('push','origin','HEAD:main')
+    Write-Step 'Sjednocuji lokalni verejnou verzi'
+    Copy-Item -LiteralPath $remoteState -Destination (Join-Path $project 'src\public-gallery-state.json') -Force
+    Copy-Item -LiteralPath $remoteState -Destination (Join-Path $project 'public-gallery-state.json') -Force
   } finally { Pop-Location }
 
   Write-Step 'Hotovo'
