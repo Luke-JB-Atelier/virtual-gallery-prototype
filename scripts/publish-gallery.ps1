@@ -28,6 +28,16 @@ function Run-External([string]$FilePath,[string[]]$Arguments) {
   if ($LASTEXITCODE -ne 0) { throw "Prikaz selhal: $FilePath $($Arguments -join ' ')" }
 }
 
+function Remove-NodeModulesJunction {
+  if (-not (Test-Path -LiteralPath $nodeModulesLink)) { return }
+  # PowerShell 5 Remove-Item can throw a NullReferenceException on junctions.
+  # Remove only the reparse point itself; never recurse into shared node_modules.
+  & fsutil.exe reparsepoint delete $nodeModulesLink | Out-Null
+  if (Test-Path -LiteralPath $nodeModulesLink) {
+    [System.IO.Directory]::Delete($nodeModulesLink)
+  }
+}
+
 try {
   if (-not $InputPath) {
     throw 'Chybi presna cesta k zivemu exportu z editoru. Publikace uz nepouziva nahodny soubor ze Stazenych.'
@@ -60,7 +70,7 @@ try {
   New-Item -ItemType Junction -Path $nodeModulesLink -Target (Join-Path $project 'node_modules') | Out-Null
   Push-Location $worktree
   try { Run-External 'npm.cmd' @('run','build') } finally { Pop-Location }
-  Remove-Item -LiteralPath $nodeModulesLink -Force
+  Remove-NodeModulesJunction
 
   Push-Location $worktree
   try {
@@ -90,7 +100,7 @@ try {
   exit 1
 } finally {
   try {
-    if (Test-Path -LiteralPath $nodeModulesLink) { Remove-Item -LiteralPath $nodeModulesLink -Force }
+    Remove-NodeModulesJunction
     Set-Location -LiteralPath $project
     if (Test-Path -LiteralPath $worktree) { & $git worktree remove --force $worktree | Out-Null }
     if ($git) { & $git worktree prune | Out-Null }
