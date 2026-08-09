@@ -169,6 +169,14 @@ const wallTextureScaleInput = document.querySelector('#wall-texture-scale');
 const toggleAudioEditor = document.querySelector('#toggle-audio-editor');
 const audioPanel = document.querySelector('#audio-panel');
 const audioVolumeInput = document.querySelector('#audio-volume');
+const audioFileInput = document.querySelector('#audio-file');
+const addAudioTrackButton = document.querySelector('#add-audio-track');
+const removeAudioTrackButton = document.querySelector('#remove-audio-track');
+const audioTrackList = document.querySelector('#audio-track-list');
+const audioTrackStatus = document.querySelector('#audio-track-status');
+const addAudioSpeakerButton = document.querySelector('#add-audio-speaker');
+const removeAudioSpeakerButton = document.querySelector('#remove-audio-speaker');
+const audioSpeakerStatus = document.querySelector('#audio-speaker-status');
 
 const donorContextMenu = document.createElement('div');
 donorContextMenu.id = 'donor-context-menu';
@@ -290,6 +298,7 @@ const galleryStorageKey = 'virtual-gallery-art-oil-v1';
 const galleryWallTextureStorageKey = 'virtual-gallery-wall-texture-v1';
 const urlParams = new URLSearchParams(window.location.search);
 const editorMode = urlParams.has('edit');
+const obsMode = urlParams.has('obs');
 const forceGitHubState = urlParams.has('github') || urlParams.has('fresh');
 const useLocalSavedState = (editorMode || urlParams.has('local')) && !forceGitHubState;
 const exportedGalleryState = publicGalleryState?.version === 1 ? publicGalleryState : null;
@@ -331,15 +340,19 @@ if (wallTextureScaleInput) {
 }
 document.body.classList.toggle('viewer-mode', !editorMode);
 document.body.classList.toggle('mobile-performance', mobilePerformanceMode);
+document.body.classList.toggle('obs-mode', obsMode);
 
 function publicAssetPath(path) {
   if (!path || /^(data:|blob:|https?:)/i.test(path)) return path;
   return `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
 }
 
+const customGalleryTracks = Array.isArray(savedGallery?.audio?.tracks)
+  ? savedGallery.audio.tracks.filter((track) => track?.dataUrl && /^data:audio\//i.test(track.dataUrl))
+  : [];
 const galleryPlaylist = [
   'audio/medievil/crystal-cave.mp3',
-].map(publicAssetPath);
+].map(publicAssetPath).concat(customGalleryTracks.map((track) => track.dataUrl));
 
 const room = new THREE.Group();
 scene.add(room);
@@ -1565,6 +1578,18 @@ function createSpeakerFixture(position, target, metadata = {}) {
   audioSpeakers.push({ group: speaker, position: position.clone(), target: target.clone(), panner: null, ...metadata });
 }
 
+function addSavedCustomSpeakers() {
+  const savedSpeakers = Array.isArray(savedGallery?.audio?.speakers) ? savedGallery.audio.speakers : [];
+  savedSpeakers.forEach((speaker) => {
+    if (!Array.isArray(speaker?.position) || !Array.isArray(speaker?.target)) return;
+    createSpeakerFixture(
+      new THREE.Vector3().fromArray(speaker.position),
+      new THREE.Vector3().fromArray(speaker.target),
+      { custom: true },
+    );
+  });
+}
+
 function addCornerSpeakers() {
   galleryRooms.forEach(({ centerX, centerZ }, roomIndex) => {
     const target = new THREE.Vector3(centerX, 1.48, centerZ);
@@ -2423,6 +2448,7 @@ addSideCorridorWalls(-sideRoomStep * 2 + roomWidth / 2, -sideRoomStep - roomWidt
 addRectangularRoomWalls(galleryRooms[4]);
 addFutureWingBarrier();
 addCornerSpeakers();
+addSavedCustomSpeakers();
 
 const baseArchitectureObjects = [...room.children];
 const baseWallMeshes = [...wallMeshes];
@@ -2804,6 +2830,7 @@ function syncRoomServiceFixturesToActiveRooms() {
     switchGroup.visible = false;
   });
   audioSpeakers.forEach((speakerData, index) => {
+    if (speakerData.custom) return;
     if (index < activeRooms.length * 2) return;
     speakerData.group.visible = false;
   });
@@ -3649,6 +3676,11 @@ function serializeGalleryState({ includeWallTexture = false } = {}) {
     version: 1,
     audio: {
       volume: Number(audioSettings.volume.toFixed(3)),
+      tracks: customGalleryTracks.map((track) => ({ name: track.name ?? 'Vlastní skladba', dataUrl: track.dataUrl })),
+      speakers: audioSpeakers.filter((speaker) => speaker.custom).map((speaker) => ({
+        position: speaker.position.toArray().map((value) => Number(value.toFixed(4))),
+        target: speaker.target.toArray().map((value) => Number(value.toFixed(4))),
+      })),
     },
     wallTextureDisabled: wallTextureExplicitlyDisabled,
     paintings: editablePaintings.map((paintingData) => ({
@@ -8349,6 +8381,7 @@ function getEditableTargetFromCrosshair({ maxDistance = editorMode ? editableTar
 
 function selectEditableFromCrosshair() {
   if (!editorMode) return false;
+  if (editorSelectionLocked) return false;
   const target = getEditableTargetFromCrosshair();
   if (!target) return false;
   if (target.lightData) {
@@ -8586,6 +8619,28 @@ function getGalleryTrackUrl(index) {
   return new URL(galleryPlaylist[index], window.location.href).href;
 }
 
+function connectSpeakerToAudio(speaker) {
+  if (!audioContext || !audioSourceNode || !audioMasterGain || speaker.panner) return;
+  const gain = audioContext.createGain();
+  gain.gain.value = 0.095;
+  const panner = audioContext.createPanner();
+  panner.panningModel = 'equalpower';
+  panner.distanceModel = 'exponential';
+  panner.refDistance = 0.9;
+  panner.maxDistance = 9.5;
+  panner.rolloffFactor = 1.9;
+  panner.coneInnerAngle = 130;
+  panner.coneOuterAngle = 230;
+  panner.coneOuterGain = 0.16;
+  setPannerPosition(panner, speaker.position);
+  setPannerOrientation(panner, speaker.target.clone().sub(speaker.position).normalize());
+  audioSourceNode.connect(gain);
+  gain.connect(panner);
+  panner.connect(audioMasterGain);
+  speaker.panner = panner;
+  speaker.audioGain = gain;
+}
+
 function initGalleryAudio() {
   if (!galleryPlaylist.length || audioContext) return;
 
@@ -8601,27 +8656,87 @@ function initGalleryAudio() {
   audioMasterGain.gain.value = audioSettings.volume;
   audioMasterGain.connect(audioContext.destination);
 
-  audioSpeakers.forEach((speaker) => {
-    const gain = audioContext.createGain();
-    gain.gain.value = 0.095;
+  audioSpeakers.forEach(connectSpeakerToAudio);
+}
 
-    const panner = audioContext.createPanner();
-    panner.panningModel = 'equalpower';
-    panner.distanceModel = 'exponential';
-    panner.refDistance = 0.9;
-    panner.maxDistance = 9.5;
-    panner.rolloffFactor = 1.9;
-    panner.coneInnerAngle = 130;
-    panner.coneOuterAngle = 230;
-    panner.coneOuterGain = 0.16;
-    setPannerPosition(panner, speaker.position);
-    setPannerOrientation(panner, speaker.target.clone().sub(speaker.position).normalize());
-
-    audioSourceNode.connect(gain);
-    gain.connect(panner);
-    panner.connect(audioMasterGain);
-    speaker.panner = panner;
+function refreshAudioTrackList() {
+  if (!audioTrackList) return;
+  audioTrackList.innerHTML = '';
+  customGalleryTracks.forEach((track, index) => {
+    const option = document.createElement('option');
+    option.value = String(index);
+    option.textContent = track.name || `Vlastní skladba ${index + 1}`;
+    audioTrackList.append(option);
   });
+  removeAudioTrackButton.disabled = customGalleryTracks.length === 0;
+  audioTrackStatus.textContent = customGalleryTracks.length
+    ? `Vlastní skladby: ${customGalleryTracks.length}. Po úpravě galerii ulož nebo publikuj.`
+    : 'Zatím není vložená žádná vlastní skladba.';
+}
+
+function readAudioFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, dataUrl: String(reader.result ?? '') });
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addSelectedAudioFiles() {
+  const files = [...(audioFileInput.files ?? [])];
+  if (!files.length) return;
+  const tooLarge = files.find((file) => file.size > 24 * 1024 * 1024);
+  if (tooLarge) {
+    audioTrackStatus.textContent = `${tooLarge.name} je příliš velká. Maximum jedné skladby je 24 MB.`;
+    return;
+  }
+  const tracks = await Promise.all(files.map(readAudioFile));
+  tracks.forEach((track) => {
+    customGalleryTracks.push(track);
+    galleryPlaylist.push(track.dataUrl);
+  });
+  audioFileInput.value = '';
+  refreshAudioTrackList();
+  saveGalleryState();
+}
+
+function removeSelectedAudioTrack() {
+  const index = Number(audioTrackList.value);
+  if (!Number.isInteger(index) || index < 0 || index >= customGalleryTracks.length) return;
+  customGalleryTracks.splice(index, 1);
+  galleryPlaylist.splice(1 + index, 1);
+  currentGalleryTrackIndex = 0;
+  galleryAudio.pause();
+  galleryAudio.removeAttribute('src');
+  galleryAudio.load();
+  refreshAudioTrackList();
+  saveGalleryState();
+}
+
+function addCustomAudioSpeaker() {
+  const position = new THREE.Vector3();
+  const direction = new THREE.Vector3();
+  camera.getWorldPosition(position);
+  camera.getWorldDirection(direction);
+  position.add(direction.clone().multiplyScalar(2.1));
+  position.y = THREE.MathUtils.clamp(position.y, 1.1, 3.1);
+  const target = new THREE.Vector3(body.position.x, 1.45, body.position.z);
+  createSpeakerFixture(position, target, { custom: true });
+  connectSpeakerToAudio(audioSpeakers[audioSpeakers.length - 1]);
+  audioSpeakerStatus.textContent = `Vlastní reproduktory: ${audioSpeakers.filter((speaker) => speaker.custom).length}.`;
+  saveGalleryState();
+}
+
+function removeLastCustomAudioSpeaker() {
+  const index = audioSpeakers.findLastIndex((speaker) => speaker.custom);
+  if (index < 0) return;
+  const [speaker] = audioSpeakers.splice(index, 1);
+  speaker.panner?.disconnect();
+  speaker.audioGain?.disconnect();
+  room.remove(speaker.group);
+  audioSpeakerStatus.textContent = `Vlastní reproduktory: ${audioSpeakers.filter((item) => item.custom).length}.`;
+  saveGalleryState();
 }
 
 async function playCurrentGalleryTrack() {
@@ -9220,6 +9335,19 @@ audioVolumeInput.addEventListener('input', () => {
   applyAudioVolume();
   saveGalleryState();
 });
+addAudioTrackButton?.addEventListener('click', () => audioFileInput?.click());
+audioFileInput?.addEventListener('change', () => {
+  addSelectedAudioFiles().catch(() => {
+    audioTrackStatus.textContent = 'Skladbu se nepodařilo načíst.';
+  });
+});
+removeAudioTrackButton?.addEventListener('click', removeSelectedAudioTrack);
+addAudioSpeakerButton?.addEventListener('click', addCustomAudioSpeaker);
+removeAudioSpeakerButton?.addEventListener('click', removeLastCustomAudioSpeaker);
+refreshAudioTrackList();
+if (audioSpeakerStatus) {
+  audioSpeakerStatus.textContent = `Vlastní reproduktory: ${audioSpeakers.filter((speaker) => speaker.custom).length}. Přidají se před místo, kam se díváš.`;
+}
 
 addPedestalButton.addEventListener('click', () => {
   if (movingSelectedPedestal) {
@@ -9459,6 +9587,7 @@ artHeightCmInput.addEventListener('change', () => {
 });
 
 function selectLightFromPointer(event) {
+  if (editorSelectionLocked) return false;
   if (!lightPanel.classList.contains('visible')) return false;
 
   const rect = canvas.getBoundingClientRect();
@@ -10278,6 +10407,128 @@ window.addEventListener('orientationchange', () => {
   window.setTimeout(resizeRendererToViewport, 250);
 });
 
+let editorSelectionLocked = false;
+
+function setupMovableEditorPanels() {
+  const lockIcon = (locked) => locked
+    ? '<svg viewBox="0 0 18 18" aria-hidden="true"><rect x="3.5" y="8" width="11" height="7.5" rx="2"/><path d="M6 8V5.8a3 3 0 0 1 6 0V8"/><path d="M9 11v1.8"/></svg>'
+    : '<svg viewBox="0 0 18 18" aria-hidden="true"><rect x="3.5" y="8" width="11" height="7.5" rx="2"/><path d="M12 8V5.8a3 3 0 0 0-5.8-1"/><path d="M9 11v1.8"/></svg>';
+  const definitions = [
+    ['gallery-panel', 'gallery-title', 'toggle-gallery-editor'],
+    ['light-panel', 'light-title', 'toggle-light-editor'],
+    ['art-panel', 'art-title', 'toggle-art-editor'],
+    ['pedestal-panel', 'pedestal-title', 'toggle-pedestal-editor'],
+    ['build-panel', 'build-title', 'toggle-build-editor'],
+    ['text-panel-panel', 'text-panel-title', 'toggle-text-panel-editor'],
+    ['texture-panel', 'texture-title', 'toggle-texture-editor'],
+    ['audio-panel', 'audio-title', 'toggle-audio-editor'],
+  ];
+
+  definitions.forEach(([panelId, titleId, toggleId]) => {
+    const panel = document.getElementById(panelId);
+    const title = document.getElementById(titleId);
+    const toggle = document.getElementById(toggleId);
+    if (!panel || !title || !toggle) return;
+
+    const controls = document.createElement('div');
+    controls.className = 'editor-panel-controls';
+
+    const lock = document.createElement('button');
+    lock.type = 'button';
+    lock.className = 'editor-panel-lock';
+    lock.innerHTML = lockIcon(false);
+    lock.title = 'Zamknout výběr ve scéně';
+    lock.setAttribute('aria-label', 'Zamknout výběr ve scéně');
+    lock.addEventListener('click', (event) => {
+      event.stopPropagation();
+      editorSelectionLocked = !editorSelectionLocked;
+      document.querySelectorAll('.editor-panel-lock').forEach((button) => {
+        button.classList.toggle('active', editorSelectionLocked);
+        button.innerHTML = lockIcon(editorSelectionLocked);
+        button.title = editorSelectionLocked ? 'Odemknout výběr ve scéně' : 'Zamknout výběr ve scéně';
+      });
+      status.textContent = editorSelectionLocked
+        ? 'Výběr editoru je zamčený. Kliknutí ve scéně ho nepřepne.'
+        : 'Výběr editoru je odemčený.';
+    });
+
+    const minimize = document.createElement('button');
+    minimize.type = 'button';
+    minimize.className = 'editor-panel-minimize';
+    minimize.textContent = '−';
+    minimize.title = 'Sbalit okno';
+    minimize.setAttribute('aria-label', 'Sbalit okno');
+    minimize.addEventListener('pointerdown', (event) => event.stopPropagation());
+    minimize.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggle.click();
+    });
+    controls.append(lock, minimize);
+    panel.appendChild(controls);
+
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'editor-panel-resize';
+    resizeHandle.title = 'Změnit velikost okna';
+    resizeHandle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const startWidth = panel.offsetWidth;
+      const startHeight = panel.offsetHeight;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      resizeHandle.setPointerCapture(event.pointerId);
+
+      const resize = (moveEvent) => {
+        const rect = panel.getBoundingClientRect();
+        const maxWidth = Math.max(180, window.innerWidth - rect.left - 4);
+        const maxHeight = Math.max(180, window.innerHeight - rect.top - 4);
+        panel.style.width = `${THREE.MathUtils.clamp(startWidth + moveEvent.clientX - startX, 180, maxWidth)}px`;
+        panel.style.height = `${THREE.MathUtils.clamp(startHeight + moveEvent.clientY - startY, 180, maxHeight)}px`;
+      };
+      const finishResize = () => {
+        resizeHandle.removeEventListener('pointermove', resize);
+        resizeHandle.removeEventListener('pointerup', finishResize);
+        resizeHandle.removeEventListener('pointercancel', finishResize);
+      };
+      resizeHandle.addEventListener('pointermove', resize);
+      resizeHandle.addEventListener('pointerup', finishResize);
+      resizeHandle.addEventListener('pointercancel', finishResize);
+    });
+    panel.appendChild(resizeHandle);
+
+    title.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || event.target === minimize) return;
+      const rect = panel.getBoundingClientRect();
+      const offsetX = event.clientX - rect.left;
+      const offsetY = event.clientY - rect.top;
+      panel.style.left = `${rect.left}px`;
+      panel.style.top = `${rect.top}px`;
+      panel.style.right = 'auto';
+      panel.classList.add('editor-panel-dragging');
+      title.setPointerCapture(event.pointerId);
+
+      const move = (moveEvent) => {
+        const maxLeft = Math.max(0, window.innerWidth - panel.offsetWidth);
+        const maxTop = Math.max(0, window.innerHeight - 42);
+        panel.style.left = `${THREE.MathUtils.clamp(moveEvent.clientX - offsetX, 0, maxLeft)}px`;
+        panel.style.top = `${THREE.MathUtils.clamp(moveEvent.clientY - offsetY, 0, maxTop)}px`;
+      };
+      const finish = () => {
+        panel.classList.remove('editor-panel-dragging');
+        title.removeEventListener('pointermove', move);
+        title.removeEventListener('pointerup', finish);
+        title.removeEventListener('pointercancel', finish);
+      };
+      title.addEventListener('pointermove', move);
+      title.addEventListener('pointerup', finish);
+      title.addEventListener('pointercancel', finish);
+    });
+  });
+}
+
+setupMovableEditorPanels();
+
 syncCameraRotation();
 updateStatus();
 clock.start();
@@ -10285,6 +10536,13 @@ animate();
 window.setTimeout(() => {
   document.body.classList.remove('gallery-booting');
 }, 900);
+
+if (obsMode) {
+  window.setTimeout(() => {
+    initGalleryAudio();
+    playCurrentGalleryTrack();
+  }, 1200);
+}
 
 function getConstructionModelDebug() {
   refreshConstructionAttachments();

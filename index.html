@@ -272,6 +272,18 @@
         <div id="audio-panel">
           <div id="audio-title">Hudba</div>
           <label>Hlasitost <input id="audio-volume" type="range" min="0" max="100" step="1" value="100" /></label>
+          <input id="audio-file" type="file" accept="audio/mpeg,audio/mp3,audio/ogg,audio/wav,audio/mp4,audio/aac" multiple hidden />
+          <div class="editor-buttons">
+            <button id="add-audio-track" type="button">Přidat hudbu</button>
+            <button id="remove-audio-track" type="button">Smazat vybranou</button>
+          </div>
+          <label>Skladby <select id="audio-track-list" size="4"></select></label>
+          <div id="audio-track-status">Vlastní skladby se uloží společně s galerií.</div>
+          <div class="editor-buttons">
+            <button id="add-audio-speaker" type="button">Přidat reproduktor</button>
+            <button id="remove-audio-speaker" type="button">Smazat poslední vlastní</button>
+          </div>
+          <div id="audio-speaker-status">Reproduktor se vloží před místo, kam se díváš.</div>
         </div>
       </section>
       <div id="mobile-controls" aria-hidden="true">
