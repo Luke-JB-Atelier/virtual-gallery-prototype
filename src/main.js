@@ -195,14 +195,18 @@ const pointer = new THREE.Vector2();
 const prefersCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
 const isTouchDevice = prefersCoarsePointer;
 const lowMemoryDevice = Number(navigator.deviceMemory) > 0 && Number(navigator.deviceMemory) <= 4;
-const mobilePerformanceMode = prefersCoarsePointer || lowMemoryDevice || viewportSize.width <= 760;
+// Window width is a layout concern, not a reliable performance signal. The
+// gallery is often embedded in a narrow TipCore panel on a capable desktop;
+// treating that as a low-end device made the canvas permanently pixelated even
+// after the window was enlarged.
+const mobilePerformanceMode = prefersCoarsePointer || lowMemoryDevice;
 const textureAnisotropy = mobilePerformanceMode ? 1 : 4;
 
 function getRenderPixelRatio() {
-  return Math.min(window.devicePixelRatio || 1, mobilePerformanceMode ? 1 : 2);
+  return Math.min(window.devicePixelRatio || 1, mobilePerformanceMode ? 1.5 : 2);
 }
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobilePerformanceMode, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(getRenderPixelRatio());
 renderer.setSize(viewportSize.width, viewportSize.height);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -295,7 +299,17 @@ const savedGallery = useLocalSavedState
 const audioSettings = {
   volume: THREE.MathUtils.clamp(Number(savedGallery?.audio?.volume ?? 1), 0, 1),
 };
-let currentWallTexturePayload = savedGallery?.wallTexture?.version === 1 ? savedGallery.wallTexture : null;
+let wallTextureExplicitlyDisabled = savedGallery?.wallTextureDisabled === true;
+const savedWallTexture = savedGallery?.wallTexture?.version === 1 ? savedGallery.wallTexture : null;
+const exportedWallTexture = exportedGalleryState?.gallery?.wallTexture?.version === 1
+  ? exportedGalleryState.gallery.wallTexture
+  : null;
+// A locally saved layout may contain newer pedestal/painting positions but no
+// wall texture. Preserve those edits and fill the missing texture from the
+// public state instead of letting the local layout hide it after reload.
+let currentWallTexturePayload = wallTextureExplicitlyDisabled
+  ? null
+  : savedWallTexture ?? exportedWallTexture;
 let currentWallTextureBumpScale = THREE.MathUtils.clamp(
   Number(savedGallery?.wallTexture?.bumpScale ?? currentWallTexturePayload?.bumpScale ?? 0.018),
   0,
@@ -447,6 +461,7 @@ const archWallMaterial = new THREE.MeshStandardMaterial({
 });
 
 function applyStoredWallTextureToMaterial() {
+  if (wallTextureExplicitlyDisabled) return;
   let payload = null;
   try {
     payload = JSON.parse(localStorage.getItem(galleryWallTextureStorageKey) || 'null');
@@ -501,6 +516,21 @@ function applyStoredWallTextureToMaterial() {
       galleryStatus.textContent = `Textura stěn načtena z generátoru (${currentWallTexturePayload.width || 1024} x ${currentWallTexturePayload.height || 1024}).`;
       galleryPanel?.classList.add('visible');
     }
+  }, undefined, () => {
+    // A stale/corrupt browser copy must not hide the valid texture embedded in
+    // the canonical public gallery state.
+    try {
+      localStorage.removeItem(galleryWallTextureStorageKey);
+    } catch {
+      // Continue with the embedded fallback even when storage is unavailable.
+    }
+    if (exportedWallTexture?.dataUrl && currentWallTexturePayload?.dataUrl !== exportedWallTexture.dataUrl) {
+      currentWallTexturePayload = exportedWallTexture;
+      wallTextureExplicitlyDisabled = false;
+      applyStoredWallTextureToMaterial();
+      return;
+    }
+    if (textureStatus) textureStatus.textContent = 'Texturu stěn se nepodařilo načíst.';
   });
 }
 
@@ -523,6 +553,7 @@ function refreshWallTextureBumpScale() {
 }
 
 function clearWallTexture() {
+  wallTextureExplicitlyDisabled = true;
   currentWallTexturePayload = null;
   [wallMaterial, archWallMaterial].forEach((material) => {
     material.map = null;
@@ -569,6 +600,7 @@ function makeWallTexturePayloadFromImage(image, sourceName = 'wall-texture') {
 }
 
 function applyWallTexturePayload(payload, statusPrefix = 'Textura stěn načtená') {
+  wallTextureExplicitlyDisabled = false;
   currentWallTexturePayload = {
     ...payload,
     bumpScale: THREE.MathUtils.clamp(Number(payload.bumpScale ?? currentWallTextureBumpScale), 0, 0.08),
@@ -3618,6 +3650,7 @@ function serializeGalleryState({ includeWallTexture = false } = {}) {
     audio: {
       volume: Number(audioSettings.volume.toFixed(3)),
     },
+    wallTextureDisabled: wallTextureExplicitlyDisabled,
     paintings: editablePaintings.map((paintingData) => ({
       imageSrc: paintingData.imageSrc ?? '',
       x: Number(paintingData.group.position.x.toFixed(4)),
@@ -5448,7 +5481,10 @@ function getValidBuildOpenings(openings, rooms = buildRooms) {
 
 function loadBuildLayout() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null');
+    const localLayout = useLocalSavedState
+      ? JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null')
+      : null;
+    const parsed = localLayout ?? exportedGalleryState?.buildLayout ?? null;
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.rooms)) return createDefaultBuildLayout();
     buildGridSize = THREE.MathUtils.clamp(Number(parsed.gridSize) || buildGridDefaultSize, 0.25, 1);
     buildArchitectureApplied = Boolean(parsed.applied);
@@ -5461,7 +5497,10 @@ function loadBuildLayout() {
 let buildRooms = renumberBuildRooms(loadBuildLayout());
 let buildOpenings = (() => {
   try {
-    const parsed = JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null');
+    const localLayout = useLocalSavedState
+      ? JSON.parse(localStorage.getItem(buildLayoutStorageKey) || 'null')
+      : null;
+    const parsed = localLayout ?? exportedGalleryState?.buildLayout ?? null;
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.openings)) return createDefaultBuildOpenings();
     return getValidBuildOpenings(parsed.openings, buildRooms);
   } catch {
@@ -5587,15 +5626,19 @@ function moveSelectedConstructionWall(direction) {
   );
 }
 
+function serializeBuildLayout() {
+  return {
+    version: 1,
+    gridSize: buildGridSize,
+    applied: buildArchitectureApplied,
+    rooms: buildRooms,
+    openings: buildOpenings,
+  };
+}
+
 function saveBuildLayout() {
   try {
-    localStorage.setItem(buildLayoutStorageKey, JSON.stringify({
-      version: 1,
-      gridSize: buildGridSize,
-      applied: buildArchitectureApplied,
-      rooms: buildRooms,
-      openings: buildOpenings,
-    }));
+    localStorage.setItem(buildLayoutStorageKey, JSON.stringify(serializeBuildLayout()));
   } catch {
     // Build planning data is optional.
   }
@@ -8244,6 +8287,7 @@ function serializePublicGalleryConfig() {
     exportedAt: new Date().toISOString(),
     gallery: serializeGalleryState({ includeWallTexture: true }),
     lighting: serializeLightingState(),
+    buildLayout: serializeBuildLayout(),
   };
 }
 

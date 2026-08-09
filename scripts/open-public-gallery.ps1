@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$url = 'https://lukasjanbalek-bit.github.io/virtual-gallery-prototype/'
+$url = 'https://luke-jb-atelier.github.io/virtual-gallery-prototype/'
 
 $chromeCandidates = @(
   "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
