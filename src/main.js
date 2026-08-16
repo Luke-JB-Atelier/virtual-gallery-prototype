@@ -10189,8 +10189,8 @@ function updateMovement(delta) {
     pitch = THREE.MathUtils.clamp(pitch, -maxPitchUp, maxPitchDown);
   }
 
-  if (keys.has('KeyA') || keys.has('KeyQ')) bodyYaw += turnSpeed * delta;
-  if (keys.has('KeyD') || keys.has('KeyE')) bodyYaw -= turnSpeed * delta;
+  if (keys.has('KeyA')) bodyYaw += turnSpeed * delta;
+  if (keys.has('KeyD')) bodyYaw -= turnSpeed * delta;
 
   const crouching = isCrouching();
   const walkYaw = bodyYaw + headYaw;
@@ -10200,6 +10200,8 @@ function updateMovement(delta) {
 
   if (keys.has('KeyW')) movement.add(forward);
   if (keys.has('KeyS')) movement.sub(forward);
+  if (keys.has('KeyQ')) movement.sub(right);
+  if (keys.has('KeyE')) movement.add(right);
   if (isTouchDevice) {
     movement.addScaledVector(forward, -touchMove.y);
     movement.addScaledVector(right, touchMove.x);
@@ -10318,11 +10320,10 @@ function updateArtworkBrightness(delta) {
 
   displayTextPanels.forEach((textPanelData) => {
     if (!textPanelData.panel?.material?.color) return;
-    const targetBrightness = getMainRoomLightBrightness(textPanelData.group.position);
-    const currentBrightness = textPanelData.panel.userData.displayBrightness ?? targetBrightness;
-    const nextBrightness = THREE.MathUtils.lerp(currentBrightness, targetBrightness, 1 - Math.pow(0.0003, delta));
-    textPanelData.panel.userData.displayBrightness = nextBrightness;
-    textPanelData.panel.material.color.setScalar(nextBrightness);
+    // Textové informační tabule používají vlastní CanvasTexture + MeshBasicMaterial.
+    // Nesmí se ještě jednou ztmavovat podle světla místnosti, jinak mohou v Chromium zčernat.
+    textPanelData.panel.userData.displayBrightness = 1;
+    textPanelData.panel.material.color.setScalar(1);
   });
 }
 

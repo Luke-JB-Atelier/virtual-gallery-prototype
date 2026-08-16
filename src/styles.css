@@ -1167,3 +1167,89 @@ body,
     height: 40px;
   }
 }
+
+
+/* TIPCORE_EMBEDDED_VIEWPORT_FIX_20260816 */
+/* Dialogy a editory musí zůstat ovladatelné i v úzkém vloženém plátně TipCore. */
+#action-dialog {
+  box-sizing: border-box;
+  overflow: auto;
+  padding: clamp(8px, 2.5vw, 20px);
+}
+
+#action-dialog-box {
+  box-sizing: border-box;
+  width: min(520px, 100%);
+  max-width: 100%;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#action-dialog-buttons {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding-top: 8px;
+  background: #111821;
+}
+
+#toggle-gallery-editor,
+#toggle-light-editor,
+#toggle-art-editor,
+#toggle-pedestal-editor,
+#toggle-build-editor,
+#toggle-text-panel-editor,
+#toggle-texture-editor,
+#toggle-audio-editor {
+  position: relative;
+  z-index: 32;
+}
+
+#gallery-panel,
+#light-panel,
+#art-panel,
+#pedestal-panel,
+#build-panel,
+#text-panel-panel,
+#texture-panel,
+#audio-panel {
+  box-sizing: border-box;
+  min-width: 0;
+  height: auto;
+  bottom: 14px;
+  max-height: none;
+  overscroll-behavior: contain;
+}
+
+/* Pravé editory nechávají volný pruh pro svá tlačítka, takže je lze vždy zavřít. */
+#text-panel-panel,
+#texture-panel,
+#audio-panel {
+  left: auto;
+  right: 152px;
+  width: min(300px, calc(100vw - 176px));
+  min-width: 0;
+  max-width: calc(100vw - 176px);
+}
+
+@media (max-width: 520px) {
+  #gallery-panel,
+  #light-panel,
+  #art-panel,
+  #pedestal-panel,
+  #build-panel {
+    left: 146px;
+    width: calc(100vw - 160px);
+    max-width: calc(100vw - 160px);
+  }
+
+  #text-panel-panel,
+  #texture-panel,
+  #audio-panel {
+    right: 146px;
+    width: calc(100vw - 160px);
+    max-width: calc(100vw - 160px);
+  }
+}
