@@ -92,6 +92,18 @@ function patchGallerySource(code) {
   });`;
 
   next = next.replace(dimTextPanels, keepTextPanelsReadable);
+
+  // Public export currently contains the donor board but its text is empty.
+  // Fill only an empty donor board, so any later exported donor list wins automatically.
+  next = next.replace(
+    'savedTextPanels.filter(isValidTextPanelConfig).forEach((config) => {\n    createTextPanel({',
+    `savedTextPanels.filter(isValidTextPanelConfig).forEach((config) => {
+    if (!editorMode && getTextPanelKind(config.kind) === 'donors' && !String(config.text ?? '').trim()) {
+      config.text = 'Ondřej Korba | 500 Kč';
+    }
+    createTextPanel({`,
+  );
+
   return next;
 }
 
