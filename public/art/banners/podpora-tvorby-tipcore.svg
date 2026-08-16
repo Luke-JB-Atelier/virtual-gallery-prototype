@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="520" viewBox="0 0 1560 520">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07131c"/>
+      <stop offset="1" stop-color="#0b2028"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#20d6c7"/>
+      <stop offset="1" stop-color="#2b8fd7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1560" height="520" rx="26" fill="#03070a"/>
+  <rect x="18" y="18" width="1524" height="484" rx="20" fill="url(#bg)" stroke="#142d39" stroke-width="4"/>
+  <path d="M35 35H1525" stroke="url(#accent)" stroke-width="5" opacity=".75"/>
+  <g font-family="Arial,Helvetica,sans-serif" fill="#eef7fa">
+    <text x="110" y="205" font-size="66" font-weight="800">Podpora tvorby a projektů</text>
+    <text x="110" y="272" font-size="31" fill="#b8c9d0">Dobrovolný příspěvek pomáhá vývoji TipCore i další mé tvorbě.</text>
+  </g>
+  <g transform="translate(1255 250)" fill="none" stroke="#20d6c7" stroke-width="8" opacity=".58">
+    <ellipse rx="132" ry="48" transform="rotate(24)"/>
+    <ellipse rx="132" ry="48" transform="rotate(-24)"/>
+    <ellipse rx="132" ry="48" transform="rotate(90)"/>
+    <circle cx="0" cy="0" r="58" fill="#0b3e49" stroke="#1aa7b4"/>
+  </g>
+  <path d="M1255 282c-46-31-78-61-78-101 0-31 22-53 52-53 18 0 34 9 46 25 12-16 28-25 46-25 30 0 52 22 52 53 0 40-32 70-78 101l-20 14z" fill="#39d4b2" opacity=".72" transform="translate(-20 -42) scale(.75) translate(425 80)"/>
+  <text x="1255" y="425" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="27" font-weight="700" fill="#58dcca">TipCore · Luke Studio</text>
+</svg>
