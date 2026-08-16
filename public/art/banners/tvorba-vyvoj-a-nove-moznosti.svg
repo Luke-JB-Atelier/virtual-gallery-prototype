@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07131d"/>
+      <stop offset="1" stop-color="#092733"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#18d8ca"/>
+      <stop offset="1" stop-color="#36a9e8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1800" height="1200" fill="#03070a"/>
+  <rect x="24" y="24" width="1752" height="1152" rx="24" fill="url(#bg)" stroke="#0bbbb0" stroke-width="12"/>
+  <rect x="58" y="58" width="1684" height="1084" rx="16" fill="none" stroke="#173f4d" stroke-width="3"/>
+  <text x="112" y="170" font-family="Arial,Helvetica,sans-serif" font-size="82" font-weight="900" fill="#f2f8fb">Tvorba, vývoj a nové možnosti</text>
+  <g font-family="Arial,Helvetica,sans-serif" font-size="42" fill="#d1e0e6">
+    <text x="112" y="285">Jsem výtvarník. Maluji klasické i digitální obrazy,</text>
+    <text x="112" y="345">streamuji svou tvorbu a rád proměňuji vlastní nápady</text>
+    <text x="112" y="405">ve skutečné projekty.</text>
+    <text x="112" y="505">Vedle umělecké tvorby postupně rozvíjím vlastní nástroje</text>
+    <text x="112" y="565">pro stream a komunitu. TipCore vzniká jako praktický projekt,</text>
+    <text x="112" y="625">který spojuje tvorbu, techniku a nové možnosti.</text>
+    <text x="112" y="725">Chci hledat cesty, jak dělat věci jednodušeji, svobodněji</text>
+    <text x="112" y="785">a s větším prostorem pro vlastní nápady.</text>
+  </g>
+  <path d="M110 885H1180" stroke="url(#accent)" stroke-width="5" opacity=".7"/>
+  <text x="112" y="965" font-family="Arial,Helvetica,sans-serif" font-size="36" font-weight="700" fill="#7ce8d7">TipCore · tvorba · stream · vývoj</text>
+  <g transform="translate(1450 610)" fill="none" stroke="#1bc7c4" stroke-width="10" opacity=".38">
+    <ellipse rx="255" ry="90" transform="rotate(20)"/>
+    <ellipse rx="255" ry="90" transform="rotate(-20)"/>
+    <ellipse rx="255" ry="90" transform="rotate(90)"/>
+    <circle r="108" fill="#0a3947" stroke="#1b929d"/>
+  </g>
+  <path d="M1450 660c-82-54-139-108-139-177 0-54 39-92 91-92 31 0 59 16 80 44 21-28 49-44 80-44 52 0 91 38 91 92 0 69-57 123-139 177l-32 22z" fill="#3bd1af" opacity=".62" transform="translate(-32 -72) scale(.7) translate(650 280)"/>
+</svg>
