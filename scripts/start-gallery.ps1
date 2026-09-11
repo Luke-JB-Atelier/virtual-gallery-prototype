@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$project = 'C:\Users\lukas\Documents\Codex\2026-05-27\vy-e-mi-probl-m-s'
+$project = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $port = 5189
 $url = "http://127.0.0.1:$port/"
 
