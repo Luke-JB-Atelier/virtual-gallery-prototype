@@ -1,0 +1,49 @@
+name: Update gallery donors
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gallery-donor-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_PAYMENT_LINK_ID: ${{ secrets.STRIPE_PAYMENT_LINK_ID }}
+      GALLERY_DONOR_MINIMUM: '500'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Synchronize paid Stripe donors
+        shell: bash
+        run: |
+          if [ -z "$STRIPE_SECRET_KEY" ] || [ -z "$STRIPE_PAYMENT_LINK_ID" ]; then
+            echo "::notice::Gallery donor sync is waiting for STRIPE_SECRET_KEY and STRIPE_PAYMENT_LINK_ID repository secrets."
+            exit 0
+          fi
+          node scripts/update-gallery-donors.mjs
+
+      - name: Commit sanitized donor data when changed
+        shell: bash
+        run: |
+          if git diff --quiet -- public/data/gallery-donors.json; then
+            echo "No donor changes."
+            exit 0
+          fi
+          git config user.name "TipCore Gallery Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -- public/data/gallery-donors.json
+          git commit -m "Update gallery donors"
+          git push
